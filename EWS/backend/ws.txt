@@ -1,0 +1,106 @@
+const WebSocket = require('ws');
+const url = require('url');
+
+const allowedOrigins = [
+  'https://server-iot.qbyte.web.id',
+  'https://iot-v2.qbyte.web.id',
+  'https://testopikmqtt.qbyte.web.id'
+];
+
+const wss = new WebSocket.Server({
+  port: 3440,
+  verifyClient: (info, done) => {
+    const origin = info.origin;
+    const headers = info.req.headers;
+    const userAgent = headers['user-agent'] || '';
+    const isESP32 = userAgent.toLowerCase().includes('arduino');
+
+    if (origin) {
+      if (allowedOrigins.includes(origin)) {
+        console.log(`✅ Browser origin allowed: ${origin}`);
+        done(true);
+      } else if (isESP32) {
+        console.log(`✅ ESP32 allowed via user-agent`);
+        done(true);
+      } else {
+        console.log(`❌ Origin rejected: ${origin}`);
+        done(false, 403, 'Forbidden');
+      }
+    } else {
+      console.log('✅ No origin (likely ESP32)');
+      done(true);
+    }
+  }
+});
+
+const subscriptions = {};
+
+wss.on('connection', (ws) => {
+  console.log('🔌 New client connected');
+
+  ws.on('message', (message) => {
+    try {
+      const msgStr = message.toString();
+
+      // JSON format
+      if (msgStr.trim().startsWith('{')) {
+        const data = JSON.parse(msgStr);
+
+        if (data.action === 'subscribe') {
+          const topic = data.topic;
+          if (!subscriptions[topic]) subscriptions[topic] = [];
+          subscriptions[topic].push(ws);
+         console.log(`✅ Subscribed to ${topic}`);
+        }
+
+        else if (data.action === 'publish') {
+          const topic = data.topic;
+          const payload = data.payload;
+          const msg = JSON.stringify({ topic, payload });
+
+          if (subscriptions[topic]) {
+            subscriptions[topic].forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(msg);
+              }
+            });
+          }
+
+          console.log(`📢 Published to ${topic}:`, payload);
+        }
+      }
+
+      // RAW format: sensor/temp|25.4
+      else if (msgStr.includes('|')) {
+        const [topic, payload] = msgStr.split('|');
+        const msg = JSON.stringify({ topic, payload });
+
+        if (subscriptions[topic]) {
+          subscriptions[topic].forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(msg);
+            }
+          });
+        }
+
+      //  console.log(`📢 [RAW] ${topic} => ${payload}`);
+      }
+
+      else {
+     //   console.warn('⚠️ Unknown format:', msgStr);
+      }
+
+    } catch (err) {
+     // console.error('❗ Message error:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('❎ Client disconnected');
+    for (let topic in subscriptions) {
+      subscriptions[topic] = subscriptions[topic].filter(client => client !== ws);
+    }
+  });
+});
+
+console.log('🚀 WebSocket server running on port 3440');

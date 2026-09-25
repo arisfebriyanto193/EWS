@@ -1,0 +1,636 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  EWSNode,
+  AlarmLog,
+  UserAccount,
+  TelegramConfig,
+} from './types';
+import {
+  INITIAL_USERS,
+  INITIAL_EWS_NODES,
+  INITIAL_ALARM_LOGS,
+} from './mockData';
+import { api } from './services/api';
+import { wsClient } from './services/websocket';
+import { LoginModal } from './components/LoginModal';
+import { Navbar } from './components/Navbar';
+import { OverviewAllEWS } from './components/OverviewAllEWS';
+import { EWSDashboardSingle } from './components/EWSDashboardSingle';
+import { AlarmHistoryView } from './components/AlarmHistoryView';
+import { EngineeringDocsModal } from './components/EngineeringDocsModal';
+import { TelegramConfigModal } from './components/TelegramConfigModal';
+import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
+
+export default function App() {
+  // Authentication: starts at null so login page is displayed before dashboard
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  
+  // Navigation tab: 'overview', 'EWS-01', 'EWS-02', 'EWS-03', 'EWS-04', 'alarm-history'
+  const [activeTab, setActiveTab] = useState<string>('overview');
+
+  // Application Data States (diambil dari MySQL Backend, fallback ke INITIAL_*)
+  const [ewsNodes, setEwsNodes] = useState<EWSNode[]>(INITIAL_EWS_NODES);
+  const [alarmLogs, setAlarmLogs] = useState<AlarmLog[]>(INITIAL_ALARM_LOGS);
+
+  // WebSocket Live Connection Status
+  const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
+
+  // Modals & UI States
+  const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [editingTelegramEws, setEditingTelegramEws] = useState<EWSNode | null>(null);
+  const [globalMute, setGlobalMute] = useState(false);
+
+  // Audio synthesizer ref for simulated local 12V 110dB siren
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // 1. Cek Sesi Login Tersimpan di LocalStorage saat Pertama Buka
+  useEffect(() => {
+    const token = localStorage.getItem('ews_token');
+    const savedUser = localStorage.getItem('ews_user');
+
+    if (token && savedUser) {
+      try {
+        setCurrentUser(JSON.parse(savedUser));
+      } catch {
+        // fallback
+      }
+
+      // Verifikasi token ke backend
+      api.getMe()
+        .then((res) => {
+          if (res.user) {
+            setCurrentUser(res.user);
+            localStorage.setItem('ews_user', JSON.stringify(res.user));
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('ews_token');
+          localStorage.removeItem('ews_user');
+          setCurrentUser(null);
+        });
+    }
+  }, []);
+
+  // 2. Data Riwayat Alarm dari Backend REST API (Data Telemetri Sensor Murni dari WebSocket)
+  const refreshBackendData = () => {
+    api.getAlarmLogs()
+      .then((data) => {
+        if (data && data.length > 0) setAlarmLogs(data);
+      })
+      .catch((err) => console.warn('Gagal memuat riwayat alarm:', err.message));
+  };
+
+  useEffect(() => {
+    refreshBackendData();
+  }, []);
+
+  // 3. Hubungkan ke WebSocket Gateway (Port 3440) untuk Live Streaming Telemetri
+  useEffect(() => {
+    wsClient.connect();
+
+    const unsubStatus = wsClient.onStatusChange((status) => {
+      setWsStatus(status);
+    });
+
+    // A. Real-time Telemetri Lengkap EWS dari ESP32 (topik: ews/{id}/telemetry)
+    const unsubEws = wsClient.on('ews/+/telemetry', (payload) => {
+      if (!payload || !payload.ewsId) return;
+      setEwsNodes((prev) =>
+        prev.map((e) => {
+          if (e.id === payload.ewsId) {
+            return {
+              ...e,
+              status: payload.status || e.status,
+              sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
+              stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
+              sensorData: {
+                ...e.sensorData,
+                ...(payload.sensorData || {}),
+                lastUpdated: 'Live via WS (Baru saja)',
+              },
+            };
+          }
+          return e;
+        })
+      );
+    });
+
+    // B. Real-time Telemetri Per-Data / Per-Topik Sensor (topik: ews/{id}/pitch, ews/{id}/rainfall_rate, dll.)
+    const unsubSensorUpdate = wsClient.on('ews/sensor_update', (eventData: any) => {
+      if (!eventData || !eventData.ewsId || !eventData.sensorKey) return;
+      const { ewsId, sensorKey, payload } = eventData;
+
+      // Abaikan topik internal command atau status yang sudah punya handler tersendiri
+      if (sensorKey === 'command' || sensorKey === 'status' || sensorKey === 'telemetry') return;
+
+      const keyPropMap: Record<string, keyof EWSNode['sensorData']> = {
+        pitch: 'pitchAngle',
+        pitch_angle: 'pitchAngle',
+        roll: 'rollAngle',
+        roll_angle: 'rollAngle',
+        soil_moisture: 'soilMoisture',
+        soil_temp: 'soilTemperature',
+        soil_temperature: 'soilTemperature',
+        rainfall_rate: 'rainfallRate',
+        rain: 'rainfallRate',
+        rain_rate: 'rainfallRate',
+        rainfall_cumulative: 'rainfallCumulative',
+        vibration: 'vibrationLevel',
+        vibration_level: 'vibrationLevel',
+        battery: 'batteryVoltage',
+        battery_voltage: 'batteryVoltage',
+        battery_current: 'batteryCurrent',
+        solar: 'solarCurrent',
+        solar_current: 'solarCurrent',
+        gsm: 'gsmSignalDbm',
+        gsm_signal: 'gsmSignalDbm',
+        uptime: 'uptimeHours',
+      };
+
+      const targetProp = keyPropMap[sensorKey.toLowerCase()];
+
+      setEwsNodes((prev) =>
+        prev.map((e) => {
+          if (e.id === ewsId) {
+            const updated = { ...e.sensorData };
+
+            // Jika payload adalah objek processed dari backend
+            if (typeof payload === 'object' && payload !== null) {
+              if (payload.sensorData) {
+                Object.assign(updated, payload.sensorData);
+              }
+              if (targetProp && 'rawValue' in payload) {
+                (updated as any)[targetProp] = payload.rawValue;
+              }
+            } else {
+              // Jika payload langsung angka/string raw
+              const numVal = parseFloat(payload);
+              if (targetProp && !isNaN(numVal)) {
+                (updated as any)[targetProp] = numVal;
+              }
+            }
+            updated.lastUpdated = 'Live WS (Baru saja)';
+
+            return {
+              ...e,
+              status: typeof payload === 'object' && payload?.status ? payload.status : e.status,
+              sirenActive: typeof payload === 'object' && payload?.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
+              stroboActive: typeof payload === 'object' && payload?.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
+              sensorData: updated,
+            };
+          }
+          return e;
+        })
+      );
+    });
+
+    // C. Real-time Status Aktuator EWS (Sirine/Strobo/Mute)
+    const unsubEwsStatus = wsClient.on('ews/+/status', (payload) => {
+      if (!payload || !payload.ewsId) return;
+      setEwsNodes((prev) =>
+        prev.map((e) => {
+          if (e.id === payload.ewsId) {
+            return {
+              ...e,
+              status: payload.status !== undefined ? payload.status : e.status,
+              sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
+              stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
+              muted: payload.muted !== undefined ? payload.muted : e.muted,
+            };
+          }
+          return e;
+        })
+      );
+    });
+
+    // D. Real-time Pemicuan & Konfirmasi Alarm
+    const unsubAlarm = wsClient.on('alarms', (payload) => {
+      if (payload && payload.event === 'ALARM_ACTIVE') {
+        api.getAlarmLogs().then((logs) => setAlarmLogs(logs)).catch(() => {});
+      } else if (payload && payload.event === 'ALARM_ACKNOWLEDGED' && payload.data) {
+        setAlarmLogs((prev) =>
+          prev.map((l) => (l.id === payload.data.id ? { ...l, ...payload.data } : l))
+        );
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubEws();
+      unsubSensorUpdate();
+      unsubEwsStatus();
+      unsubAlarm();
+    };
+  }, []);
+
+  // Handle Login
+  const handleLogin = (user: UserAccount) => {
+    setCurrentUser(user);
+    if (user.role.startsWith('operator_') && user.assignedEwsId) {
+      setActiveTab(user.assignedEwsId);
+    } else {
+      setActiveTab('overview');
+    }
+    refreshBackendData();
+  };
+
+  // Handle Logout
+  const handleLogout = () => {
+    localStorage.removeItem('ews_token');
+    localStorage.removeItem('ews_user');
+    setCurrentUser(null);
+    setActiveTab('overview');
+  };
+
+  // Update specific EWS (Thresholds / Telegram / Status)
+  const handleUpdateEws = (updated: EWSNode) => {
+    setEwsNodes((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+
+    // Simpan ambang batas ke MySQL backend
+    api.updateEwsThresholds(updated.id, updated.thresholds).catch((err) => {
+      console.warn('Gagal sinkron threshold ke backend:', err.message);
+    });
+  };
+
+  // Trigger Local Siren / Alarm
+  const handleTriggerAlarm = (ewsId: string, type: 'siaga' | 'bahaya') => {
+    setEwsNodes((prev) =>
+      prev.map((e) => {
+        if (e.id === ewsId) {
+          return {
+            ...e,
+            status: type,
+            sirenActive: type === 'bahaya',
+            stroboActive: true,
+          };
+        }
+        return e;
+      })
+    );
+
+    // Kirim ke backend (akan di-broadcast ke ESP32 dan dicatat di database)
+    api.controlEws(ewsId, { command: 'TRIGGER_ALARM', type }).catch((err) => {
+      console.warn('Gagal kirim instruksi alarm ke backend:', err.message);
+    });
+  };
+
+  // Reset Alarm
+  const handleResetAlarm = (ewsId: string) => {
+    setEwsNodes((prev) =>
+      prev.map((e) => {
+        if (e.id === ewsId) {
+          return {
+            ...e,
+            status: 'aman',
+            sirenActive: false,
+            stroboActive: false,
+            muted: false,
+            sensorData: {
+              ...e.sensorData,
+              pitchAngle: 0.15,
+              rollAngle: -0.05,
+              rainfallRate: 0.0,
+            },
+          };
+        }
+        return e;
+      })
+    );
+
+    // Kirim perintah reset ke backend & mikrokontroler ESP32
+    api.controlEws(ewsId, { command: 'RESET_ALARM' }).catch((err) => {
+      console.warn('Gagal kirim instruksi reset alarm:', err.message);
+    });
+  };
+
+  // Simulation Scenarios
+  const handleTriggerScenario = (
+    ewsId: string,
+    scenario: 'siaga' | 'bahaya' | 'offline' | 'baterai_lemah' | 'reset'
+  ) => {
+    setEwsNodes((prev) =>
+      prev.map((e) => {
+        if (e.id !== ewsId) return e;
+
+        if (scenario === 'bahaya') {
+          const newLog: AlarmLog = {
+            id: `ALM-${Date.now().toString().slice(-4)}`,
+            ewsId: e.id,
+            ewsName: e.name,
+            timestamp: new Date().toLocaleString('id-ID') + ' WIB',
+            type: 'bahaya',
+            triggerCause: 'Kemiringan Tanah Ekstrem (Inclinometer) & Getaran ADXL345',
+            triggerValue: `Pitch: 3.42° (Ambang: ${e.thresholds.tiltDanger}°) | Getaran: 0.38g`,
+            durationMinutes: 1,
+            acknowledged: false,
+          };
+          setAlarmLogs((oldLogs) => [newLog, ...oldLogs]);
+
+          api.controlEws(ewsId, { command: 'TRIGGER_ALARM', type: 'bahaya' }).catch(() => {});
+
+          return {
+            ...e,
+            status: 'bahaya',
+            sirenActive: true,
+            stroboActive: true,
+            sensorData: {
+              ...e.sensorData,
+              pitchAngle: 3.42,
+              rollAngle: 1.88,
+              rainfallRate: 58.2,
+              soilMoisture: 84.5,
+              vibrationLevel: 0.38,
+            },
+          };
+        } else if (scenario === 'siaga') {
+          const newLog: AlarmLog = {
+            id: `ALM-${Date.now().toString().slice(-4)}`,
+            ewsId: e.id,
+            ewsName: e.name,
+            timestamp: new Date().toLocaleString('id-ID') + ' WIB',
+            type: 'siaga',
+            triggerCause: 'Curah Hujan Tinggi & Pergeseran Sudut Awal',
+            triggerValue: `Hujan: 32.4 mm/jam | Pitch: 1.65°`,
+            durationMinutes: 1,
+            acknowledged: false,
+          };
+          setAlarmLogs((oldLogs) => [newLog, ...oldLogs]);
+
+          api.controlEws(ewsId, { command: 'TRIGGER_ALARM', type: 'siaga' }).catch(() => {});
+
+          return {
+            ...e,
+            status: 'siaga',
+            sirenActive: false,
+            stroboActive: true,
+            sensorData: {
+              ...e.sensorData,
+              pitchAngle: 1.65,
+              rainfallRate: 32.4,
+              soilMoisture: 76.0,
+            },
+          };
+        } else if (scenario === 'offline') {
+          return {
+            ...e,
+            status: 'offline',
+            sensorData: {
+              ...e.sensorData,
+              gsmStatus: 'offline',
+              gsmSignalDbm: -115,
+            },
+          };
+        } else if (scenario === 'baterai_lemah') {
+          return {
+            ...e,
+            status: 'baterai_lemah',
+            sensorData: {
+              ...e.sensorData,
+              batteryVoltage: 11.2,
+              solarCurrent: 120,
+            },
+          };
+        } else {
+          // Reset
+          api.controlEws(ewsId, { command: 'RESET_ALARM' }).catch(() => {});
+          return {
+            ...e,
+            status: 'aman',
+            sirenActive: false,
+            stroboActive: false,
+            muted: false,
+            sensorData: {
+              ...e.sensorData,
+              pitchAngle: 0.12,
+              rollAngle: -0.06,
+              soilMoisture: 42.0,
+              rainfallRate: 0.0,
+              vibrationLevel: 0.02,
+              batteryVoltage: 12.8,
+              gsmStatus: 'online',
+              gsmSignalDbm: -68,
+            },
+          };
+        }
+      })
+    );
+  };
+
+  // Acknowledge Alarm Log (Tersimpan ke MySQL via API)
+  const handleAcknowledgeLog = (logId: string, note: string, author: string) => {
+    api.acknowledgeAlarm(logId, note, author)
+      .then((updatedLog) => {
+        setAlarmLogs((prev) =>
+          prev.map((log) => (log.id === logId ? { ...log, ...updatedLog } : log))
+        );
+      })
+      .catch((err) => {
+        console.warn('Gagal acknowledge alarm via API, update lokal:', err.message);
+        setAlarmLogs((prev) =>
+          prev.map((log) => {
+            if (log.id === logId) {
+              return {
+                ...log,
+                acknowledged: true,
+                acknowledgedBy: author,
+                acknowledgeNote: note,
+                acknowledgedAt: new Date().toLocaleString('id-ID') + ' WIB',
+              };
+            }
+            return log;
+          })
+        );
+      });
+  };
+
+  // Check if any siren is currently blaring
+  const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute);
+  const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive);
+
+  // Sound effect trigger for 12V 110dB siren simulation
+  useEffect(() => {
+    if (!anySirenActive) {
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      return;
+    }
+
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(1400, ctx.currentTime + 0.3);
+      osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.6);
+
+      // Low volume for safety
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+
+      const timer = setInterval(() => {
+        if (ctx.state === 'running') {
+          osc.frequency.setValueAtTime(800, ctx.currentTime);
+          osc.frequency.linearRampToValueAtTime(1400, ctx.currentTime + 0.3);
+          osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.6);
+        }
+      }, 600);
+
+      return () => {
+        clearInterval(timer);
+        osc.stop();
+        ctx.close().catch(() => {});
+      };
+    } catch {
+      // Audio context might be restricted before user gesture
+    }
+  }, [anySirenActive]);
+
+  // Selected EWS for single dashboard view
+  const currentEws = ewsNodes.find((e) => e.id === activeTab);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-white">
+      {/* 1. Login Modal - Hanya 1 Akun Administrator (admin_bpbd / ews123) */}
+      {!currentUser && <LoginModal onLogin={handleLogin} />}
+
+      {/* Main Authenticated Dashboard */}
+      {currentUser && (
+        <>
+          {/* Navbar dengan Live WebSocket Status */}
+          <Navbar
+            currentUser={currentUser}
+            activeTab={activeTab}
+            onSelectTab={setActiveTab}
+            onLogout={handleLogout}
+            onOpenDocs={() => setIsDocsOpen(true)}
+            ewsNodes={ewsNodes}
+            wsStatus={wsStatus}
+          />
+
+          {/* Active Siren Banner (Page 3 & 6 of Document) */}
+          {activeSirenNodes.length > 0 && (
+            <div className="bg-red-600 text-white px-4 py-3 flex items-center justify-between shadow-xl animate-pulse sticky top-16 z-30">
+              <div className="flex items-center gap-3">
+                <ShieldAlert className="w-5 h-5 shrink-0" />
+                <div className="text-xs sm:text-sm font-bold">
+                  PERINGATAN BAHAYA: Sirine Lokal 12V 110dB &amp; Lampu Strobo Aktif di{' '}
+                  {activeSirenNodes.map((e) => e.name).join(', ')}!
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setGlobalMute(!globalMute)}
+                  className="px-3 py-1 bg-red-950/80 hover:bg-red-900 border border-red-300/40 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                >
+                  {globalMute ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  <span>{globalMute ? 'Unmute Audio' : 'Mute Sirine Audio'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Main Content Container */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+            {/* View Switching */}
+            {activeTab === 'overview' && (
+              <OverviewAllEWS
+                ewsNodes={ewsNodes}
+                onSelectEws={(ewsId) => setActiveTab(ewsId)}
+                onOpenTelegramConfig={(ews) => setEditingTelegramEws(ews)}
+              />
+            )}
+
+            {currentEws && (
+              <EWSDashboardSingle
+                key={currentEws.id}
+                ews={currentEws}
+                currentUser={currentUser}
+                onUpdateEws={handleUpdateEws}
+                onTriggerAlarm={handleTriggerAlarm}
+                onResetAlarm={handleResetAlarm}
+              />
+            )}
+
+            {activeTab === 'alarm-history' && (
+              <AlarmHistoryView
+                logs={alarmLogs}
+                currentUser={currentUser}
+                onAcknowledgeLog={handleAcknowledgeLog}
+              />
+            )}
+          </main>
+
+          {/* Footer */}
+          <footer className="border-t border-slate-800 bg-slate-950 py-6 text-xs text-slate-500">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <p className="font-semibold text-slate-400">
+                  Sistem Web Monitoring 4 Titik Landslide Early Warning System (EWS)
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Standar IP65 &bull; Bertenaga Surya Mandiri 30Wp &bull; Transmisi Seluler SIMCom 4G LTE &amp; Bot Telegram
+                </p>
+              </div>
+
+              <div className="flex items-center gap-4 text-[11px]">
+                <button
+                  onClick={() => setIsDocsOpen(true)}
+                  className="hover:text-cyan-400 underline cursor-pointer"
+                >
+                  Spesifikasi Teknis &amp; Fabrikasi 3D
+                </button>
+                <span>&bull;</span>
+                <span className="font-mono text-cyan-400">
+                  Gateway: WebSocket Port 3440 | REST Port 5000
+                </span>
+              </div>
+            </div>
+          </footer>
+
+          {/* Engineering 3D CAD Docs Modal */}
+          <EngineeringDocsModal
+            isOpen={isDocsOpen}
+            onClose={() => setIsDocsOpen(false)}
+          />
+
+          {/* Individual Telegram Modal from Overview */}
+          {editingTelegramEws && (
+            <TelegramConfigModal
+              ews={editingTelegramEws}
+              isOpen={true}
+              onClose={() => setEditingTelegramEws(null)}
+              onSave={(newCfg: TelegramConfig) => {
+                const updated = {
+                  ...editingTelegramEws,
+                  telegramConfig: newCfg,
+                };
+                handleUpdateEws(updated);
+                api.updateTelegramConfig(editingTelegramEws.id, newCfg).catch((err) => {
+                  console.warn('Gagal menyimpan Telegram config ke backend:', err.message);
+                });
+                setEditingTelegramEws(null);
+              }}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Sistem EWS dan Perangkap Hama Terintegrasi",
+  "description": "Sistem Web Monitoring 4 Titik Landslide Early Warning System (EWS) dan 5 Unit Perangkap Hama Bertenaga Surya dengan Integrasi Bot Telegram Mandiri per Titik.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
