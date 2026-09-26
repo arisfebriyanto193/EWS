@@ -14,9 +14,12 @@ router.get('/auth/users', authController.getUsers);
 
 // 2. EWS Nodes Routes
 router.get('/ews', ewsController.getAllEws);
+router.post('/ews', ewsController.createEws);
 router.get('/ews/:id', ewsController.getEwsById);
+router.delete('/ews/:id', ewsController.deleteEws);
 router.put('/ews/:id/thresholds', ewsController.updateThresholds);
 router.put('/ews/:id/telegram', ewsController.updateTelegramConfig);
+router.post('/ews/:id/telegram/test', ewsController.testTelegram);
 router.post('/ews/:id/control', ewsController.controlActuator);
 
 // 3. Pest Trap Routes

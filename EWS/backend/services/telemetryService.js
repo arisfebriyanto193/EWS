@@ -1,4 +1,5 @@
 const db = require('../database/db');
+const TelegramService = require('./telegramService');
 
 /**
  * Service untuk memproses telemetri sensor, pengecekan threshold,
@@ -197,6 +198,22 @@ class TelemetryService {
               [alarmId, ewsId, newStatus, triggerCause, triggerValue, 1]
             );
             console.log(`🚨 [ALARM BARU DICATAT] ${alarmId} pada ${ewsId} (${newStatus.toUpperCase()}): ${triggerCause}`);
+
+            // Dispatch Telegram Alert Otomatis jika dikonfigurasi
+            try {
+              const [teleRows] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [ewsId]);
+              if (teleRows.length > 0 && teleRows[0].enabled) {
+                TelegramService.sendAlarmAlert(
+                  teleRows[0],
+                  currentNode || { id: ewsId, name: ewsId },
+                  newStatus,
+                  triggerCause,
+                  triggerValue
+                ).catch((err) => console.error('Telegram alert dispatch error:', err.message));
+              }
+            } catch (teleErr) {
+              console.error('Error fetching telegram config for alarm:', teleErr.message);
+            }
           }
         }
       } catch (err) {

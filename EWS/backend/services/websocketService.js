@@ -297,6 +297,13 @@ class WebSocketService {
     }
   }
 
+  /**
+   * Alias untuk publish
+   */
+  broadcast(topic, payload) {
+    this.publish(topic, payload);
+  }
+
   sendToClient(ws, data) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data));

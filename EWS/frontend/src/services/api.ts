@@ -45,6 +45,30 @@ export const api = {
     return data.data;
   },
 
+  async createEws(payload: Partial<EWSNode>): Promise<EWSNode> {
+    const res = await fetch(`${API_BASE}/ews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menambahkan stasiun EWS baru');
+    }
+    return data.data;
+  },
+
+  async deleteEws(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/ews/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeader() },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menghapus stasiun EWS');
+    }
+  },
+
   async controlEws(id: string, payload: { command: string; type?: string; siren?: boolean; strobo?: boolean; mute?: boolean }): Promise<void> {
     const res = await fetch(`${API_BASE}/ews/${id}/control`, {
       method: 'POST',
@@ -79,6 +103,22 @@ export const api = {
     if (!res.ok || !data.success) {
       throw new Error(data.message || 'Gagal memperbarui konfigurasi Telegram');
     }
+  },
+
+  async testTelegramConfig(
+    id: string,
+    payload: { botToken: string; chatId: string; message?: string }
+  ): Promise<{ success: boolean; message: string; lastTestTime?: string }> {
+    const res = await fetch(`${API_BASE}/ews/${id}/telegram/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal mengirim pesan uji ke Telegram');
+    }
+    return data;
   },
 
   // 3. Pest Traps
@@ -124,5 +164,22 @@ export const api = {
       throw new Error(data.message || 'Gagal mengonfirmasi alarm');
     }
     return data.data;
+  },
+
+  // 5. Sensor Telemetry Logs
+  async getSensorLogs(ewsId?: string, limit = 50): Promise<any[]> {
+    try {
+      const q = new URLSearchParams();
+      if (ewsId) q.append('ewsId', ewsId);
+      q.append('limit', limit.toString());
+      const res = await fetch(`${API_BASE}/logs/sensor?${q.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return [];
+      }
+      return data.data || [];
+    } catch {
+      return [];
+    }
   },
 };

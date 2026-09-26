@@ -1,5 +1,6 @@
 const db = require('../database/db');
 const wsService = require('../services/websocketService');
+const TelegramService = require('../services/telegramService');
 
 // Helper untuk format node dari DB ke struktur EWSNode frontend
 function formatEwsNode(node, telegram) {
@@ -189,6 +190,10 @@ exports.updateTelegramConfig = async (req, res) => {
     } = req.body;
 
     const pool = db.getPool();
+    const cleanBotToken = botToken ? String(botToken).trim() : '';
+    const cleanChatId = chatId ? String(chatId).trim() : '';
+    const cleanChannelName = channelName ? String(channelName).trim() : 'Saluran Telegram EWS';
+
     await pool.query(
       `INSERT INTO telegram_configs (
         ews_id, bot_token, chat_id, channel_name, enabled,
@@ -211,23 +216,131 @@ exports.updateTelegramConfig = async (req, res) => {
         last_test_time = VALUES(last_test_time)`,
       [
         id,
-        botToken,
-        chatId,
-        channelName,
-        enabled ? 1 : 0,
-        notifySiaga ? 1 : 0,
-        notifyBahaya ? 1 : 0,
-        notifyOffline ? 1 : 0,
-        notifyBateraiLemah ? 1 : 0,
-        notifySensorGagal ? 1 : 0,
-        notifyNormalKembali ? 1 : 0,
-        dailyReport ? 1 : 0,
+        cleanBotToken,
+        cleanChatId,
+        cleanChannelName,
+        enabled !== undefined ? (enabled ? 1 : 0) : 1,
+        notifySiaga !== undefined ? (notifySiaga ? 1 : 0) : 1,
+        notifyBahaya !== undefined ? (notifyBahaya ? 1 : 0) : 1,
+        notifyOffline !== undefined ? (notifyOffline ? 1 : 0) : 1,
+        notifyBateraiLemah !== undefined ? (notifyBateraiLemah ? 1 : 0) : 1,
+        notifySensorGagal !== undefined ? (notifySensorGagal ? 1 : 0) : 1,
+        notifyNormalKembali !== undefined ? (notifyNormalKembali ? 1 : 0) : 1,
+        dailyReport !== undefined ? (dailyReport ? 1 : 0) : 1,
         lastTestStatus || null,
-        lastTestTime || new Date().toLocaleString('id-ID'),
+        lastTestTime || null,
       ]
     );
 
-    return res.json({ success: true, message: `Konfigurasi Telegram ${id} berhasil disimpan` });
+    // Broadcast pembaruan konfigurasi via WebSocket
+    wsService.publish('ews/telegram/updated', {
+      ewsId: id,
+      telegramConfig: {
+        ewsId: id,
+        botToken: cleanBotToken,
+        chatId: cleanChatId,
+        channelName: cleanChannelName,
+        enabled: Boolean(enabled),
+        notifySiaga: Boolean(notifySiaga),
+        notifyBahaya: Boolean(notifyBahaya),
+        notifyOffline: Boolean(notifyOffline),
+        notifyBateraiLemah: Boolean(notifyBateraiLemah),
+        notifySensorGagal: Boolean(notifySensorGagal),
+        notifyNormalKembali: Boolean(notifyNormalKembali),
+        dailyReport: Boolean(dailyReport),
+        lastTestStatus: lastTestStatus || null,
+        lastTestTime: lastTestTime || null,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: `Konfigurasi Telegram ${id} berhasil disimpan ke database`,
+      data: {
+        ewsId: id,
+        botToken: cleanBotToken,
+        chatId: cleanChatId,
+        channelName: cleanChannelName,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating telegram config:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.testTelegram = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let { botToken, chatId, message } = req.body;
+    const pool = db.getPool();
+
+    // Ambil data node EWS
+    const [nodes] = await pool.query('SELECT * FROM ews_nodes WHERE id = ?', [id]);
+    let ewsData = nodes[0] || { id, name: id, location: 'Stasiun Pantau' };
+
+    // Jika botToken / chatId tidak dikirim dari form, ambil dari DB
+    if (!botToken || !chatId) {
+      const [telegrams] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [id]);
+      if (telegrams.length > 0) {
+        botToken = botToken || telegrams[0].bot_token;
+        chatId = chatId || telegrams[0].chat_id;
+      }
+    }
+
+    if (!botToken || !chatId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bot Token dan Chat ID wajib diisi sebelum melakukan pengujian pesan!',
+      });
+    }
+
+    // Kirim pesan uji ke Telegram Bot API
+    let result;
+    if (message) {
+      result = await TelegramService.sendMessage(botToken, chatId, message);
+    } else {
+      result = await TelegramService.sendTestMessage(botToken, chatId, {
+        id: ewsData.id,
+        name: ewsData.name,
+        location: ewsData.location,
+        sensorData: {
+          pitchAngle: parseFloat(ewsData.last_pitch || 0),
+          rollAngle: parseFloat(ewsData.last_roll || 0),
+          soilMoisture: parseFloat(ewsData.last_soil_moisture || 0),
+          rainfallRate: parseFloat(ewsData.last_rainfall_rate || 0),
+          batteryVoltage: parseFloat(ewsData.last_battery_voltage || 12.6),
+        },
+      });
+    }
+
+    // Update status uji di database
+    const nowStr = new Date().toLocaleString('id-ID');
+    const testStatus = result.success ? 'success' : 'failed';
+
+    try {
+      await pool.query(
+        `UPDATE telegram_configs SET last_test_status = ?, last_test_time = ? WHERE ews_id = ?`,
+        [testStatus, nowStr, id]
+      );
+    } catch (dbErr) {
+      // Abaikan jika belum ada row di telegram_configs
+    }
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.error || 'Gagal mengirim pesan ke Telegram',
+        rawError: result.rawError,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `Pesan uji coba berhasil terkirim ke Chat ID ${chatId}! Periksa aplikasi Telegram Anda.`,
+      data: result.data,
+      lastTestTime: nowStr,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -296,3 +409,140 @@ exports.controlActuator = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.createEws = async (req, res) => {
+  try {
+    const {
+      id,
+      name,
+      location,
+      coordinates,
+      thresholds,
+      telegramConfig,
+    } = req.body;
+
+    if (!id || !name) {
+      return res.status(400).json({ success: false, message: 'ID dan Nama EWS wajib diisi' });
+    }
+
+    const pool = db.getPool();
+    const isDbConnected = db.getIsConnected();
+
+    if (!isDbConnected || !pool) {
+      return res.status(503).json({ success: false, message: 'Database belum terhubung' });
+    }
+
+    const [existing] = await pool.query('SELECT id FROM ews_nodes WHERE id = ?', [id]);
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: `EWS dengan ID "${id}" sudah terdaftar` });
+    }
+
+    const lat = coordinates?.lat ? parseFloat(coordinates.lat) : -6.9000;
+    const lng = coordinates?.lng ? parseFloat(coordinates.lng) : 107.6200;
+
+    await pool.query(
+      `INSERT INTO ews_nodes (
+        id, name, location, latitude, longitude, status,
+        tilt_warning, tilt_danger, rain_warning, rain_danger,
+        soil_moisture_warning, vibration_danger, battery_low_voltage,
+        last_pitch, last_roll, last_soil_moisture, last_soil_temp,
+        last_rainfall_rate, last_rainfall_cumulative, last_vibration,
+        last_battery_voltage, last_battery_current, last_solar_current,
+        last_gsm_signal, last_gsm_status, microsd_used_mb, microsd_total_mb,
+        firmware_version, uptime_hours
+      ) VALUES (
+        ?, ?, ?, ?, ?, 'aman',
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.00,
+        0.00, 0, 0,
+        0, 'offline', 0, 30400,
+        'v2.4.1-ESP32-A7670C', 0
+      )`,
+      [
+        id,
+        name,
+        location || 'Lokasi Baru',
+        lat,
+        lng,
+        thresholds?.tiltWarning || 1.5,
+        thresholds?.tiltDanger || 3.0,
+        thresholds?.rainWarning || 20.0,
+        thresholds?.rainDanger || 50.0,
+        thresholds?.soilMoistureWarning || 75.0,
+        thresholds?.vibrationDanger || 0.25,
+        thresholds?.batteryLowVoltage || 11.8,
+      ]
+    );
+
+    const tele = telegramConfig || {};
+    await pool.query(
+      `INSERT INTO telegram_configs (
+        ews_id, bot_token, chat_id, channel_name, enabled,
+        notify_siaga, notify_bahaya, notify_offline, notify_baterai_lemah,
+        notify_sensor_gagal, notify_normal_kembali, daily_report, last_test_status, last_test_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+      [
+        id,
+        tele.botToken || '',
+        tele.chatId || '',
+        tele.channelName || `Grup Pantau ${id}`,
+        tele.enabled ? 1 : 0,
+        tele.notifySiaga !== false ? 1 : 0,
+        tele.notifyBahaya !== false ? 1 : 0,
+        tele.notifyOffline !== false ? 1 : 0,
+        tele.notifyBateraiLemah !== false ? 1 : 0,
+        tele.notifySensorGagal !== false ? 1 : 0,
+        tele.notifyNormalKembali !== false ? 1 : 0,
+        tele.dailyReport ? 1 : 0,
+      ]
+    );
+
+    const [newNode] = await pool.query('SELECT * FROM ews_nodes WHERE id = ?', [id]);
+    const [newTele] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [id]);
+    const formatted = formatEwsNode(newNode[0], newTele[0] || null);
+
+    wsService.publish('ews/node/created', {
+      node: formatted,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Titik EWS ${id} berhasil didaftarkan`,
+      data: formatted,
+    });
+  } catch (error) {
+    console.error('Error creating EWS:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteEws = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = db.getPool();
+    const isDbConnected = db.getIsConnected();
+
+    if (!isDbConnected || !pool) {
+      return res.status(503).json({ success: false, message: 'Database belum terhubung' });
+    }
+
+    await pool.query('DELETE FROM telegram_configs WHERE ews_id = ?', [id]);
+    await pool.query('DELETE FROM alarm_logs WHERE ews_id = ?', [id]);
+    await pool.query('DELETE FROM ews_sensor_logs WHERE ews_id = ?', [id]);
+    await pool.query('DELETE FROM ews_nodes WHERE id = ?', [id]);
+
+    wsService.publish('ews/node/deleted', {
+      ewsId: id,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.json({ success: true, message: `Stasiun EWS ${id} berhasil dihapus` });
+  } catch (error) {
+    console.error('Error deleting EWS:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+

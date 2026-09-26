@@ -9,11 +9,13 @@ import {
   AlarmLog,
   UserAccount,
   TelegramConfig,
+  PestTrapNode,
 } from './types';
 import {
   INITIAL_USERS,
   INITIAL_EWS_NODES,
   INITIAL_ALARM_LOGS,
+  INITIAL_PEST_TRAPS,
 } from './mockData';
 import { api } from './services/api';
 import { wsClient } from './services/websocket';
@@ -22,8 +24,10 @@ import { Navbar } from './components/Navbar';
 import { OverviewAllEWS } from './components/OverviewAllEWS';
 import { EWSDashboardSingle } from './components/EWSDashboardSingle';
 import { AlarmHistoryView } from './components/AlarmHistoryView';
+import { PestTrapDashboard } from './components/PestTrapDashboard';
 import { EngineeringDocsModal } from './components/EngineeringDocsModal';
 import { TelegramConfigModal } from './components/TelegramConfigModal';
+import { AddEWSModal } from './components/AddEWSModal';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -36,12 +40,14 @@ export default function App() {
   // Application Data States (diambil dari MySQL Backend, fallback ke INITIAL_*)
   const [ewsNodes, setEwsNodes] = useState<EWSNode[]>(INITIAL_EWS_NODES);
   const [alarmLogs, setAlarmLogs] = useState<AlarmLog[]>(INITIAL_ALARM_LOGS);
+  const [pestTraps, setPestTraps] = useState<PestTrapNode[]>(INITIAL_PEST_TRAPS);
 
   // WebSocket Live Connection Status
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
 
   // Modals & UI States
   const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [isAddEWSOpen, setIsAddEWSOpen] = useState(false);
   const [editingTelegramEws, setEditingTelegramEws] = useState<EWSNode | null>(null);
   const [globalMute, setGlobalMute] = useState(false);
 
@@ -76,8 +82,23 @@ export default function App() {
     }
   }, []);
 
-  // 2. Data Riwayat Alarm dari Backend REST API (Data Telemetri Sensor Murni dari WebSocket)
+  // 2. Data EWS, Perangkap Hama & Riwayat Alarm dari Backend REST API
   const refreshBackendData = () => {
+    // Ambil daftar perangkat EWS dari backend
+    api.getEwsNodes()
+      .then((data) => {
+        setEwsNodes(data || []);
+      })
+      .catch((err) => console.warn('Gagal memuat daftar EWS dari backend:', err.message));
+
+    // Ambil data perangkap hama
+    api.getPestTraps()
+      .then((data) => {
+        if (data && data.length > 0) setPestTraps(data);
+      })
+      .catch((err) => console.warn('Gagal memuat perangkap hama:', err.message));
+
+    // Ambil riwayat alarm
     api.getAlarmLogs()
       .then((data) => {
         if (data && data.length > 0) setAlarmLogs(data);
@@ -219,12 +240,44 @@ export default function App() {
       }
     });
 
+    // E. Real-time Registrasi & Penghapusan Titik EWS
+    const unsubNodeCreated = wsClient.on('ews/node/created', (payload) => {
+      if (payload && payload.node) {
+        setEwsNodes((prev) => {
+          if (prev.some((e) => e.id === payload.node.id)) return prev;
+          return [...prev, payload.node];
+        });
+      }
+    });
+
+    const unsubNodeDeleted = wsClient.on('ews/node/deleted', (payload) => {
+      if (payload && payload.ewsId) {
+        setEwsNodes((prev) => prev.filter((e) => e.id !== payload.ewsId));
+      }
+    });
+
+    // F. Real-time Pembaruan Konfigurasi Telegram Bot
+    const unsubTelegramUpdated = wsClient.on('ews/telegram/updated', (payload) => {
+      if (payload && payload.ewsId && payload.telegramConfig) {
+        setEwsNodes((prev) =>
+          prev.map((e) =>
+            e.id === payload.ewsId
+              ? { ...e, telegramConfig: { ...e.telegramConfig, ...payload.telegramConfig } }
+              : e
+          )
+        );
+      }
+    });
+
     return () => {
       unsubStatus();
       unsubEws();
       unsubSensorUpdate();
       unsubEwsStatus();
       unsubAlarm();
+      unsubNodeCreated();
+      unsubNodeDeleted();
+      unsubTelegramUpdated();
     };
   }, []);
 
@@ -448,6 +501,51 @@ export default function App() {
       });
   };
 
+  // Menambahkan Titik EWS Baru ke Backend MySQL & WebSocket
+  const handleAddEws = async (newNodeData: Partial<EWSNode>) => {
+    try {
+      const created = await api.createEws(newNodeData);
+      setEwsNodes((prev) => {
+        const exists = prev.find((e) => e.id === created.id);
+        if (exists) {
+          return prev.map((e) => (e.id === created.id ? created : e));
+        }
+        return [...prev, created];
+      });
+      setIsAddEWSOpen(false);
+    } catch (err: any) {
+      console.error('Gagal menambahkan EWS ke server:', err);
+      throw err;
+    }
+  };
+
+  // Menghapus Titik EWS dari Backend MySQL & WebSocket
+  const handleDeleteEws = async (ewsId: string) => {
+    if (!window.confirm(`Yakin ingin menghapus titik pantau ${ewsId}? Seluruh data telemetri, konfigurasi bot Telegram, dan log sensor terkait akan dihapus secara permanen.`)) {
+      return;
+    }
+    try {
+      await api.deleteEws(ewsId);
+      setEwsNodes((prev) => prev.filter((e) => e.id !== ewsId));
+      if (activeTab === ewsId) {
+        setActiveTab('overview');
+      }
+    } catch (err: any) {
+      alert(`Gagal menghapus EWS: ${err.message}`);
+    }
+  };
+
+  // Mengontrol Aktuator Perangkap Hama
+  const handleUpdateTrap = (updated: PestTrapNode) => {
+    setPestTraps((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    api.controlPestTrap(updated.id, {
+      uvLedStatus: updated.uvLedStatus,
+      blowerStatus: updated.blowerStatus,
+    }).catch((err) => {
+      console.warn('Gagal sinkron kendali perangkap hama:', err.message);
+    });
+  };
+
   // Check if any siren is currently blaring
   const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute);
   const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive);
@@ -504,7 +602,7 @@ export default function App() {
   const currentEws = ewsNodes.find((e) => e.id === activeTab);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150">
       {/* 1. Login Modal - Hanya 1 Akun Administrator (admin_bpbd / ews123) */}
       {!currentUser && <LoginModal onLogin={handleLogin} />}
 
@@ -520,6 +618,7 @@ export default function App() {
             onOpenDocs={() => setIsDocsOpen(true)}
             ewsNodes={ewsNodes}
             wsStatus={wsStatus}
+            onAddEwsClick={() => setIsAddEWSOpen(true)}
           />
 
           {/* Active Siren Banner (Page 3 & 6 of Document) */}
@@ -554,6 +653,8 @@ export default function App() {
                 ewsNodes={ewsNodes}
                 onSelectEws={(ewsId) => setActiveTab(ewsId)}
                 onOpenTelegramConfig={(ews) => setEditingTelegramEws(ews)}
+                onAddEwsClick={() => setIsAddEWSOpen(true)}
+                onDeleteEws={handleDeleteEws}
               />
             )}
 
@@ -568,6 +669,13 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'pest-traps' && (
+              <PestTrapDashboard
+                traps={pestTraps}
+                onUpdateTrap={handleUpdateTrap}
+              />
+            )}
+
             {activeTab === 'alarm-history' && (
               <AlarmHistoryView
                 logs={alarmLogs}
@@ -578,10 +686,10 @@ export default function App() {
           </main>
 
           {/* Footer */}
-          <footer className="border-t border-slate-800 bg-slate-950 py-6 text-xs text-slate-500">
+          <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-6 text-xs text-slate-600 dark:text-slate-400 transition-colors">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
-                <p className="font-semibold text-slate-400">
+                <p className="font-semibold text-slate-800 dark:text-slate-200">
                   Sistem Web Monitoring 4 Titik Landslide Early Warning System (EWS)
                 </p>
                 <p className="text-[11px] text-slate-500">
@@ -592,12 +700,12 @@ export default function App() {
               <div className="flex items-center gap-4 text-[11px]">
                 <button
                   onClick={() => setIsDocsOpen(true)}
-                  className="hover:text-cyan-400 underline cursor-pointer"
+                  className="hover:text-blue-600 dark:hover:text-blue-400 underline cursor-pointer"
                 >
                   Spesifikasi Teknis &amp; Fabrikasi 3D
                 </button>
                 <span>&bull;</span>
-                <span className="font-mono text-cyan-400">
+                <span className="font-mono text-slate-700 dark:text-slate-300">
                   Gateway: WebSocket Port 3440 | REST Port 5000
                 </span>
               </div>
@@ -629,6 +737,14 @@ export default function App() {
               }}
             />
           )}
+
+          {/* Modal Registrasi Titik EWS Baru */}
+          <AddEWSModal
+            isOpen={isAddEWSOpen}
+            onClose={() => setIsAddEWSOpen(false)}
+            onAddEws={handleAddEws}
+            existingIds={ewsNodes.map((e) => e.id)}
+          />
         </>
       )}
     </div>
