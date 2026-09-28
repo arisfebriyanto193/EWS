@@ -11,6 +11,7 @@ require('dotenv').config();
 
 const db = require('./database/db');
 const wsService = require('./services/websocketService');
+const deviceWatchdog = require('./services/deviceWatchdogService');
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -83,7 +84,10 @@ async function startServer() {
   // 1. Inisialisasi Database MySQL
   await db.initDb();
 
-  // 2. Inisialisasi WebSocket Server (Pasang ke HTTP Server pada path /ws atau port terpisah jika diatur)
+  // 2. Mulai Watchdog Pemantau Koneksi & Offline Detector
+  deviceWatchdog.start();
+
+  // 3. Inisialisasi WebSocket Server (Pasang ke HTTP Server pada path /ws atau port terpisah jika diatur)
   if (WS_PORT && WS_PORT !== PORT) {
     wsService.init(WS_PORT, WS_PATH);
     console.log(`🚀 [WebSocket] Server mandiri aktif di ws://0.0.0.0:${WS_PORT}${WS_PATH}`);

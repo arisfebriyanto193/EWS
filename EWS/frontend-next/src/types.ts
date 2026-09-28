@@ -34,6 +34,7 @@ export interface EWSSensorData {
   microSdStorageTotalMb: number;
   firmwareVersion: string;
   uptimeHours: number;
+  lastSeenAt?: string | null;
   lastUpdated: string;
 }
 

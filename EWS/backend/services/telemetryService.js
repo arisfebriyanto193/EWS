@@ -216,6 +216,25 @@ class TelemetryService {
             }
           }
         }
+
+        // 4. Deteksi Pemulihan (Recovery) jika node sebelumnya berstatus OFFLINE
+        if (currentNode && currentNode.status === 'offline') {
+          console.log(`✅ [Watchdog] Node ${ewsId} (${currentNode.name || ewsId}) KEMBALI ONLINE dari status OFFLINE!`);
+          try {
+            const [teleRows] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [ewsId]);
+            if (
+              teleRows.length > 0 &&
+              teleRows[0].enabled &&
+              (teleRows[0].notify_normal_kembali || teleRows[0].notifyNormalKembali)
+            ) {
+              TelegramService.sendOnlineRecoveryAlert(teleRows[0], currentNode || { id: ewsId, name: ewsId }).catch(
+                (err) => console.error('Telegram recovery dispatch error:', err.message)
+              );
+            }
+          } catch (teleErr) {
+            console.error('Error fetching telegram config for recovery:', teleErr.message);
+          }
+        }
       } catch (err) {
         console.error('Error saving EWS telemetry to DB:', err.message);
       }

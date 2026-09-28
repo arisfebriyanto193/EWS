@@ -149,6 +149,9 @@ Koneksi Bot Telegram <b>BERHASIL TERHUBUNG</b>. Notifikasi darurat bencana, peri
     if (alarmType === 'bahaya' && !telegramConfig.notify_bahaya && !telegramConfig.notifyBahaya) {
       return;
     }
+    if (alarmType === 'offline') {
+      return await this.sendOfflineAlert(telegramConfig, ewsNode, cause);
+    }
 
     const isBahaya = alarmType === 'bahaya';
     const icon = isBahaya ? '🚨🚨 [STATUS: BAHAYA LONGSOR]' : '⚠️⚠️ [STATUS: SIAGA 1 WASPADA]';
@@ -180,6 +183,93 @@ ${sirenNote}
 1. Segera evakuasi warga pada radius rawan lereng.
 2. Tim Reaksi Cepat (TRC) BPBD menuju titik lokasi.
 3. Pantau terus grafik telemetri melalui Dashboard Pusat.
+━━━━━━━━━━━━━━━━━━━━━━━━
+<i>Pesan otomatis dikirim oleh Gateway IoT EWS BPBD</i>
+`.trim();
+
+    return await this.sendMessage(
+      telegramConfig.bot_token || telegramConfig.botToken,
+      telegramConfig.chat_id || telegramConfig.chatId,
+      htmlMessage
+    );
+  }
+
+  /**
+   * Mengirim notifikasi Perangkat Offline ke Telegram otomatis
+   */
+  static async sendOfflineAlert(telegramConfig, ewsNode, cause = 'Koneksi telemetri terputus (tidak ada data masuk > 30 detik)') {
+    if (!telegramConfig || !telegramConfig.enabled) {
+      return;
+    }
+    if (!telegramConfig.notify_offline && !telegramConfig.notifyOffline) {
+      return;
+    }
+
+    const timeStr = new Date().toLocaleString('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      dateStyle: 'full',
+      timeStyle: 'medium',
+    });
+
+    const htmlMessage = `
+⚠️⚠️ <b>[PERINGATAN: PERANGKAT OFFLINE]</b> ⚠️⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>KONEKSI MONITORING EWS TERPUTUS</b>
+━━━━━━━━━━━━━━━━━━━━━━━━
+📍 <b>Stasiun:</b> ${ewsNode.name || ewsNode.id} (${ewsNode.id})
+📌 <b>Lokasi:</b> ${ewsNode.location || '-'}
+⏱ <b>Waktu Deteksi:</b> ${timeStr} WIB
+
+⚠️ <b>Penyebab Gangguan:</b>
+${cause}
+
+📡 <b>Status Lapangan:</b>
+• Transmisi Jaringan: <b>TERPUTUS (OFFLINE)</b>
+• Logging Darurat: <b>Aktif ke MicroSD Lokal (32GB)</b>
+
+🛠 <b>Rekomendasi Tindakan:</b>
+1. Periksa catu daya baterai VRLA dan output panel surya.
+2. Verifikasi sinyal seluler GSM / jaringan WiFi di lokasi stasiun.
+3. Hubungi petugas teknis lapangan jika perangkat tidak otomatis online kembali.
+━━━━━━━━━━━━━━━━━━━━━━━━
+<i>Pesan otomatis dikirim oleh Gateway IoT EWS BPBD</i>
+`.trim();
+
+    return await this.sendMessage(
+      telegramConfig.bot_token || telegramConfig.botToken,
+      telegramConfig.chat_id || telegramConfig.chatId,
+      htmlMessage
+    );
+  }
+
+  /**
+   * Mengirim notifikasi Perangkat Kembali Online / Normal ke Telegram
+   */
+  static async sendOnlineRecoveryAlert(telegramConfig, ewsNode) {
+    if (!telegramConfig || !telegramConfig.enabled) {
+      return;
+    }
+    if (!telegramConfig.notify_normal_kembali && !telegramConfig.notifyNormalKembali) {
+      return;
+    }
+
+    const timeStr = new Date().toLocaleString('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      dateStyle: 'full',
+      timeStyle: 'medium',
+    });
+
+    const htmlMessage = `
+✅✅ <b>[STATUS: PERANGKAT KEMBALI ONLINE]</b> ✅✅
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>KONEKSI TELEMETRI PULIH NORMAL</b>
+━━━━━━━━━━━━━━━━━━━━━━━━
+📍 <b>Stasiun:</b> ${ewsNode.name || ewsNode.id} (${ewsNode.id})
+📌 <b>Lokasi:</b> ${ewsNode.location || '-'}
+⏱ <b>Waktu Pulih:</b> ${timeStr} WIB
+
+📊 <b>Status Sistem:</b>
+Transmisi data telemetri dari node stasiun telah terhubung kembali dan data sensor real-time berhasil diterima oleh server pusat.
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <i>Pesan otomatis dikirim oleh Gateway IoT EWS BPBD</i>
 `.trim();

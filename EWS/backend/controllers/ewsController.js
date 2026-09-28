@@ -33,6 +33,7 @@ function formatEwsNode(node, telegram) {
       microSdStorageTotalMb: parseInt(node.microsd_total_mb || 30400, 10),
       firmwareVersion: node.firmware_version || 'v2.4.1-ESP32-A7670C',
       uptimeHours: parseInt(node.uptime_hours || 0, 10),
+      lastSeenAt: node.last_seen_at ? new Date(node.last_seen_at).toISOString() : null,
       lastUpdated: node.last_seen_at ? new Date(node.last_seen_at).toLocaleString('id-ID') : 'Aktif',
     },
     thresholds: {

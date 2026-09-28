@@ -56,6 +56,9 @@ export default function App() {
   // Audio synthesizer ref for simulated local 12V 110dB siren
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  // Timestamp penerimaan data terakhir per node untuk deteksi offline otomatis
+  const lastReceivedRef = useRef<Record<string, number>>({});
+
   // 1. Cek Sesi Login Tersimpan di LocalStorage saat Pertama Buka
   useEffect(() => {
     const token = localStorage.getItem('ews_token');
@@ -89,7 +92,17 @@ export default function App() {
     // Ambil daftar perangkat EWS dari backend
     api.getEwsNodes()
       .then((data) => {
-        setEwsNodes(data || []);
+        if (data) {
+          setEwsNodes(data);
+          const now = Date.now();
+          data.forEach((node) => {
+            if (node.sensorData?.lastSeenAt) {
+              lastReceivedRef.current[node.id] = new Date(node.sensorData.lastSeenAt).getTime();
+            } else if (node.status !== 'offline') {
+              lastReceivedRef.current[node.id] = now;
+            }
+          });
+        }
       })
       .catch((err) => console.warn('Gagal memuat daftar EWS dari backend:', err.message));
 
@@ -123,17 +136,19 @@ export default function App() {
     // A. Real-time Telemetri Lengkap EWS dari ESP32 (topik: ews/{id}/telemetry)
     const unsubEws = wsClient.on('ews/+/telemetry', (payload) => {
       if (!payload || !payload.ewsId) return;
+      lastReceivedRef.current[payload.ewsId] = Date.now();
       setEwsNodes((prev) =>
         prev.map((e) => {
           if (e.id === payload.ewsId) {
             return {
               ...e,
-              status: payload.status || e.status,
+              status: payload.status && payload.status !== 'offline' ? payload.status : (e.status === 'offline' ? 'aman' : e.status),
               sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
               sensorData: {
                 ...e.sensorData,
                 ...(payload.sensorData || {}),
+                gsmStatus: 'online',
                 lastUpdated: 'Live via WS (Baru saja)',
               },
             };
@@ -150,6 +165,8 @@ export default function App() {
 
       // Abaikan topik internal command atau status yang sudah punya handler tersendiri
       if (sensorKey === 'command' || sensorKey === 'status' || sensorKey === 'telemetry') return;
+
+      lastReceivedRef.current[ewsId] = Date.now();
 
       const keyPropMap: Record<string, keyof EWSNode['sensorData']> = {
         pitch: 'pitchAngle',
@@ -197,11 +214,12 @@ export default function App() {
                 (updated as any)[targetProp] = numVal;
               }
             }
+            updated.gsmStatus = 'online';
             updated.lastUpdated = 'Live WS (Baru saja)';
 
             return {
               ...e,
-              status: typeof payload === 'object' && payload?.status ? payload.status : e.status,
+              status: typeof payload === 'object' && payload?.status ? payload.status : (e.status === 'offline' ? 'aman' : e.status),
               sirenActive: typeof payload === 'object' && payload?.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: typeof payload === 'object' && payload?.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
               sensorData: updated,
@@ -212,18 +230,27 @@ export default function App() {
       );
     });
 
-    // C. Real-time Status Aktuator EWS (Sirine/Strobo/Mute)
+    // C. Real-time Status Aktuator EWS (Sirine/Strobo/Mute/Offline)
     const unsubEwsStatus = wsClient.on('ews/+/status', (payload) => {
       if (!payload || !payload.ewsId) return;
+      if (payload.status !== 'offline') {
+        lastReceivedRef.current[payload.ewsId] = Date.now();
+      }
       setEwsNodes((prev) =>
         prev.map((e) => {
           if (e.id === payload.ewsId) {
+            const isOffline = payload.status === 'offline';
             return {
               ...e,
               status: payload.status !== undefined ? payload.status : e.status,
               sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
               muted: payload.muted !== undefined ? payload.muted : e.muted,
+              sensorData: {
+                ...e.sensorData,
+                gsmStatus: payload.gsmStatus || (isOffline ? 'offline' : e.sensorData.gsmStatus),
+                lastUpdated: isOffline ? 'Terputus (Offline)' : e.sensorData.lastUpdated,
+              },
             };
           }
           return e;
@@ -281,6 +308,46 @@ export default function App() {
       unsubNodeDeleted();
       unsubTelegramUpdated();
     };
+  }, []);
+
+  // 4. Deteksi Otomatis Perangkat Offline di Sisi Web (Jika tidak ada data masuk > 25 detik)
+  useEffect(() => {
+    const OFFLINE_THRESHOLD_MS = 25000; // 25 detik (ESP32 mengirim setiap 5 detik)
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+
+      setEwsNodes((prev) => {
+        let hasChanges = false;
+        const updated = prev.map((node) => {
+          const lastSeen = lastReceivedRef.current[node.id];
+
+          // Jika node belum offline dan data terakhir melewati batas threshold
+          if (lastSeen && now - lastSeen > OFFLINE_THRESHOLD_MS) {
+            if (node.status !== 'offline') {
+              hasChanges = true;
+              const elapsedSec = Math.round((now - lastSeen) / 1000);
+              return {
+                ...node,
+                status: 'offline' as const,
+                sirenActive: false,
+                stroboActive: false,
+                sensorData: {
+                  ...node.sensorData,
+                  gsmStatus: 'offline' as const,
+                  lastUpdated: `Terputus (${elapsedSec}d lalu)`,
+                },
+              };
+            }
+          }
+          return node;
+        });
+
+        return hasChanges ? updated : prev;
+      });
+    }, 3000);
+
+    return () => clearInterval(timer);
   }, []);
 
   // Handle Login

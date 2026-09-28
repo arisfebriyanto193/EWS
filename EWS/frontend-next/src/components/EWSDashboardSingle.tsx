@@ -346,6 +346,26 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         </div>
       </div>
 
+      {/* Offline Alert Banner */}
+      {ews.status === 'offline' && (
+        <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl p-4 flex items-center gap-3.5 text-slate-700 dark:text-slate-300 shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+            <Radio className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>Perangkat Tidak Terhubung (Offline)</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono font-bold">
+                TIMED OUT
+              </span>
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Tidak ada data telemetri yang masuk dalam 25 detik terakhir. Menampilkan data cache terakhir ({ews.sensorData.lastUpdated}). Status akan otomatis online kembali saat ESP32 mengirim data.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Main Sensor Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         
