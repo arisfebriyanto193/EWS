@@ -40,6 +40,7 @@
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <math.h>
+#include <Preferences.h>
 
 // FreeRTOS Headers
 #include "freertos/FreeRTOS.h"
@@ -123,8 +124,18 @@ String TOPIC_SOLAR     = String("ews/") + EWS_ID + "/solar_current";
 const char* LEGACY_RELAY_TOPIC = "USR_687de6987184f/1defa9dd";
 
 // =============================================================================
-// 4. STRUKTUR DATA & MUTEX SYNCHRONIZATION
+// 4. STRUKTUR DATA, EEPROM THRESHOLDS & MUTEX SYNCHRONIZATION
 // =============================================================================
+struct SensorThresholds {
+  float tiltWarning;          // Default: 1.5 Derajat
+  float tiltDanger;           // Default: 3.0 Derajat
+  float rainWarning;          // Default: 20.0 mm/jam
+  float rainDanger;           // Default: 50.0 mm/jam
+  float soilMoistureWarning;  // Default: 75.0 %
+  float vibrationDanger;      // Default: 0.25 g / hitungan pulsa
+  float batteryLowVoltage;    // Default: 11.8 V
+};
+
 struct SensorDataSnapshot {
   float pitch;
   float roll;
@@ -133,6 +144,7 @@ struct SensorDataSnapshot {
   float rainRate;
   float rainCumulative;
   float vibration;
+  unsigned long vibrationPulses;
   float batteryVoltage;
   int solarCurrent;
   int batteryCurrent;
@@ -141,14 +153,25 @@ struct SensorDataSnapshot {
   char status[16];
 };
 
-// Objek Global & Mutex Handles
+// Objek Global, EEPROM / NVS & Mutex Handles
+Preferences prefs;
+SensorThresholds currentThresholds = {
+  1.5f,   // tiltWarning
+  3.0f,   // tiltDanger
+  20.0f,  // rainWarning
+  50.0f,  // rainDanger
+  75.0f,  // soilMoistureWarning
+  0.25f,  // vibrationDanger
+  11.8f   // batteryLowVoltage
+};
+
 WebSocketsClient webSocket;
 SemaphoreHandle_t wsMutex   = NULL; // Mutex untuk proteksi webSocket.loop() & sendTXT()
-SemaphoreHandle_t dataMutex = NULL; // Mutex untuk proteksi pembacaan data sensor
+SemaphoreHandle_t dataMutex = NULL; // Mutex untuk proteksi pembacaan data sensor & thresholds
 
 SensorDataSnapshot sharedSensors;
 
-// Critical Section untuk ISR Sensor Getaran 801S
+// Critical Section untuk ISR Sensor Getaran Digital 801S
 portMUX_TYPE vibMux = portMUX_INITIALIZER_UNLOCKED;
 volatile unsigned long vibPulseCounter = 0;
 
@@ -156,6 +179,60 @@ void IRAM_ATTR onVibrationTriggered() {
   portENTER_CRITICAL_ISR(&vibMux);
   vibPulseCounter++;
   portEXIT_CRITICAL_ISR(&vibMux);
+}
+
+// -----------------------------------------------------------------------------
+// FUNGSI EEPROM (NVS FLASH) UNTUK PENYIMPANAN AMBANG BATAS (THRESHOLDS)
+// -----------------------------------------------------------------------------
+void loadThresholdsFromEEPROM() {
+  if (prefs.begin("ews_thresh", true)) { // Read-only mode
+    currentThresholds.tiltWarning         = prefs.getFloat("tiltWarn", 1.5f);
+    currentThresholds.tiltDanger          = prefs.getFloat("tiltDang", 3.0f);
+    currentThresholds.rainWarning         = prefs.getFloat("rainWarn", 20.0f);
+    currentThresholds.rainDanger          = prefs.getFloat("rainDang", 50.0f);
+    currentThresholds.soilMoistureWarning = prefs.getFloat("soilWarn", 75.0f);
+    currentThresholds.vibrationDanger     = prefs.getFloat("vibDang", 0.25f);
+    currentThresholds.batteryLowVoltage   = prefs.getFloat("battLow", 11.8f);
+    prefs.end();
+
+    Serial.println("💾 [EEPROM/NVS] Berhasil memuat ambang batas dari Flash EEPROM:");
+    Serial.printf("   - Sudut Kemiringan : Siaga >= %.2f°, Bahaya >= %.2f°\n", currentThresholds.tiltWarning, currentThresholds.tiltDanger);
+    Serial.printf("   - Curah Hujan      : Siaga >= %.1f mm/h, Bahaya >= %.1f mm/h\n", currentThresholds.rainWarning, currentThresholds.rainDanger);
+    Serial.printf("   - Kelembapan Tanah : Siaga >= %.1f%%\n", currentThresholds.soilMoistureWarning);
+    Serial.printf("   - Getaran Digital  : Bahaya >= %.2f (indeks/pulsa)\n", currentThresholds.vibrationDanger);
+    Serial.printf("   - Baterai Lemah    : < %.2f V\n", currentThresholds.batteryLowVoltage);
+  } else {
+    Serial.println("ℹ️ [EEPROM/NVS] Belum ada konfigurasi di Flash. Menggunakan nilai bawaan.");
+  }
+}
+
+void saveThresholdsToEEPROM(const SensorThresholds &newT) {
+  if (prefs.begin("ews_thresh", false)) { // Read-write mode
+    prefs.putFloat("tiltWarn", newT.tiltWarning);
+    prefs.putFloat("tiltDang", newT.tiltDanger);
+    prefs.putFloat("rainWarn", newT.rainWarning);
+    prefs.putFloat("rainDang", newT.rainDanger);
+    prefs.putFloat("soilWarn", newT.soilMoistureWarning);
+    prefs.putFloat("vibDang", newT.vibrationDanger);
+    prefs.putFloat("battLow", newT.batteryLowVoltage);
+    prefs.end();
+
+    if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      currentThresholds = newT;
+      xSemaphoreGive(dataMutex);
+    } else {
+      currentThresholds = newT;
+    }
+
+    Serial.println("💾 [EEPROM/NVS] Ambang batas BARU BERHASIL DISIMPAN KE EEPROM!");
+    Serial.printf("   - Sudut Kemiringan : Siaga >= %.2f°, Bahaya >= %.2f°\n", newT.tiltWarning, newT.tiltDanger);
+    Serial.printf("   - Curah Hujan      : Siaga >= %.1f mm/h, Bahaya >= %.1f mm/h\n", newT.rainWarning, newT.rainDanger);
+    Serial.printf("   - Kelembapan Tanah : Siaga >= %.1f%%\n", newT.soilMoistureWarning);
+    Serial.printf("   - Getaran Digital  : Bahaya >= %.2f\n", newT.vibrationDanger);
+    Serial.printf("   - Baterai Lemah    : < %.2f V\n", newT.batteryLowVoltage);
+  } else {
+    Serial.println("❌ [EEPROM/NVS] Gagal membuka partisi flash untuk penulisan!");
+  }
 }
 
 // Status Koneksi & Aktuator
@@ -192,12 +269,13 @@ bool safeSendTXT(const String &data) {
   bool sent = false;
   if (wsMutex != NULL && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(250)) == pdTRUE) {
     if (webSocket.isConnected()) {
-      sent = webSocket.sendTXT(data);
+      sent = webSocket.sendTXT(data.c_str());
     }
     xSemaphoreGive(wsMutex);
   }
   return sent;
 }
+
 
 // =============================================================================
 // 6. DRIVER SOFTWARE I2C UNTUK INA226 (GPIO 13 & 14)
@@ -400,14 +478,17 @@ void readRainSensor(float &rainfallRate, float &cumulative) {
   cumulative = cumulativeRainMm;
 }
 
-float readVibrationLevel() {
+float readVibrationLevel(unsigned long &rawPulsesOut) {
   portENTER_CRITICAL(&vibMux);
   unsigned long pulses = vibPulseCounter;
   vibPulseCounter = 0;
   portEXIT_CRITICAL(&vibMux);
 
-  float vibG = 0.02 + ((float)pulses * 0.03);
-  if (vibG > 1.5) vibG = 1.5;
+  rawPulsesOut = pulses;
+  // Sensor Getaran Digital 801S:
+  // Ketika diam = 0 pulsa. Saat terjadi getaran tanah, kontak getar menghasilkan rentetan pulsa.
+  float vibG = (float)pulses * 0.05f;
+  if (vibG > 5.0f) vibG = 5.0f;
   return vibG;
 }
 
@@ -482,7 +563,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       }
       Serial.printf("📥 [WS Pesan]: %s\n", msg.c_str());
 
-      StaticJsonDocument<512> doc;
+      StaticJsonDocument<768> doc;
       DeserializationError err = deserializeJson(doc, payload, length);
 
       if (!err) {
@@ -523,6 +604,43 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             bool mute = doc["payload"]["mute"] | false;
             if (mute) setRelaySirine(false);
           }
+          else if (strcmp(cmd, "SET_THRESHOLDS") == 0) {
+            Serial.println("⚙️ [KONTROL] Menerima konfigurasi ambang batas baru dari Web!");
+            JsonObject tObj;
+            if (doc.containsKey("thresholds") && doc["thresholds"].is<JsonObject>()) {
+              tObj = doc["thresholds"].as<JsonObject>();
+            } else if (doc["payload"].is<JsonObject>() && doc["payload"].containsKey("thresholds")) {
+              tObj = doc["payload"]["thresholds"].as<JsonObject>();
+            }
+
+            if (!tObj.isNull()) {
+              SensorThresholds newT = currentThresholds;
+              if (tObj.containsKey("tiltWarning")) newT.tiltWarning = tObj["tiltWarning"].as<float>();
+              if (tObj.containsKey("tiltDanger")) newT.tiltDanger = tObj["tiltDanger"].as<float>();
+              if (tObj.containsKey("rainWarning")) newT.rainWarning = tObj["rainWarning"].as<float>();
+              if (tObj.containsKey("rainDanger")) newT.rainDanger = tObj["rainDanger"].as<float>();
+              if (tObj.containsKey("soilMoistureWarning")) newT.soilMoistureWarning = tObj["soilMoistureWarning"].as<float>();
+              if (tObj.containsKey("vibrationDanger")) newT.vibrationDanger = tObj["vibrationDanger"].as<float>();
+              if (tObj.containsKey("batteryLowVoltage")) newT.batteryLowVoltage = tObj["batteryLowVoltage"].as<float>();
+
+              saveThresholdsToEEPROM(newT);
+
+              // Balas respon status ke Web via WebSocket
+              DynamicJsonDocument ackDoc(256);
+              ackDoc["action"] = "publish";
+              ackDoc["topic"]  = TOPIC_STATUS;
+              JsonObject ackPayload = ackDoc.createNestedObject("payload");
+              ackPayload["event"]   = "THRESHOLDS_SAVED";
+              ackPayload["status"]  = "OK";
+              ackPayload["ewsId"]   = EWS_ID;
+              ackPayload["message"] = "Ambang batas berhasil disimpan permanen ke EEPROM ESP32";
+              String ackStr;
+              serializeJson(ackDoc, ackStr);
+              safeSendTXT(ackStr);
+            } else {
+              Serial.println("⚠️ [KONTROL] Format 'thresholds' tidak ditemukan dalam pesan WebSocket.");
+            }
+          }
         }
 
         // B. Perintah Direct Payload Relay ({"topic":..., "payload": 1/0})
@@ -561,9 +679,10 @@ void wsTask(void *pvParameters) {
         if (needSubscribe) {
           needSubscribe = false;
           String subMsg = "{\"action\":\"subscribe\",\"topic\":\"" + TOPIC_COMMAND + "\"}";
-          webSocket.sendTXT(subMsg);
+          webSocket.sendTXT(subMsg.c_str());
           Serial.printf("📡 [WS] Berhasil subscribe ke: %s\n", TOPIC_COMMAND.c_str());
         }
+
 
         xSemaphoreGive(wsMutex);
       }
@@ -583,19 +702,44 @@ void sensorTask(void *pvParameters) {
     float rain = 0.0, rainCumu = 0.0;
     readRainSensor(rain, rainCumu);
 
-    float vib = readVibrationLevel();
+    unsigned long rawVibPulses = 0;
+    float vib = readVibrationLevel(rawVibPulses);
 
     float batt = 12.6;
     int solar = 1500, battMa = 380;
     readPowerMonitor(batt, solar, battMa);
 
+    // Ambil ambang batas dari memori yang sinkron
+    SensorThresholds thresh;
+    if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      thresh = currentThresholds;
+      xSemaphoreGive(dataMutex);
+    } else {
+      thresh = currentThresholds;
+    }
+
+    // Evaluasi status berdasarkan ambang batas EEPROM
     String st = "aman";
-    if (fabs(pitch) >= 3.0 || fabs(roll) >= 3.0 || rain >= 50.0 || vib >= 0.25) {
+    bool isVibDanger = (rawVibPulses >= (unsigned long)thresh.vibrationDanger) || (vib >= thresh.vibrationDanger);
+
+    if (fabs(pitch) >= thresh.tiltDanger || fabs(roll) >= thresh.tiltDanger || rain >= thresh.rainDanger || isVibDanger) {
       st = "bahaya";
-    } else if (fabs(pitch) >= 1.5 || fabs(roll) >= 1.5 || rain >= 20.0 || soil >= 75.0) {
+    } else if (fabs(pitch) >= thresh.tiltWarning || fabs(roll) >= thresh.tiltWarning || rain >= thresh.rainWarning || soil >= thresh.soilMoistureWarning) {
       st = "siaga";
-    } else if (batt < 11.8) {
+    } else if (batt < thresh.batteryLowVoltage) {
       st = "baterai_lemah";
+    }
+
+    // Kontrol relay otomatis berdasarkan status sensor
+    if (st == "bahaya") {
+      if (!sirenActive) setRelaySirine(true);
+      if (!stroboActive) setRelayStrobo(true);
+    } else if (st == "siaga") {
+      if (sirenActive) setRelaySirine(false);
+      if (!stroboActive) setRelayStrobo(true);
+    } else if (st == "aman" && (currentStatus == "bahaya" || currentStatus == "siaga")) {
+      if (sirenActive) setRelaySirine(false);
+      if (stroboActive) setRelayStrobo(false);
     }
 
     // Salin ke shared memory dengan Data Mutex
@@ -607,6 +751,7 @@ void sensorTask(void *pvParameters) {
       sharedSensors.rainRate = rain;
       sharedSensors.rainCumulative = rainCumu;
       sharedSensors.vibration = vib;
+      sharedSensors.vibrationPulses = rawVibPulses;
       sharedSensors.batteryVoltage = batt;
       sharedSensors.solarCurrent = solar;
       sharedSensors.batteryCurrent = battMa;
@@ -651,6 +796,7 @@ void telemetryTask(void *pvParameters) {
       p["rainfallRate"]       = round(data.rainRate * 10.0) / 10.0;
       p["rainfallCumulative"] = round(data.rainCumulative * 10.0) / 10.0;
       p["vibrationLevel"]     = round(data.vibration * 1000.0) / 1000.0;
+      p["vibrationPulses"]    = data.vibrationPulses;
       p["batteryVoltage"]     = round(data.batteryVoltage * 100.0) / 100.0;
       p["batteryCurrent"]     = data.batteryCurrent;
       p["solarCurrent"]       = data.solarCurrent;
@@ -705,6 +851,9 @@ void setup() {
   wsMutex   = xSemaphoreCreateMutex();
   dataMutex = xSemaphoreCreateMutex();
 
+  // Muat Ambang Batas Sensor yang tersimpan di EEPROM (NVS Flash)
+  loadThresholdsFromEEPROM();
+
   // Inisialisasi Pin Relay
   pinMode(PIN_RELAY_SIRINE, OUTPUT);
   pinMode(PIN_RELAY_STROBO, OUTPUT);
@@ -715,7 +864,7 @@ void setup() {
   pinMode(PIN_RAIN_DIGITAL, INPUT_PULLUP);
   pinMode(PIN_VIB_SIG, INPUT_PULLUP);
   pinMode(PIN_SOIL_ANALOG, INPUT);
-  attachInterrupt(digitalPinToInterrupt(PIN_VIB_SIG), onVibrationTriggered, RISING);
+  attachInterrupt(digitalPinToInterrupt(PIN_VIB_SIG), onVibrationTriggered, CHANGE);
 
   // Inisialisasi OLED
 #if ENABLE_OLED

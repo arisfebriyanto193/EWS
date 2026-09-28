@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Send,
   ShieldAlert,
+  Sliders,
   Sun,
   Thermometer,
   Volume2,
@@ -22,6 +23,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { TelegramConfigModal } from './TelegramConfigModal';
+import { ThresholdConfigModal } from './ThresholdConfigModal';
 
 interface TelemetryPoint {
   time: string;
@@ -46,6 +48,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   onResetAlarm,
 }) => {
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+  const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const [historyRange, setHistoryRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [activeChartMetric, setActiveChartMetric] = useState<'tilt' | 'rain' | 'moisture' | 'power'>('tilt');
   const [isSirenTesting, setIsSirenTesting] = useState(false);
@@ -271,6 +274,15 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               {ews.telegramConfig.enabled && (
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               )}
+            </button>
+
+            <button
+              onClick={() => setIsThresholdModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Atur ambang batas (threshold) sensor dan simpan ke EEPROM ESP32"
+            >
+              <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Atur Ambang Batas</span>
             </button>
 
             {canControl && (
@@ -770,6 +782,14 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         isOpen={isTelegramModalOpen}
         onClose={() => setIsTelegramModalOpen(false)}
         onSave={handleSaveTelegram}
+      />
+
+      {/* Sensor Threshold Configuration Modal */}
+      <ThresholdConfigModal
+        ews={ews}
+        isOpen={isThresholdModalOpen}
+        onClose={() => setIsThresholdModalOpen(false)}
+        onSave={(newThresh) => onUpdateEws({ ...ews, thresholds: newThresh })}
       />
     </div>
   );
