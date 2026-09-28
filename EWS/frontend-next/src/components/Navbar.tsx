@@ -106,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               />
               <span className="text-slate-700 dark:text-slate-300">
-                {wsStatus === 'connected' ? 'WS: Live (Port 3440)' : wsStatus === 'connecting' ? 'WS: Menyambung' : 'WS: Terputus'}
+                {wsStatus === 'connected' ? 'WS: Live' : wsStatus === 'connecting' ? 'WS: Menyambung' : 'WS: Terputus'}
               </span>
             </div>
 

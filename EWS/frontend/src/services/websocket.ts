@@ -14,7 +14,7 @@ class FrontendWebSocket {
 
   constructor() {
     const host = window.location.hostname || 'localhost';
-    this.url = `ws://${host}:3440`;
+    this.url = `ws://${host}:5000/ws`;
   }
 
   public connect() {

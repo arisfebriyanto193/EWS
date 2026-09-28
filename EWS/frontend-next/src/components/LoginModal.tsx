@@ -90,7 +90,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLogin }) => {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                 <Radio className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <span>Live Telemetri WebSocket (Port 3440)</span>
+                <span>Live Telemetri WebSocket (/ws)</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                 <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />

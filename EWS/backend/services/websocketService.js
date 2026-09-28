@@ -21,8 +21,9 @@ class WebSocketService {
     this.clientMeta = new Map(); // Simpan metadata per client (device type, id, etc.)
   }
 
-  init(serverOrPort) {
+  init(serverOrPort, wsPath = '/ws') {
     const wsOptions = {
+      path: wsPath,
       verifyClient: (info, done) => {
         const origin = info.origin;
         const headers = info.req.headers;
@@ -61,11 +62,11 @@ class WebSocketService {
     if (typeof serverOrPort === 'number') {
       wsOptions.port = serverOrPort;
       this.wss = new WebSocket.Server(wsOptions);
-      console.log(`🚀 [WS] WebSocket Server berjalan mandiri di port ${serverOrPort}`);
+      console.log(`🚀 [WS] WebSocket Server berjalan mandiri di port ${serverOrPort} (Path: ${wsPath})`);
     } else {
       wsOptions.server = serverOrPort;
       this.wss = new WebSocket.Server(wsOptions);
-      console.log('🚀 [WS] WebSocket Server terpasang (attached) pada HTTP Server');
+      console.log(`🚀 [WS] WebSocket Server terpasang (attached) pada HTTP Server (Path: ${wsPath})`);
     }
 
     this.setupListeners();

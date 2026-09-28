@@ -708,7 +708,7 @@ export default function App() {
                 </button>
                 <span>&bull;</span>
                 <span className="font-mono text-slate-700 dark:text-slate-300">
-                  Gateway: WebSocket Port 3440 | REST Port 5000
+                  Gateway: WebSocket /ws | REST Port 5000
                 </span>
               </div>
             </div>

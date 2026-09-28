@@ -3,6 +3,7 @@ try {
   dns.setDefaultResultOrder('ipv4first');
 } catch (e) {}
 
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -13,8 +14,10 @@ const wsService = require('./services/websocketService');
 const apiRoutes = require('./routes/api');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = parseInt(process.env.PORT, 10) || 5000;
-const WS_PORT = parseInt(process.env.WS_PORT, 10) || 3440;
+const WS_PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT, 10) : null;
+const WS_PATH = process.env.WS_PATH || '/ws';
 
 // Middleware CORS
 const envOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
@@ -51,7 +54,8 @@ app.get('/health', (req, res) => {
     status: 'ok',
     system: 'EWS & Pest Trap IoT Gateway',
     databaseConnected: db.getIsConnected(),
-    wsPort: WS_PORT,
+    wsPort: WS_PORT || PORT,
+    wsPath: WS_PATH,
     apiPort: PORT,
     timestamp: new Date().toISOString(),
   });
@@ -79,8 +83,17 @@ async function startServer() {
   // 1. Inisialisasi Database MySQL
   await db.initDb();
 
-  // 2. Jalankan HTTP REST Server
-  app.listen(PORT, '0.0.0.0', () => {
+  // 2. Inisialisasi WebSocket Server (Pasang ke HTTP Server pada path /ws atau port terpisah jika diatur)
+  if (WS_PORT && WS_PORT !== PORT) {
+    wsService.init(WS_PORT, WS_PATH);
+    console.log(`🚀 [WebSocket] Server mandiri aktif di ws://0.0.0.0:${WS_PORT}${WS_PATH}`);
+  } else {
+    wsService.init(server, WS_PATH);
+    console.log(`🚀 [WebSocket] Server terpasang bersama HTTP Server di ws://0.0.0.0:${PORT}${WS_PATH}`);
+  }
+
+  // 3. Jalankan HTTP REST & WebSocket Server bersamaan
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 [REST API] Express server aktif di http://0.0.0.0:${PORT}`);
     console.log(`📡 [Endpoints]`);
     console.log(`   - Auth     : http://localhost:${PORT}/api/auth/login`);
@@ -88,13 +101,10 @@ async function startServer() {
     console.log(`   - Traps    : http://localhost:${PORT}/api/traps`);
     console.log(`   - Alarms   : http://localhost:${PORT}/api/alarms`);
     console.log(`   - Logs     : http://localhost:${PORT}/api/logs/sensor`);
+    console.log(`   - WS Stream: ws://localhost:${PORT}${WS_PATH}`);
   });
 
-  // 3. Jalankan WebSocket Server mandiri pada WS_PORT (3440)
-  wsService.init(WS_PORT);
-
   console.log('----------------------------------------------------------------');
-  console.log(`🚀 [WebSocket] Server berjalan di ws://0.0.0.0:${WS_PORT}`);
   console.log(`📋 [Topik WebSocket]:`);
   console.log(`   - Telemetri EWS  : ews/{ewsId}/telemetry (e.g. ews/EWS-01/telemetry)`);
   console.log(`   - Kontrol EWS    : ews/{ewsId}/command   (e.g. ews/EWS-01/command)`);

@@ -15,7 +15,7 @@ class FrontendWebSocket {
   constructor() {
     const host = typeof window !== 'undefined' ? (window.location.hostname || 'localhost') : 'localhost';
     const wsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.url = process.env.NEXT_PUBLIC_WS_URL || `${wsProto}//${host}:3440`;
+    this.url = process.env.NEXT_PUBLIC_WS_URL || `${wsProto}//${host}:5000/ws`;
   }
 
   public connect() {
