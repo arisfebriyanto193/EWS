@@ -603,16 +603,14 @@ export default function App() {
   // Selected EWS for single dashboard view
   const currentEws = ewsNodes.find((e) => e.id === activeTab);
 
+  if (!currentUser) {
+    return <LoginModal onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150">
-      {/* 1. Login Modal - Hanya 1 Akun Administrator (admin_bpbd / ews123) */}
-      {!currentUser && <LoginModal onLogin={handleLogin} />}
-
-      {/* Main Authenticated Dashboard */}
-      {currentUser && (
-        <>
-          {/* Navbar dengan Live WebSocket Status */}
-          <Navbar
+      {/* Navbar dengan Live WebSocket Status */}
+      <Navbar
             currentUser={currentUser}
             activeTab={activeTab}
             onSelectTab={setActiveTab}
@@ -747,8 +745,6 @@ export default function App() {
             onAddEws={handleAddEws}
             existingIds={ewsNodes.map((e) => e.id)}
           />
-        </>
-      )}
     </div>
   );
 }
