@@ -1,9 +1,10 @@
 const db = require('../database/db');
 const wsService = require('../services/websocketService');
 const TelegramService = require('../services/telegramService');
+const telkomselService = require('../services/telkomselService');
 
 // Helper untuk format node dari DB ke struktur EWSNode frontend
-function formatEwsNode(node, telegram) {
+function formatEwsNode(node, telegram, telkomsel) {
   return {
     id: node.id,
     name: node.name,
@@ -76,6 +77,31 @@ function formatEwsNode(node, telegram) {
           notifyNormalKembali: true,
           dailyReport: false,
         },
+    telkomselConfig: telkomsel
+      ? {
+          ewsId: telkomsel.ews_id,
+          phoneNumber: telkomsel.phone_number,
+          msisdn: telkomsel.msisdn,
+          balance: parseFloat(telkomsel.balance || 0),
+          balanceUnit: telkomsel.balance_unit || 'IDR',
+          expiredDate: telkomsel.expired_date || null,
+          subscriptionType: telkomsel.subscription_type || 'PraBayar',
+          quotaData: typeof telkomsel.quota_data === 'string' ? JSON.parse(telkomsel.quota_data) : (telkomsel.quota_data || null),
+          lastSyncedAt: telkomsel.last_synced_at ? new Date(telkomsel.last_synced_at).toISOString() : null,
+          isConnected: Boolean(telkomsel.msisdn),
+        }
+      : {
+          ewsId: node.id,
+          phoneNumber: '',
+          msisdn: '',
+          balance: 0,
+          balanceUnit: 'IDR',
+          expiredDate: null,
+          subscriptionType: 'PraBayar',
+          quotaData: null,
+          lastSyncedAt: null,
+          isConnected: false,
+        },
   };
 }
 
@@ -90,13 +116,19 @@ exports.getAllEws = async (req, res) => {
 
     const [nodes] = await pool.query('SELECT * FROM ews_nodes ORDER BY id ASC');
     const [telegrams] = await pool.query('SELECT * FROM telegram_configs');
+    const [telkomsels] = await pool.query('SELECT * FROM telkomsel_configs');
 
     const telegramMap = {};
     telegrams.forEach((t) => {
       telegramMap[t.ews_id] = t;
     });
 
-    const result = nodes.map((node) => formatEwsNode(node, telegramMap[node.id]));
+    const telkomselMap = {};
+    telkomsels.forEach((ts) => {
+      telkomselMap[ts.ews_id] = ts;
+    });
+
+    const result = nodes.map((node) => formatEwsNode(node, telegramMap[node.id], telkomselMap[node.id]));
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error fetching EWS nodes:', error);
@@ -114,7 +146,8 @@ exports.getEwsById = async (req, res) => {
     }
 
     const [telegrams] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [id]);
-    const result = formatEwsNode(nodes[0], telegrams[0] || null);
+    const [telkomsels] = await pool.query('SELECT * FROM telkomsel_configs WHERE ews_id = ?', [id]);
+    const result = formatEwsNode(nodes[0], telegrams[0] || null, telkomsels[0] || null);
 
     return res.json({ success: true, data: result });
   } catch (error) {
@@ -531,6 +564,7 @@ exports.deleteEws = async (req, res) => {
     }
 
     await pool.query('DELETE FROM telegram_configs WHERE ews_id = ?', [id]);
+    await pool.query('DELETE FROM telkomsel_configs WHERE ews_id = ?', [id]);
     await pool.query('DELETE FROM alarm_logs WHERE ews_id = ?', [id]);
     await pool.query('DELETE FROM ews_sensor_logs WHERE ews_id = ?', [id]);
     await pool.query('DELETE FROM ews_nodes WHERE id = ?', [id]);
@@ -547,3 +581,257 @@ exports.deleteEws = async (req, res) => {
   }
 };
 
+
+// ============================================================================
+// TELKOMSEL MONITORING CONTROLLERS
+// ============================================================================
+
+exports.requestTelkomselOtp = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: 'Nomor HP Telkomsel harus diisi' });
+    }
+
+    console.log(`[Telkomsel] Mengirimkan OTP untuk alat ${id} (No: ${phoneNumber})...`);
+    const authData = await telkomselService.requestOtp(phoneNumber);
+
+    // Simpan sesi pending OTP di memory
+    telkomselService.pendingOtpMap.set(id, {
+      authData,
+      phoneNumber,
+      requestedAt: Date.now(),
+    });
+
+    return res.json({
+      success: true,
+      message: `Kode OTP berhasil dikirimkan via SMS ke ${phoneNumber}. Silakan periksa SMS masuk.`,
+      data: {
+        ewsId: id,
+        phoneNumber,
+        formattedPhone: authData.formattedPhone,
+      },
+    });
+  } catch (error) {
+    console.error('[Telkomsel] Gagal request OTP:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.verifyTelkomselOtp = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({ success: false, message: 'Kode OTP harus diisi' });
+    }
+
+    const pending = telkomselService.pendingOtpMap.get(id);
+    if (!pending || !pending.authData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sesi OTP tidak ditemukan atau telah kedaluwarsa. Silakan minta kirim OTP ulang.',
+      });
+    }
+
+    console.log(`[Telkomsel] Memverifikasi OTP untuk alat ${id}...`);
+    const tokens = await telkomselService.submitOtp(pending.authData, otp);
+
+    console.log(`[Telkomsel] OTP Terverifikasi! Mengambil info kuota & pulsa...`);
+    const status = await telkomselService.fetchFullTelkomselStatus(tokens);
+
+    const pool = db.getPool();
+    await pool.query(
+      `INSERT INTO telkomsel_configs (
+        ews_id, phone_number, msisdn, access_token, refresh_token, id_token,
+        balance, balance_unit, expired_date, subscription_type, quota_data, last_synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE
+        phone_number = VALUES(phone_number),
+        msisdn = VALUES(msisdn),
+        access_token = VALUES(access_token),
+        refresh_token = VALUES(refresh_token),
+        id_token = VALUES(id_token),
+        balance = VALUES(balance),
+        balance_unit = VALUES(balance_unit),
+        expired_date = VALUES(expired_date),
+        subscription_type = VALUES(subscription_type),
+        quota_data = VALUES(quota_data),
+        last_synced_at = NOW()`,
+      [
+        id,
+        pending.phoneNumber,
+        tokens.msisdn,
+        tokens.access_token || '',
+        tokens.refresh_token || '',
+        tokens.id_token || '',
+        status.balance || 0,
+        status.balanceUnit || 'IDR',
+        status.expiredDate || null,
+        status.subscriptionType || 'PraBayar',
+        JSON.stringify(status),
+      ]
+    );
+
+    // Hapus pending OTP
+    telkomselService.pendingOtpMap.delete(id);
+
+    const formattedConfig = {
+      ewsId: id,
+      phoneNumber: pending.phoneNumber,
+      msisdn: tokens.msisdn,
+      balance: parseFloat(status.balance || 0),
+      balanceUnit: status.balanceUnit || 'IDR',
+      expiredDate: status.expiredDate || null,
+      subscriptionType: status.subscriptionType || 'PraBayar',
+      quotaData: status,
+      lastSyncedAt: new Date().toISOString(),
+      isConnected: true,
+    };
+
+    // Broadcast WebSocket pembaruan ke frontend
+    wsService.publish('ews/telkomsel/updated', {
+      ewsId: id,
+      telkomselConfig: formattedConfig,
+    });
+    wsService.publish(`ews/${id}/telkomsel`, {
+      ewsId: id,
+      telkomselConfig: formattedConfig,
+    });
+
+    return res.json({
+      success: true,
+      message: `Nomor Telkomsel ${pending.phoneNumber} berhasil dihubungkan ke alat ${id}!`,
+      data: formattedConfig,
+    });
+  } catch (error) {
+    console.error('[Telkomsel] Gagal verifikasi OTP:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.refreshTelkomselQuota = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = db.getPool();
+
+    const [rows] = await pool.query('SELECT * FROM telkomsel_configs WHERE ews_id = ?', [id]);
+    if (!rows || rows.length === 0 || !rows[0].access_token) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nomor Telkomsel belum dihubungkan pada alat ini.',
+      });
+    }
+
+    const row = rows[0];
+    const tokens = {
+      msisdn: row.msisdn,
+      access_token: row.access_token,
+      refresh_token: row.refresh_token,
+      id_token: row.id_token,
+    };
+
+    console.log(`[Telkomsel] Memperbarui kuota untuk alat ${id} (${row.phone_number})...`);
+    const status = await telkomselService.fetchFullTelkomselStatus(tokens);
+
+    await pool.query(
+      `UPDATE telkomsel_configs SET
+        access_token = ?,
+        refresh_token = ?,
+        id_token = ?,
+        balance = ?,
+        balance_unit = ?,
+        expired_date = ?,
+        subscription_type = ?,
+        quota_data = ?,
+        last_synced_at = NOW()
+      WHERE ews_id = ?`,
+      [
+        tokens.access_token || row.access_token,
+        tokens.refresh_token || row.refresh_token,
+        tokens.id_token || row.id_token,
+        status.balance || 0,
+        status.balanceUnit || 'IDR',
+        status.expiredDate || null,
+        status.subscriptionType || 'PraBayar',
+        JSON.stringify(status),
+        id,
+      ]
+    );
+
+    const formattedConfig = {
+      ewsId: id,
+      phoneNumber: row.phone_number,
+      msisdn: row.msisdn,
+      balance: parseFloat(status.balance || 0),
+      balanceUnit: status.balanceUnit || 'IDR',
+      expiredDate: status.expiredDate || null,
+      subscriptionType: status.subscriptionType || 'PraBayar',
+      quotaData: status,
+      lastSyncedAt: new Date().toISOString(),
+      isConnected: true,
+    };
+
+    // Broadcast update
+    wsService.publish('ews/telkomsel/updated', {
+      ewsId: id,
+      telkomselConfig: formattedConfig,
+    });
+    wsService.publish(`ews/${id}/telkomsel`, {
+      ewsId: id,
+      telkomselConfig: formattedConfig,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Data kuota dan pulsa Telkomsel berhasil diperbarui',
+      data: formattedConfig,
+    });
+  } catch (error) {
+    console.error('[Telkomsel] Gagal refresh kuota:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteTelkomselConfig = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = db.getPool();
+
+    await pool.query('DELETE FROM telkomsel_configs WHERE ews_id = ?', [id]);
+
+    const formattedConfig = {
+      ewsId: id,
+      phoneNumber: '',
+      msisdn: '',
+      balance: 0,
+      balanceUnit: 'IDR',
+      expiredDate: null,
+      subscriptionType: 'PraBayar',
+      quotaData: null,
+      lastSyncedAt: null,
+      isConnected: false,
+    };
+
+    wsService.publish('ews/telkomsel/updated', {
+      ewsId: id,
+      telkomselConfig: formattedConfig,
+    });
+    wsService.publish(`ews/${id}/telkomsel`, {
+      ewsId: id,
+      telkomselConfig: formattedConfig,
+    });
+
+    return res.json({
+      success: true,
+      message: `Nomor Telkomsel pada alat ${id} berhasil diputuskan`,
+      data: formattedConfig,
+    });
+  } catch (error) {
+    console.error('[Telkomsel] Gagal menghapus config:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

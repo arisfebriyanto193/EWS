@@ -21,6 +21,10 @@ router.put('/ews/:id/thresholds', ewsController.updateThresholds);
 router.put('/ews/:id/telegram', ewsController.updateTelegramConfig);
 router.post('/ews/:id/telegram/test', ewsController.testTelegram);
 router.post('/ews/:id/control', ewsController.controlActuator);
+router.post('/ews/:id/telkomsel/request-otp', ewsController.requestTelkomselOtp);
+router.post('/ews/:id/telkomsel/verify-otp', ewsController.verifyTelkomselOtp);
+router.post('/ews/:id/telkomsel/refresh', ewsController.refreshTelkomselQuota);
+router.delete('/ews/:id/telkomsel', ewsController.deleteTelkomselConfig);
 
 // 3. Pest Trap Routes
 router.get('/traps', trapController.getAllTraps);

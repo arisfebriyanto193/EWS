@@ -14,6 +14,7 @@ import {
   Plus,
   Radio,
   Send,
+  Smartphone,
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ interface OverviewAllEWSProps {
   ewsNodes: EWSNode[];
   onSelectEws: (ewsId: string) => void;
   onOpenTelegramConfig: (ews: EWSNode) => void;
+  onOpenTelkomselConfig?: (ews: EWSNode) => void;
   onAddEwsClick: () => void;
   onDeleteEws?: (ewsId: string) => void;
 }
@@ -30,6 +32,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
   ewsNodes,
   onSelectEws,
   onOpenTelegramConfig,
+  onOpenTelkomselConfig,
   onAddEwsClick,
   onDeleteEws,
 }) => {
@@ -244,7 +247,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                     </div>
 
                     {/* Telegram channel info */}
-                    <div className="p-2.5 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs mb-4">
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs mb-2">
                       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                         <Send className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                         <span className="truncate max-w-[200px] text-[11px] font-mono">
@@ -256,6 +259,24 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                       >
                         Konfigurasi Bot
+                      </button>
+                    </div>
+
+                    {/* Telkomsel SIM & Quota info */}
+                    <div className="p-2.5 bg-red-50/40 dark:bg-red-950/20 rounded-lg border border-red-200/70 dark:border-red-900/30 flex items-center justify-between text-xs mb-4">
+                      <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                        <Smartphone className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                        <span className="truncate max-w-[200px] text-[11px] font-mono">
+                          {ews.telkomselConfig?.isConnected
+                            ? (ews.telkomselConfig.phoneNumber || ews.telkomselConfig.msisdn) + " (" + (ews.telkomselConfig.quotaData?.primaryQuota?.remaining || "Aktif") + ")"
+                            : "SIM Telkomsel Belum Terhubung"}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => onOpenTelkomselConfig && onOpenTelkomselConfig(ews)}
+                        className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+                      >
+                        {ews.telkomselConfig?.isConnected ? 'Cek Kuota' : 'Hubungkan'}
                       </button>
                     </div>
                   </div>

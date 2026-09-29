@@ -212,3 +212,28 @@ CREATE TABLE IF NOT EXISTS `device_command_logs` (
   INDEX `idx_cmd_device` (`device_id`, `created_at`),
   INDEX `idx_cmd_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------------------------------
+-- 9. TABEL KONFIGURASI MONITORING KUOTA TELKOMSEL PER ALAT EWS
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `telkomsel_configs` (
+  `id` INT AUTO_INCREMENT NOT NULL,
+  `ews_id` VARCHAR(20) NOT NULL UNIQUE,
+  `phone_number` VARCHAR(30) NOT NULL,
+  `msisdn` VARCHAR(30) NOT NULL,
+  `access_token` TEXT NULL,
+  `refresh_token` TEXT NULL,
+  `id_token` TEXT NULL,
+  `token_expires_at` TIMESTAMP NULL,
+  `balance` DECIMAL(15,2) DEFAULT 0,
+  `balance_unit` VARCHAR(20) DEFAULT 'IDR',
+  `expired_date` VARCHAR(100) NULL COMMENT 'Masa aktif kartu',
+  `subscription_type` VARCHAR(50) DEFAULT 'PraBayar',
+  `quota_data` JSON NULL COMMENT 'Data breakdown kuota internet',
+  `last_synced_at` TIMESTAMP NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_telkomsel_ews` FOREIGN KEY (`ews_id`) REFERENCES `ews_nodes` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -11,6 +11,7 @@ import {
   AlarmLog,
   UserAccount,
   TelegramConfig,
+  TelkomselConfig,
   PestTrapNode,
 } from '../types';
 import {
@@ -29,6 +30,7 @@ import { AlarmHistoryView } from './AlarmHistoryView';
 import { PestTrapDashboard } from './PestTrapDashboard';
 import { EngineeringDocsModal } from './EngineeringDocsModal';
 import { TelegramConfigModal } from './TelegramConfigModal';
+import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { AddEWSModal } from './AddEWSModal';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
@@ -51,6 +53,7 @@ export default function App() {
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isAddEWSOpen, setIsAddEWSOpen] = useState(false);
   const [editingTelegramEws, setEditingTelegramEws] = useState<EWSNode | null>(null);
+  const [editingTelkomselEws, setEditingTelkomselEws] = useState<EWSNode | null>(null);
   const [globalMute, setGlobalMute] = useState(false);
 
   // Audio synthesizer ref for simulated local 12V 110dB siren
@@ -720,6 +723,7 @@ export default function App() {
                 ewsNodes={ewsNodes}
                 onSelectEws={(ewsId) => setActiveTab(ewsId)}
                 onOpenTelegramConfig={(ews) => setEditingTelegramEws(ews)}
+                onOpenTelkomselConfig={(ews) => setEditingTelkomselEws(ews)}
                 onAddEwsClick={() => setIsAddEWSOpen(true)}
                 onDeleteEws={handleDeleteEws}
               />
@@ -801,6 +805,23 @@ export default function App() {
                   console.warn('Gagal menyimpan Telegram config ke backend:', err.message);
                 });
                 setEditingTelegramEws(null);
+              }}
+            />
+          )}
+
+          {/* Individual Telkomsel Modal from Overview */}
+          {editingTelkomselEws && (
+            <TelkomselConfigModal
+              ews={editingTelkomselEws}
+              isOpen={true}
+              onClose={() => setEditingTelkomselEws(null)}
+              onSave={(newCfg: TelkomselConfig) => {
+                const updated = {
+                  ...editingTelkomselEws,
+                  telkomselConfig: newCfg,
+                };
+                handleUpdateEws(updated);
+                setEditingTelkomselEws(null);
               }}
             />
           )}

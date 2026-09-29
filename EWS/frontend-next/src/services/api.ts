@@ -1,4 +1,4 @@
-import { EWSNode, PestTrapNode, AlarmLog, UserAccount, TelegramConfig } from '../types';
+import { EWSNode, PestTrapNode, AlarmLog, UserAccount, TelegramConfig, TelkomselConfig } from '../types';
 
 // Konfigurasi Base URL API
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -117,6 +117,68 @@ export const api = {
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(data.message || 'Gagal mengirim pesan uji ke Telegram');
+    }
+    return data;
+  },
+
+    // 2.2. Telkomsel SIM & Quota Monitoring
+  async requestTelkomselOtp(
+    id: string,
+    phoneNumber: string
+  ): Promise<{ success: boolean; message: string; data?: any }> {
+    const res = await fetch(`${API_BASE}/ews/${id}/telkomsel/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ phoneNumber }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal mengirim OTP Telkomsel');
+    }
+    return data;
+  },
+
+  async verifyTelkomselOtp(
+    id: string,
+    phoneNumber: string,
+    otp: string
+  ): Promise<{ success: boolean; message: string; telkomselConfig: TelkomselConfig }> {
+    const res = await fetch(`${API_BASE}/ews/${id}/telkomsel/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ phoneNumber, otp }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal memverifikasi OTP Telkomsel');
+    }
+    return data;
+  },
+
+  async refreshTelkomselQuota(
+    id: string
+  ): Promise<{ success: boolean; message: string; telkomselConfig: TelkomselConfig }> {
+    const res = await fetch(`${API_BASE}/ews/${id}/telkomsel/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal memperbarui kuota Telkomsel');
+    }
+    return data;
+  },
+
+  async deleteTelkomselConfig(
+    id: string
+  ): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/ews/${id}/telkomsel`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menghapus sesi Telkomsel');
     }
     return data;
   },

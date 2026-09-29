@@ -17,6 +17,55 @@ export interface TelegramConfig {
   lastTestTime?: string | null;
 }
 
+
+export interface TelkomselQuotaItem {
+  name: string;
+  remaining: string;
+  total: string;
+  expiryDate?: string;
+  warning?: string;
+}
+
+export interface TelkomselQuotaGroup {
+  category: string;
+  label: string;
+  totalRemaining: string;
+  totalQuota: string;
+  remainingPercent: number;
+  items: TelkomselQuotaItem[];
+}
+
+export interface TelkomselQuotaData {
+  msisdn: string;
+  balance: string;
+  balanceUnit: string;
+  expiredDate: string;
+  subscriptionType: string;
+  brand?: string;
+  priceplan?: string;
+  location?: string;
+  primaryQuota: {
+    remaining: string;
+    total: string;
+    percent: number;
+  };
+  quotaGroups: TelkomselQuotaGroup[];
+  lastSyncedAt: string;
+}
+
+export interface TelkomselConfig {
+  ewsId: string;
+  phoneNumber: string;
+  msisdn: string;
+  balance: number;
+  balanceUnit: string;
+  expiredDate: string | null;
+  subscriptionType: string;
+  quotaData: TelkomselQuotaData | null;
+  lastSyncedAt: string | null;
+  isConnected: boolean;
+}
+
 export interface EWSSensorData {
   pitchAngle: number; // Inclinometer sumbu X (derajat)
   rollAngle: number;  // Inclinometer sumbu Y (derajat)
@@ -52,6 +101,7 @@ export interface EWSNode {
   muted: boolean;
   sensorData: EWSSensorData;
   telegramConfig: TelegramConfig;
+  telkomselConfig?: TelkomselConfig;
   thresholds: {
     tiltWarning: number; // degrees
     tiltDanger: number;

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { EWSNode, UserAccount, TelegramConfig } from '../types';
+import { EWSNode, UserAccount, TelegramConfig, TelkomselConfig } from '../types';
 import { api } from '../services/api';
 import {
   Activity,
@@ -16,6 +16,7 @@ import {
   Send,
   ShieldAlert,
   Sliders,
+  Smartphone,
   Sun,
   Thermometer,
   Volume2,
@@ -23,6 +24,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { TelegramConfigModal } from './TelegramConfigModal';
+import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { ThresholdConfigModal } from './ThresholdConfigModal';
 
 interface TelemetryPoint {
@@ -48,6 +50,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   onResetAlarm,
 }) => {
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+  const [isTelkomselModalOpen, setIsTelkomselModalOpen] = useState(false);
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const [historyRange, setHistoryRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [activeChartMetric, setActiveChartMetric] = useState<'tilt' | 'rain' | 'moisture' | 'power'>('tilt');
@@ -115,6 +118,13 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
     onUpdateEws({
       ...ews,
       telegramConfig: newConfig,
+    });
+  };
+
+  const handleSaveTelkomsel = (newConfig: TelkomselConfig) => {
+    onUpdateEws({
+      ...ews,
+      telkomselConfig: newConfig,
     });
   };
 
@@ -273,6 +283,22 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               <span>Konfigurasi Bot Telegram</span>
               {ews.telegramConfig.enabled && (
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              )}
+            </button>
+
+            <button
+              onClick={() => setIsTelkomselModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+              title="Monitoring Kuota Internet & Pulsa Telkomsel modem 4G"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+              <span>SIM & Kuota Telkomsel</span>
+              {ews.telkomselConfig?.isConnected ? (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-red-600 text-white font-bold">
+                  {ews.telkomselConfig.quotaData?.primaryQuota?.remaining || "Aktif"}
+                </span>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" />
               )}
             </button>
 
@@ -623,6 +649,37 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               <span className="text-slate-500 dark:text-slate-400">Uptime Kontrol:</span>
               <span className="font-mono text-slate-700 dark:text-slate-300">{ews.sensorData.uptimeHours} Jam</span>
             </div>
+
+            {/* Telkomsel SIM & Quota Card Row */}
+            <div
+              onClick={() => setIsTelkomselModalOpen(true)}
+              className="p-2.5 rounded-lg bg-red-50/70 dark:bg-red-950/30 border border-red-200/80 dark:border-red-900/40 hover:border-red-400 dark:hover:border-red-700 transition-all cursor-pointer group"
+              title="Klik untuk melihat kuota lengkap atau login Telkomsel"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                  SIM Telkomsel:
+                </span>
+                {ews.telkomselConfig?.isConnected ? (
+                  <span className="font-mono text-xs font-bold text-red-600 dark:text-red-400">
+                    {ews.telkomselConfig.quotaData?.primaryQuota?.remaining || "Aktif"}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-400 underline decoration-dotted group-hover:text-red-500">
+                    + Hubungkan No HP
+                  </span>
+                )}
+              </div>
+              {ews.telkomselConfig?.isConnected && (
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  <span>Pulsa: Rp {Number(ews.telkomselConfig.balance || 0).toLocaleString("id-ID")}</span>
+                  <span className="text-[10px] text-red-600 dark:text-red-400 font-semibold group-hover:underline">
+                    Rincian &rarr;
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
@@ -802,6 +859,14 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         isOpen={isTelegramModalOpen}
         onClose={() => setIsTelegramModalOpen(false)}
         onSave={handleSaveTelegram}
+      />
+
+      {/* Telkomsel SIM & Quota Configuration Modal */}
+      <TelkomselConfigModal
+        ews={ews}
+        isOpen={isTelkomselModalOpen}
+        onClose={() => setIsTelkomselModalOpen(false)}
+        onSave={handleSaveTelkomsel}
       />
 
       {/* Sensor Threshold Configuration Modal */}

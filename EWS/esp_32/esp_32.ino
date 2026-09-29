@@ -52,7 +52,7 @@
 
 #if ENABLE_OLED
   #include <Adafruit_GFX.h>
-  #include <Adafruit_SSD1306.h>
+  #include <Adafruit_SH110X.h>
   #define SCREEN_WIDTH 128
   #define SCREEN_HEIGHT 64
   #define OLED_RESET -1
@@ -63,8 +63,8 @@
 // 1. KONFIGURASI JARINGAN & SERVER WEBSOCKET
 // =============================================================================
 // Kredensial WiFi
-const char* WIFI_SSID     = "esp1";       // Sesuai SSID Anda
-const char* WIFI_PASSWORD = "12345674";   // Sesuai Password WiFi Anda
+const char* WIFI_SSID     = "W";       // Sesuai SSID Anda
+const char* WIFI_PASSWORD = "kitahebat";   // Sesuai Password WiFi Anda
 
 // Konfigurasi Target WebSocket Server
 const bool  WS_USE_SSL       = true;                        // true: wss:// port 443 | false: ws:// port biasa
@@ -117,6 +117,7 @@ String TOPIC_PITCH     = String("ews/") + EWS_ID + "/pitch";
 String TOPIC_ROLL      = String("ews/") + EWS_ID + "/roll";
 String TOPIC_SOIL      = String("ews/") + EWS_ID + "/soil_moisture";
 String TOPIC_RAIN      = String("ews/") + EWS_ID + "/rainfall_rate";
+String TOPIC_RAIN_CUMU = String("ews/") + EWS_ID + "/rainfall_cumulative";
 String TOPIC_VIB       = String("ews/") + EWS_ID + "/vibration";
 String TOPIC_BATT      = String("ews/") + EWS_ID + "/battery_voltage";
 String TOPIC_SOLAR     = String("ews/") + EWS_ID + "/solar_current";
@@ -143,6 +144,7 @@ struct SensorDataSnapshot {
   float soilTemp;
   float rainRate;
   float rainCumulative;
+  unsigned long rainTips;
   float vibration;
   unsigned long vibrationPulses;
   float batteryVoltage;
@@ -179,6 +181,33 @@ void IRAM_ATTR onVibrationTriggered() {
   portENTER_CRITICAL_ISR(&vibMux);
   vibPulseCounter++;
   portEXIT_CRITICAL_ISR(&vibMux);
+}
+
+// --- SENSOR CURAH HUJAN TIPPING BUCKET (GPIO 5) ---
+const byte RAIN_SENSOR_PIN = 5;          // Pin GPIO ESP32 yang terhubung ke OUT sensor (Dhujan)
+const float CURAH_PER_TIP = 0.70;        // Nilai kalibrasi dari video (0.70 mm per tip)
+
+// --- VARIABEL GLOBAL ---
+volatile unsigned long tipCount = 0;
+volatile unsigned long lastDebounceTime = 0;
+const unsigned long DEBOUNCE_DELAY = 200; // Milidetik untuk mencegah bounce/bouncing sinyal
+
+// --- ISR (Interrupt Service Routine) ---
+void IRAM_ATTR countTip() {
+  unsigned long currentTime = millis();
+  // Filter debouncing sederhana
+  if ((currentTime - lastDebounceTime) > DEBOUNCE_DELAY) {
+    // 1. Verifikasi awal: Pin harus benar-benar berlogika LOW
+    if (digitalRead(PIN_RAIN_DIGITAL) == LOW) {
+      // 2. Filter derau listrik frekuensi tinggi (WiFi RF & I2C clock spike < 10 us)
+      // Kontak mekanik ember jungkit berlangsung belasan milidetik (jauh lebih lama dari 1 ms).
+      esp_rom_delay_us(1000); 
+      if (digitalRead(PIN_RAIN_DIGITAL) == LOW) {
+        tipCount++;
+        lastDebounceTime = currentTime;
+      }
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -251,13 +280,12 @@ TwoWire I2COLED = TwoWire(0);
 TwoWire I2CMPU  = TwoWire(1);
 
 #if ENABLE_OLED
-  Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &I2COLED, OLED_RESET);
+  Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &I2COLED, OLED_RESET);
   bool oledAvailable = false;
 #endif
 
 bool mpuAvailable = false;
 bool inaAvailable = false;
-float cumulativeRainMm = 0.0;
 
 // Interval Pengiriman Data
 const unsigned long TELEMETRY_INTERVAL = 5000; // Kirim telemetri setiap 5 detik
@@ -465,17 +493,38 @@ float readSoilMoisture() {
   return percent;
 }
 
-void readRainSensor(float &rainfallRate, float &cumulative) {
-  int state = digitalRead(PIN_RAIN_DIGITAL);
-  bool isWet = (state == LOW);
+void readRainSensor(float &rainfallRate, float &cumulative, unsigned long &totalTips) {
+  // Salin variabel tipCount secara aman dari ISR
+  noInterrupts();
+  unsigned long currentTips = tipCount;
+  interrupts();
 
-  if (isWet) {
-    rainfallRate = 18.5 + (random(0, 80) / 10.0);
-    cumulativeRainMm += 0.05;
-  } else {
-    rainfallRate = 0.0;
+  totalTips = currentTips;
+
+  // Hitung total curah hujan (mm)
+  cumulative = currentTips * CURAH_PER_TIP;
+
+  // 2. Estimasi intensitas/laju curah hujan sesaat (mm/jam) per interval 10 detik
+  static unsigned long lastRainCalcTime = 0;
+  static unsigned long lastRainTips = 0;
+  static float cachedRainRate = 0.0;
+
+  unsigned long now = millis();
+  unsigned long elapsed = now - lastRainCalcTime;
+
+  if (lastRainCalcTime == 0) {
+    lastRainCalcTime = now;
+    lastRainTips = currentTips;
+  } else if (elapsed >= 10000) {
+    unsigned long deltaTips = (currentTips >= lastRainTips) ? (currentTips - lastRainTips) : 0;
+    lastRainTips = currentTips;
+    lastRainCalcTime = now;
+
+    // Konversi ke mm per jam: (deltaTips * CURAH_PER_TIP) * (3600000.0 / elapsed)
+    cachedRainRate = (float)deltaTips * CURAH_PER_TIP * (3600000.0f / (float)elapsed);
   }
-  cumulative = cumulativeRainMm;
+
+  rainfallRate = cachedRainRate;
 }
 
 float readVibrationLevel(unsigned long &rawPulsesOut) {
@@ -513,11 +562,11 @@ void updateOledDisplay(float pitch, float roll, float soil, float rain, float ba
 
   display.clearDisplay();
   display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
+  display.setTextColor(SH110X_WHITE);
 
   display.setCursor(0, 0);
   display.printf("[%s] %s", EWS_ID, currentStatus.c_str());
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+  display.drawLine(0, 10, 127, 10, SH110X_WHITE);
 
   display.setCursor(0, 14);
   display.printf("P:%.2f  R:%.2f", pitch, roll);
@@ -700,7 +749,20 @@ void sensorTask(void *pvParameters) {
 
     float soil = readSoilMoisture();
     float rain = 0.0, rainCumu = 0.0;
-    readRainSensor(rain, rainCumu);
+    unsigned long currentRainTips = 0;
+    readRainSensor(rain, rainCumu, currentRainTips);
+
+    // Tampilkan data ke Serial Monitor setiap 2 detik sesuai kode acuan
+    static unsigned long lastPrintTime = 0;
+    if (millis() - lastPrintTime >= 2000) {
+      lastPrintTime = millis();
+      Serial.print("Jumlah Tip : ");
+      Serial.print(currentRainTips);
+      Serial.print(" | Total Curah Hujan: ");
+      Serial.print(rainCumu, 2);
+      Serial.print(" mm | Pin GPIO 5: ");
+      Serial.println(digitalRead(PIN_RAIN_DIGITAL) == HIGH ? "HIGH (Diam/Siaga)" : "LOW (Kontak)");
+    }
 
     unsigned long rawVibPulses = 0;
     float vib = readVibrationLevel(rawVibPulses);
@@ -720,7 +782,16 @@ void sensorTask(void *pvParameters) {
 
     // Evaluasi status berdasarkan ambang batas EEPROM
     String st = "aman";
-    bool isVibDanger = (rawVibPulses >= (unsigned long)thresh.vibrationDanger) || (vib >= thresh.vibrationDanger);
+    bool isVibDanger = false;
+    if (thresh.vibrationDanger > 0.0f) {
+      if (thresh.vibrationDanger >= 1.0f) {
+        // Jika ambang batas berupa hitungan pulsa (misal: >= 5 pulsa)
+        isVibDanger = (rawVibPulses >= (unsigned long)thresh.vibrationDanger);
+      } else {
+        // Jika ambang batas berupa akselerasi g (misal: >= 0.25 g)
+        isVibDanger = (vib >= thresh.vibrationDanger);
+      }
+    }
 
     if (fabs(pitch) >= thresh.tiltDanger || fabs(roll) >= thresh.tiltDanger || rain >= thresh.rainDanger || isVibDanger) {
       st = "bahaya";
@@ -750,6 +821,7 @@ void sensorTask(void *pvParameters) {
       sharedSensors.soilTemp = 25.2;
       sharedSensors.rainRate = rain;
       sharedSensors.rainCumulative = rainCumu;
+      sharedSensors.rainTips = currentRainTips;
       sharedSensors.vibration = vib;
       sharedSensors.vibrationPulses = rawVibPulses;
       sharedSensors.batteryVoltage = batt;
@@ -794,7 +866,8 @@ void telemetryTask(void *pvParameters) {
       p["soilMoisture"]       = round(data.soilMoisture * 10.0) / 10.0;
       p["soilTemperature"]    = 25.2;
       p["rainfallRate"]       = round(data.rainRate * 10.0) / 10.0;
-      p["rainfallCumulative"] = round(data.rainCumulative * 10.0) / 10.0;
+      p["rainfallCumulative"] = round(data.rainCumulative * 100.0) / 100.0;
+      p["rainfallTips"]       = data.rainTips;
       p["vibrationLevel"]     = round(data.vibration * 1000.0) / 1000.0;
       p["vibrationPulses"]    = data.vibrationPulses;
       p["batteryVoltage"]     = round(data.batteryVoltage * 100.0) / 100.0;
@@ -824,6 +897,8 @@ void telemetryTask(void *pvParameters) {
       safeSendTXT(TOPIC_SOIL + "|" + String(data.soilMoisture, 1));
       vTaskDelay(pdMS_TO_TICKS(30));
       safeSendTXT(TOPIC_RAIN + "|" + String(data.rainRate, 1));
+      vTaskDelay(pdMS_TO_TICKS(30));
+      safeSendTXT(TOPIC_RAIN_CUMU + "|" + String(data.rainCumulative, 2));
       vTaskDelay(pdMS_TO_TICKS(30));
       safeSendTXT(TOPIC_VIB + "|" + String(data.vibration, 3));
       vTaskDelay(pdMS_TO_TICKS(30));
@@ -862,26 +937,35 @@ void setup() {
 
   // Inisialisasi Pin Sensor
   pinMode(PIN_RAIN_DIGITAL, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_RAIN_DIGITAL), countTip, FALLING);
   pinMode(PIN_VIB_SIG, INPUT_PULLUP);
   pinMode(PIN_SOIL_ANALOG, INPUT);
   attachInterrupt(digitalPinToInterrupt(PIN_VIB_SIG), onVibrationTriggered, CHANGE);
 
-  // Inisialisasi OLED
+  // Inisialisasi OLED 1.3" (Driver SH1106 / SH1106G)
 #if ENABLE_OLED
   I2COLED.begin(PIN_OLED_SDA, PIN_OLED_SCL, 400000);
-  if (display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
+  delay(100);
+  if (display.begin(OLED_I2C_ADDR, true)) {
     oledAvailable = true;
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 10);
-    display.println("EWS SISTEM SIAGA");
-    display.println("FreeRTOS Aktif...");
-    display.display();
-    Serial.println("✅ [OLED 1.3\"] Berhasil diinisialisasi pada GPIO 8 & 9");
+    Serial.println("✅ [OLED 1.3\" SH1106] Berhasil diinisialisasi pada alamat 0x3C (GPIO 8 & 9)");
+  } else if (display.begin(0x3D, true)) {
+    oledAvailable = true;
+    Serial.println("✅ [OLED 1.3\" SH1106] Berhasil diinisialisasi pada alamat 0x3D (GPIO 8 & 9)");
   } else {
     oledAvailable = false;
-    Serial.println("⚠️ [OLED 1.3\"] Tidak terdeteksi");
+    Serial.println("⚠️ [OLED 1.3\" SH1106] Tidak terdeteksi pada alamat 0x3C maupun 0x3D");
+  }
+
+  if (oledAvailable) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SH110X_WHITE);
+    display.setCursor(0, 10);
+    display.println("EWS SISTEM SIAGA");
+    display.println("OLED 1.3 SH1106 OK");
+    display.println("FreeRTOS Aktif...");
+    display.display();
   }
 #endif
 
@@ -919,6 +1003,12 @@ void setup() {
 
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
+
+  // Reset penghitung curah hujan setelah sistem boot selesai
+  noInterrupts();
+  tipCount = 0;
+  lastDebounceTime = millis();
+  interrupts();
 
   // Buat Tasks FreeRTOS
   // 1. Task WebSocket Client terdedikasi di Core 0 (bersama WiFi stack)
