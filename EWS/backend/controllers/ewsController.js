@@ -706,6 +706,7 @@ exports.verifyTelkomselOtp = async (req, res) => {
       success: true,
       message: `Nomor Telkomsel ${pending.phoneNumber} berhasil dihubungkan ke alat ${id}!`,
       data: formattedConfig,
+      telkomselConfig: formattedConfig,
     });
   } catch (error) {
     console.error('[Telkomsel] Gagal verifikasi OTP:', error);
@@ -789,6 +790,7 @@ exports.refreshTelkomselQuota = async (req, res) => {
       success: true,
       message: 'Data kuota dan pulsa Telkomsel berhasil diperbarui',
       data: formattedConfig,
+      telkomselConfig: formattedConfig,
     });
   } catch (error) {
     console.error('[Telkomsel] Gagal refresh kuota:', error);

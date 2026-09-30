@@ -227,18 +227,16 @@ class TelkomselService {
       throw new Error(`Gagal mendapatkan auth code dari CIAM (Status ${authCodeResp.status}, Location: ${location || 'none'})`);
     }
 
-    // Step 3: Exchange code for tokens
-    const tokenUrl = `${this.CIAM_HOST}/iam/v1/oauth2/realms/tsel/access_token`;
-    const tokenParams = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: this.CIAM_CLIENT_ID,
-      client_secret: this.CIAM_CLIENT_SECRET,
-      redirect_uri: this.CIAM_REDIRECT_URI,
-      code,
-      response_type: 'code',
-    });
+    // Step 3: Exchange code for tokens (parameters must be passed in URL query string for CIAM OpenAM)
+    const tokenUrl = new URL(`${this.CIAM_HOST}/iam/v1/oauth2/realms/tsel/access_token`);
+    tokenUrl.searchParams.set('grant_type', 'authorization_code');
+    tokenUrl.searchParams.set('client_id', this.CIAM_CLIENT_ID);
+    tokenUrl.searchParams.set('client_secret', this.CIAM_CLIENT_SECRET);
+    tokenUrl.searchParams.set('redirect_uri', this.CIAM_REDIRECT_URI);
+    tokenUrl.searchParams.set('code', code);
+    tokenUrl.searchParams.set('response_type', 'code');
 
-    const tokenResp = await fetch(tokenUrl, {
+    const tokenResp = await fetch(tokenUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -247,7 +245,6 @@ class TelkomselService {
         'Referer': 'https://my.telkomsel.com/',
         'User-Agent': this.USER_AGENT,
       },
-      body: tokenParams.toString(),
     });
 
     if (!tokenResp.ok) {
@@ -267,16 +264,14 @@ class TelkomselService {
       throw new Error('Refresh token tidak tersedia.');
     }
 
-    const tokenUrl = `${this.CIAM_HOST}/iam/v1/oauth2/realms/tsel/access_token`;
-    const params = new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: this.CIAM_CLIENT_ID,
-      client_secret: this.CIAM_CLIENT_SECRET,
-      redirect_uri: this.CIAM_REDIRECT_URI,
-      refresh_token: tokens.refresh_token,
-    });
+    const tokenUrl = new URL(`${this.CIAM_HOST}/iam/v1/oauth2/realms/tsel/access_token`);
+    tokenUrl.searchParams.set('grant_type', 'refresh_token');
+    tokenUrl.searchParams.set('client_id', this.CIAM_CLIENT_ID);
+    tokenUrl.searchParams.set('client_secret', this.CIAM_CLIENT_SECRET);
+    tokenUrl.searchParams.set('redirect_uri', this.CIAM_REDIRECT_URI);
+    tokenUrl.searchParams.set('refresh_token', tokens.refresh_token);
 
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetch(tokenUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -285,7 +280,6 @@ class TelkomselService {
         'Referer': 'https://my.telkomsel.com/',
         'User-Agent': this.USER_AGENT,
       },
-      body: params.toString(),
     });
 
     if (!resp.ok) {

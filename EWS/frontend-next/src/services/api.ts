@@ -152,7 +152,10 @@ export const api = {
     if (!res.ok || !data.success) {
       throw new Error(data.message || 'Gagal memverifikasi OTP Telkomsel');
     }
-    return data;
+    return {
+      ...data,
+      telkomselConfig: data.telkomselConfig || data.data,
+    };
   },
 
   async refreshTelkomselQuota(
@@ -166,7 +169,10 @@ export const api = {
     if (!res.ok || !data.success) {
       throw new Error(data.message || 'Gagal memperbarui kuota Telkomsel');
     }
-    return data;
+    return {
+      ...data,
+      telkomselConfig: data.telkomselConfig || data.data,
+    };
   },
 
   async deleteTelkomselConfig(
