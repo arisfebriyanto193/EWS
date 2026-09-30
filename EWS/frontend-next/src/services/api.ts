@@ -35,6 +35,34 @@ export const api = {
     return data;
   },
 
+  // Perbarui profil pengguna
+  async updateProfile(payload: { fullName: string; department?: string }): Promise<{ success: boolean; message: string; user: UserAccount }> {
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal memperbarui profil');
+    }
+    return data;
+  },
+
+  // Ganti kata sandi
+  async changePassword(payload: { oldPassword: string; newPassword: string }): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/auth/change-password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal mengubah kata sandi');
+    }
+    return data;
+  },
+
   // 2. EWS Nodes
   async getEwsNodes(): Promise<EWSNode[]> {
     const res = await fetch(`${API_BASE}/ews`);

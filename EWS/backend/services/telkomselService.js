@@ -490,6 +490,106 @@ class TelkomselService {
         return cat;
     }
   }
+
+  /**
+   * Start background periodic sync to keep Telkomsel tokens alive and quota updated
+   */
+  startPeriodicSync(intervalHours = 6) {
+    if (this.syncIntervalHandle) return;
+    const intervalMs = intervalHours * 60 * 60 * 1000;
+    console.log(`📶 [Telkomsel Service] Auto-Sync & Token Keep-Alive aktif (Setiap ${intervalHours} jam)`);
+
+    // Inisialisasi pengecekan perdana 15 detik setelah server menyala
+    setTimeout(() => {
+      this.syncAllNodes().catch((err) => {
+        console.warn('⚠️ [Telkomsel Sync] Initial sync warning:', err.message);
+      });
+    }, 15000);
+
+    this.syncIntervalHandle = setInterval(() => {
+      this.syncAllNodes().catch((err) => {
+        console.warn('⚠️ [Telkomsel Sync] Interval sync warning:', err.message);
+      });
+    }, intervalMs);
+  }
+
+  /**
+   * Sinkronisasi kuota dan refresh token untuk semua node yang telah terhubung
+   */
+  async syncAllNodes() {
+    try {
+      const db = require('../database/db');
+      const pool = db.getPool();
+      if (!pool) return;
+
+      const [rows] = await pool.query(
+        'SELECT * FROM telkomsel_configs WHERE access_token IS NOT NULL AND access_token != ""'
+      );
+      if (!rows || rows.length === 0) return;
+
+      console.log(`📶 [Telkomsel Sync] Memulai sinkronisasi otomatis ${rows.length} kartu Telkomsel...`);
+      const wsService = require('./websocketService');
+
+      for (const row of rows) {
+        const tokens = {
+          msisdn: row.msisdn,
+          access_token: row.access_token,
+          refresh_token: row.refresh_token,
+          id_token: row.id_token,
+        };
+
+        try {
+          const status = await this.fetchFullTelkomselStatus(tokens);
+          await pool.query(
+            `UPDATE telkomsel_configs SET
+              access_token = ?,
+              refresh_token = ?,
+              id_token = ?,
+              balance = ?,
+              balance_unit = ?,
+              expired_date = ?,
+              subscription_type = ?,
+              quota_data = ?,
+              last_synced_at = NOW()
+            WHERE ews_id = ?`,
+            [
+              tokens.access_token || row.access_token,
+              tokens.refresh_token || row.refresh_token,
+              tokens.id_token || row.id_token,
+              status.balance || 0,
+              status.balanceUnit || 'IDR',
+              status.expiredDate || null,
+              status.subscriptionType || 'PraBayar',
+              JSON.stringify(status),
+              row.ews_id,
+            ]
+          );
+
+          if (wsService && typeof wsService.publish === 'function') {
+            const formatted = {
+              ewsId: row.ews_id,
+              phoneNumber: row.phone_number,
+              msisdn: row.msisdn,
+              balance: parseFloat(status.balance || 0),
+              balanceUnit: status.balanceUnit || 'IDR',
+              expiredDate: status.expiredDate || null,
+              subscriptionType: status.subscriptionType || 'PraBayar',
+              quotaData: status,
+              lastSyncedAt: new Date().toISOString(),
+              isConnected: true,
+            };
+            wsService.publish('ews/telkomsel/updated', { ewsId: row.ews_id, telkomselConfig: formatted });
+            wsService.publish(`ews/${row.ews_id}/telkomsel`, { ewsId: row.ews_id, telkomselConfig: formatted });
+          }
+          console.log(`✅ [Telkomsel Sync] Kuota alat ${row.ews_id} (${row.phone_number}) berhasil disinkron.`);
+        } catch (err) {
+          console.warn(`⚠️ [Telkomsel Sync] Gagal sinkron kuota alat ${row.ews_id}:`, err.message);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ [Telkomsel Sync Error]:', e.message);
+    }
+  }
 }
 
 module.exports = new TelkomselService();

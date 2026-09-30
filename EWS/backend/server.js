@@ -12,6 +12,7 @@ require('dotenv').config();
 const db = require('./database/db');
 const wsService = require('./services/websocketService');
 const deviceWatchdog = require('./services/deviceWatchdogService');
+const telkomselService = require('./services/telkomselService');
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -87,7 +88,10 @@ async function startServer() {
   // 2. Mulai Watchdog Pemantau Koneksi & Offline Detector
   deviceWatchdog.start();
 
-  // 3. Inisialisasi WebSocket Server (Pasang ke HTTP Server pada path /ws atau port terpisah jika diatur)
+  // 3. Mulai Sinkronisasi Otomatis Kuota Telkomsel & Token Rolling Keep-Alive (Setiap 6 Jam)
+  telkomselService.startPeriodicSync(6);
+
+  // 4. Inisialisasi WebSocket Server (Pasang ke HTTP Server pada path /ws atau port terpisah jika diatur)
   if (WS_PORT && WS_PORT !== PORT) {
     wsService.init(WS_PORT, WS_PATH);
     console.log(`🚀 [WebSocket] Server mandiri aktif di ws://0.0.0.0:${WS_PORT}${WS_PATH}`);

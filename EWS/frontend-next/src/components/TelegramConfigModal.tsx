@@ -364,7 +364,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                   <div className="space-y-1">
                     <span>{testLog.message}</span>
                     <p className="text-[11px] font-normal text-rose-600 dark:text-rose-300">
-                      💡 <b>Panduan Mengatasi:</b><br />
+                      <b>Panduan Mengatasi:</b><br />
                       1. Pastikan Bot Token diambil dari <b>@BotFather</b> secara lengkap.<br />
                       2. Pastikan Anda sudah membuka bot tersebut di Telegram dan menekan tombol <b>/start</b>.<br />
                       3. Jika mengirim ke Grup, pastikan Bot sudah diundang ke dalam grup tersebut dan diatur sebagai Admin.
@@ -382,7 +382,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
             <span>Uji terakhir:</span>
             <span className="font-semibold text-slate-700 dark:text-slate-300">{config.lastTestTime || 'Belum pernah'}</span>
             {saveError && (
-              <span className="text-rose-600 dark:text-rose-400 font-medium ml-2">⚠️ {saveError}</span>
+              <span className="text-rose-600 dark:text-rose-400 font-medium ml-2">{saveError}</span>
             )}
             {saveSuccess && (
               <span className="text-emerald-600 dark:text-emerald-400 font-medium ml-2 flex items-center gap-1">

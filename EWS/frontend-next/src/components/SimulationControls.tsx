@@ -31,31 +31,31 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
 
     if (scenario === 'bahaya') {
       setSimToast({
-        title: `🚨 BAHAYA! Sirine 12V 110dB Aktif di ${targetName}`,
-        desc: `Telegram Bot terkirim: "⚠️ Peringatan Utama Bahaya Longsor di ${targetName}!"`,
+        title: `Bahaya: Sirine 12V 110dB Aktif di ${targetName}`,
+        desc: `Telegram Bot terkirim: Peringatan Utama Bahaya Longsor di ${targetName}!`,
         type: 'danger',
       });
     } else if (scenario === 'siaga') {
       setSimToast({
-        title: `⚠️ Status SIAGA Dipicu pada ${targetName}`,
+        title: `Status Siaga Dipicu pada ${targetName}`,
         desc: `Telegram Bot mengirim notifikasi peringatan parameter kemiringan > 1.5°.`,
         type: 'warning',
       });
     } else if (scenario === 'offline') {
       setSimToast({
-        title: `📡 Sinyal GSM Terputus pada ${targetName}`,
+        title: `Sinyal GSM Terputus pada ${targetName}`,
         desc: `ESP32 beralih menyimpan log ke MicroSD 32GB. Bot Telegram memberi tahu status offline.`,
         type: 'offline',
       });
     } else if (scenario === 'baterai_lemah') {
       setSimToast({
-        title: `🔋 Baterai Kritis (<11.8V) pada ${targetName}`,
+        title: `Baterai Kritis (<11.8V) pada ${targetName}`,
         desc: `Low Voltage Disconnect siaga. Bot Telegram mengirim peringatan daya surya 30Wp.`,
         type: 'warning',
       });
     } else {
       setSimToast({
-        title: `✅ Status ${targetName} Dikembalikan Normal (Aman)`,
+        title: `Status ${targetName} Dikembalikan Normal (Aman)`,
         desc: `Sensor stabil, sirine padam, dan bot mengirim notifikasi Normal Kembali.`,
         type: 'success',
       });

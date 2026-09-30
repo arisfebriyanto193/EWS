@@ -23,11 +23,12 @@ import {
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
 import { LoginModal } from './LoginModal';
-import { Navbar } from './Navbar';
+import { Sidebar } from './Sidebar';
+import { Header } from './Header';
+import { AccountSettingsView } from './AccountSettingsView';
 import { OverviewAllEWS } from './OverviewAllEWS';
 import { EWSDashboardSingle } from './EWSDashboardSingle';
 import { AlarmHistoryView } from './AlarmHistoryView';
-import { PestTrapDashboard } from './PestTrapDashboard';
 import { EngineeringDocsModal } from './EngineeringDocsModal';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
@@ -55,6 +56,7 @@ export default function App() {
   const [editingTelegramEws, setEditingTelegramEws] = useState<EWSNode | null>(null);
   const [editingTelkomselEws, setEditingTelkomselEws] = useState<EWSNode | null>(null);
   const [globalMute, setGlobalMute] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Audio synthesizer ref for simulated local 12V 110dB siren
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -678,110 +680,111 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150">
-      {/* Navbar dengan Live WebSocket Status */}
-      <Navbar
-            currentUser={currentUser}
-            activeTab={activeTab}
-            onSelectTab={setActiveTab}
-            onLogout={handleLogout}
-            onOpenDocs={() => setIsDocsOpen(true)}
-            ewsNodes={ewsNodes}
-            wsStatus={wsStatus}
-            onAddEwsClick={() => setIsAddEWSOpen(true)}
-          />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150">
+      {/* Sidebar Navigasi Samping Kiri */}
+      <Sidebar
+        currentUser={currentUser}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        onLogout={handleLogout}
+        onOpenDocs={() => setIsDocsOpen(true)}
+        ewsNodes={ewsNodes}
+        alarmLogs={alarmLogs}
+        wsStatus={wsStatus}
+        onAddEwsClick={() => setIsAddEWSOpen(true)}
+        isOpenMobile={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
-          {/* Active Siren Banner (Page 3 & 6 of Document) */}
-          {activeSirenNodes.length > 0 && (
-            <div className="bg-red-600 text-white px-4 py-3 flex items-center justify-between shadow-xl animate-pulse sticky top-16 z-30">
-              <div className="flex items-center gap-3">
-                <ShieldAlert className="w-5 h-5 shrink-0" />
-                <div className="text-xs sm:text-sm font-bold">
-                  PERINGATAN BAHAYA: Sirine Lokal 12V 110dB &amp; Lampu Strobo Aktif di{' '}
-                  {activeSirenNodes.map((e) => e.name).join(', ')}!
-                </div>
-              </div>
+      {/* Main Content Area (Bersebelahan dengan Sidebar di Desktop) */}
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-72 min-h-screen">
+        {/* Top Header Bar */}
+        <Header
+          currentUser={currentUser}
+          activeTab={activeTab}
+          activeEws={currentEws}
+          onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+          anySirenActive={anySirenActive}
+          activeSirenNodes={activeSirenNodes}
+          globalMute={globalMute}
+          onToggleMute={() => setGlobalMute(!globalMute)}
+          onAddEwsClick={() => setIsAddEWSOpen(true)}
+        />
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setGlobalMute(!globalMute)}
-                  className="px-3 py-1 bg-red-950/80 hover:bg-red-900 border border-red-300/40 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                >
-                  {globalMute ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                  <span>{globalMute ? 'Unmute Audio' : 'Mute Sirine Audio'}</span>
-                </button>
-              </div>
-            </div>
+        {/* Main Content Container */}
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* 1. Overview / Ringkasan Semua Titik */}
+          {activeTab === 'overview' && (
+            <OverviewAllEWS
+              ewsNodes={ewsNodes}
+              onSelectEws={(ewsId) => setActiveTab(ewsId)}
+              onOpenTelegramConfig={(ews) => setEditingTelegramEws(ews)}
+              onOpenTelkomselConfig={(ews) => setEditingTelkomselEws(ews)}
+              onAddEwsClick={() => setIsAddEWSOpen(true)}
+              onDeleteEws={handleDeleteEws}
+            />
           )}
 
-          {/* Main Content Container */}
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* 2. Detail Titik Pantau EWS Tertentu */}
+          {currentEws && (
+            <EWSDashboardSingle
+              key={currentEws.id}
+              ews={currentEws}
+              currentUser={currentUser}
+              onUpdateEws={handleUpdateEws}
+              onTriggerAlarm={handleTriggerAlarm}
+              onResetAlarm={handleResetAlarm}
+            />
+          )}
 
-            {/* View Switching */}
-            {activeTab === 'overview' && (
-              <OverviewAllEWS
-                ewsNodes={ewsNodes}
-                onSelectEws={(ewsId) => setActiveTab(ewsId)}
-                onOpenTelegramConfig={(ews) => setEditingTelegramEws(ews)}
-                onOpenTelkomselConfig={(ews) => setEditingTelkomselEws(ews)}
-                onAddEwsClick={() => setIsAddEWSOpen(true)}
-                onDeleteEws={handleDeleteEws}
-              />
-            )}
+          {/* 3. Riwayat Alarm & Mitigasi */}
+          {activeTab === 'alarm-history' && (
+            <AlarmHistoryView
+              logs={alarmLogs}
+              currentUser={currentUser}
+              onAcknowledgeLog={handleAcknowledgeLog}
+            />
+          )}
 
-            {currentEws && (
-              <EWSDashboardSingle
-                key={currentEws.id}
-                ews={currentEws}
-                currentUser={currentUser}
-                onUpdateEws={handleUpdateEws}
-                onTriggerAlarm={handleTriggerAlarm}
-                onResetAlarm={handleResetAlarm}
-              />
-            )}
+          {/* 5. Pengaturan Akun & Keamanan */}
+          {activeTab === 'account-settings' && (
+            <AccountSettingsView
+              currentUser={currentUser}
+              onUpdateUser={(updatedUser) => {
+                setCurrentUser(updatedUser);
+                localStorage.setItem('ews_user', JSON.stringify(updatedUser));
+              }}
+            />
+          )}
+        </main>
 
-            {activeTab === 'pest-traps' && (
-              <PestTrapDashboard
-                traps={pestTraps}
-                onUpdateTrap={handleUpdateTrap}
-              />
-            )}
-
-            {activeTab === 'alarm-history' && (
-              <AlarmHistoryView
-                logs={alarmLogs}
-                currentUser={currentUser}
-                onAcknowledgeLog={handleAcknowledgeLog}
-              />
-            )}
-          </main>
-
-          {/* Footer */}
-          <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-6 text-xs text-slate-600 dark:text-slate-400 transition-colors">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  Sistem Web Monitoring 4 Titik Landslide Early Warning System (EWS)
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Standar IP65 &bull; Bertenaga Surya Mandiri 30Wp &bull; Transmisi Seluler SIMCom 4G LTE &amp; Bot Telegram
-                </p>
-              </div>
-
-              <div className="flex items-center gap-4 text-[11px]">
-                <button
-                  onClick={() => setIsDocsOpen(true)}
-                  className="hover:text-blue-600 dark:hover:text-blue-400 underline cursor-pointer"
-                >
-                  Spesifikasi Teknis &amp; Fabrikasi 3D
-                </button>
-                <span>&bull;</span>
-                <span className="font-mono text-slate-700 dark:text-slate-300">
-                  Gateway: WebSocket /ws | REST Port 5000
-                </span>
-              </div>
+        {/* Clean Professional Footer */}
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-5 text-xs text-slate-500 dark:text-slate-400 transition-colors mt-auto">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">
+                Pusat Kendali Landslide Early Warning System (EWS)
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Multi-Node Telemetry &bull; Sirine Lokal 12V 110dB &bull; Bot Telegram &amp; Kuota Telkomsel
+              </p>
             </div>
-          </footer>
+
+            <div className="flex items-center gap-4 text-[11px]">
+              <button
+                onClick={() => setIsDocsOpen(true)}
+                className="hover:text-blue-600 dark:hover:text-blue-400 underline cursor-pointer"
+              >
+                Spesifikasi Teknis
+              </button>
+              <span>&bull;</span>
+              <span className="font-mono text-slate-600 dark:text-slate-400">
+                Gateway: WebSocket /ws &bull; Port 5000
+              </span>
+            </div>
+          </div>
+        </footer>
+      </div>
 
           {/* Engineering 3D CAD Docs Modal */}
           <EngineeringDocsModal

@@ -11,6 +11,8 @@ const logController = require('../controllers/logController');
 router.post('/auth/login', authController.login);
 router.get('/auth/me', authController.getMe);
 router.get('/auth/users', authController.getUsers);
+router.put('/auth/profile', authController.updateProfile);
+router.put('/auth/change-password', authController.changePassword);
 
 // 2. EWS Nodes Routes
 router.get('/ews', ewsController.getAllEws);
