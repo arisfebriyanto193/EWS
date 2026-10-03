@@ -36,6 +36,7 @@
  */
 
 #include <WiFi.h>
+#include <WiFiManager.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
@@ -973,21 +974,100 @@ void setup() {
   initMPU6050();
   initINA226();
 
-  // Koneksi WiFi
+  // =============================================================================
+  // KONEKSI WIFI & FAILOVER WIFIMANAGER (TIMEOUT 15 DETIK)
+  // =============================================================================
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.printf("🔌 Menghubungkan ke WiFi: %s ", WIFI_SSID);
 
-  int wifiRetries = 0;
-  while (WiFi.status() != WL_CONNECTED && wifiRetries < 40) {
+#if ENABLE_OLED
+  if (oledAvailable) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SH110X_WHITE);
+    display.setCursor(0, 10);
+    display.println("Koneksi WiFi...");
+    display.printf("SSID: %s\n", WIFI_SSID);
+    display.println("Timeout: 15 detik");
+    display.display();
+  }
+#endif
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  unsigned long startWifiAttempt = millis();
+  const unsigned long WIFI_TIMEOUT_MS = 15000; // Batas waktu 15 detik
+
+  while (WiFi.status() != WL_CONNECTED && (millis() - startWifiAttempt < WIFI_TIMEOUT_MS)) {
     delay(500);
     Serial.print(".");
-    wifiRetries++;
+  }
+
+  // Jika gagal tersambung dalam 15 detik, picu Captive Portal WiFiManager
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\n⚠️ Gagal terhubung ke WiFi dalam 15 detik!");
+    Serial.println("🌐 Mengaktifkan Access Point WiFiManager untuk konfigurasi SSID/Password...");
+
+    String apSSID = String("EWS-Config-") + EWS_ID;
+
+#if ENABLE_OLED
+    if (oledAvailable) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(SH110X_WHITE);
+      display.setCursor(0, 0);
+      display.println("WIFI TIMEOUT (15s)!");
+      display.drawLine(0, 10, 127, 10, SH110X_WHITE);
+      display.setCursor(0, 14);
+      display.println("Buka Hotspot AP:");
+      display.printf("SSID: %s\n", apSSID.c_str());
+      display.setCursor(0, 36);
+      display.println("Web Config Portal:");
+      display.println("IP: 192.168.4.1");
+      display.display();
+    }
+#endif
+
+    WiFiManager wm;
+    // Timeout untuk config portal (180 detik) agar proses tidak hang jika ditinggal tanpa konfigurasi
+    wm.setConfigPortalTimeout(180);
+
+    bool portalRes = wm.startConfigPortal(apSSID.c_str());
+
+    if (!portalRes) {
+      Serial.println("❌ WiFiManager timeout / konfigurasi batal. Melanjutkan sistem...");
+#if ENABLE_OLED
+      if (oledAvailable) {
+        display.clearDisplay();
+        display.setCursor(0, 15);
+        display.println("WiFi Portal Timeout");
+        display.println("Sistem Mode Offline");
+        display.display();
+        delay(1500);
+      }
+#endif
+    } else {
+      Serial.println("✅ WiFi berhasil dikonfigurasi melalui WiFiManager!");
+    }
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n✅ WiFi Terhubung!");
-    Serial.printf("   IP Address: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("   SSID       : %s\n", WiFi.SSID().c_str());
+    Serial.printf("   IP Address : %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("   Signal RSSI: %d dBm\n", WiFi.RSSI());
+
+#if ENABLE_OLED
+    if (oledAvailable) {
+      display.clearDisplay();
+      display.setCursor(0, 10);
+      display.println("WIFI TERHUBUNG!");
+      display.printf("SSID: %s\n", WiFi.SSID().c_str());
+      display.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+      display.display();
+      delay(1500);
+    }
+#endif
   } else {
     Serial.println("\n⚠️ Gagal koneksi WiFi, proses tetap berjalan...");
   }
