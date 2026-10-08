@@ -48,6 +48,7 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <Preferences.h>
+#include <Adafruit_NeoPixel.h>
 
 // Library Display & Sensor I2C
 #include <Adafruit_GFX.h>
@@ -61,7 +62,9 @@
 #define PIN_I2C_SCL     22    // D22 - I2C SCL
 
 #define PIN_RELAY_1     14    // in1 (Relay 1 - Trigger Trap / Zapper)
-#define PIN_RELAY_2     12    // in2 (Relay 2 - Lampu UV menyala saat RUNNING)
+#define PIN_WS2812B     12    // in2 / D12 - Pin Data LED WS2812B (Menggantikan Relay 2 Lampu Atraktor)
+#define PIN_RELAY_2     PIN_WS2812B // Alias untuk kompatibilitas
+#define NUM_WS2812B     8     // Jumlah LED WS2812B (Dapat disesuaikan: 1, 8, 16, dll)
 #define PIN_RELAY_3     13    // in3 (Relay 3 - Auxiliary / Cadangan)
 
 #define PIN_BT1         25    // bt1 - Tombol navigasi display
@@ -80,9 +83,18 @@
 #define OLED_RESET      -1
 
 enum OperationMode {
-  MODE_AUTO = 0,        // Berdasarkan jadwal RTC (Lampu UV & Deteksi otomatis)
-  MODE_MANUAL_ON = 1,   // Selalu RUNNING (Lampu UV & Deteksi selalu aktif)
-  MODE_MANUAL_OFF = 2   // Selalu STANDBY (Lampu UV mati)
+  MODE_AUTO = 0,        // Berdasarkan jadwal RTC (Lampu Atraktor & Deteksi otomatis)
+  MODE_MANUAL_ON = 1,   // Selalu RUNNING (Lampu Atraktor & Deteksi selalu aktif)
+  MODE_MANUAL_OFF = 2   // Selalu STANDBY (Lampu Atraktor mati)
+};
+
+// ==================== STRUKTUR PRESET WARNA LED HAMA ====================
+struct PestPreset {
+  char name[24];
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  uint8_t brightness; // 0 - 100%
 };
 
 // ==================== STRUKTUR DATA BERSAMA (SHARED STATE) ====================
@@ -111,6 +123,12 @@ struct SystemState {
   bool relayActiveLow;
   float shuntResistor_ohm;
 
+  // Konfigurasi LED Atraktor WS2812B & Preset Hama
+  uint8_t activePreset;        // Indeks preset aktif (0 - 4)
+  PestPreset presets[5];       // 5 Preset warna target hama
+  bool ledState;               // Status aktual LED WS2812B (ON / OFF)
+  bool reqUpdateLed;           // Permintaan update fisik LED dari Core 0 ke Core 1
+
   // Data Runtime Sensor & Aktuator
   uint32_t pestCounter;
   uint16_t currentDistance;
@@ -118,7 +136,7 @@ struct SystemState {
   bool isSystemRunning;
   bool isIdleSleeping;      // True saat MODE_AUTO dan di luar jadwal (hemat daya)
   bool relay1State;
-  bool relay2State;
+  bool relay2State;         // Status Lampu Atraktor (kompatibilitas)
   bool relay3State;
 
   float busVoltage_V;
@@ -139,7 +157,7 @@ struct SystemState {
   uint8_t reqMonth, reqDay, reqHour, reqMin, reqSec;
 
   bool reqResetCounter;
-  uint8_t reqManualRelay; // 0: none, 1: trigger R1, 2: toggle R2, 3: toggle R3
+  uint8_t reqManualRelay; // 0: none, 1: trigger R1, 2: toggle LED/R2, 3: toggle R3
   bool reqSaveConfig;
   bool reqSaveCounter;
 };
@@ -153,9 +171,21 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Adafruit_VL53L0X sensorVL53 = Adafruit_VL53L0X();
 RTC_DS3231 rtc;
 INA226_WE ina226(INA226_I2C_ADDR);
+Adafruit_NeoPixel ws2812b(NUM_WS2812B, PIN_WS2812B, NEO_GRB + NEO_KHZ800);
 WebServer server(80);
 DNSServer dnsServer;
 Preferences prefs;
+
+// Nilai Preset Default Berdasarkan Riset Spektrum & Fototaksis Hama
+const PestPreset DEFAULT_PRESETS[5] = {
+  {"Wereng (Biru-UV)",     30,   0, 255, 100}, // P1: Wereng Coklat & Hijau: Fototaksis puncak pada spektrum Biru-UV (400-450 nm)
+  {"Kutu Kebul/Thrips",  255, 200,   0, 100}, // P2: Kutu Kebul, Kutu Daun, Thrips: Tertarik reflektansi Kuning-Amber (520-560 nm)
+  {"Penggerek Batang",      0, 220, 255, 100}, // P3: Penggerek Batang Padi: Ngengat tertarik pada spektrum Biru-Cyan (460-490 nm)
+  {"Ulat Grayak/Ngengat",   0, 255,  40, 100}, // P4: Ulat Grayak / Spodoptera: Fotoreseptor visual peka Hijau Cerah (510-530 nm)
+  {"Lalat Buah/Umum",     255, 255, 255, 100}  // P5: Lalat Buah & Hama Nokturnal: Spektrum Putih Luas (Broad-Spectrum 6500K)
+};
+
+void applyLedColorCore1(bool turnOn);
 
 // Task Handle Core 0
 TaskHandle_t taskWebHandle = NULL;
@@ -223,10 +253,33 @@ void handleSaveSettings();
 void handleSyncRtc();
 void handleResetCounter();
 void handleManualRelay();
+void handleSetActivePreset();
+void handleSavePreset();
 
 // Helper Level Relay
 inline uint8_t getRelayPinLevel(bool active, bool activeLow) {
   return (activeLow ? (active ? LOW : HIGH) : (active ? HIGH : LOW));
+}
+
+// ==================== KONTROL FISIK LED WS2812B (CORE 1) ====================
+void applyLedColorCore1(bool turnOn) {
+  if (!turnOn) {
+    ws2812b.clear();
+    ws2812b.show();
+    return;
+  }
+  uint8_t pIdx = sysData.activePreset;
+  if (pIdx >= 5) pIdx = 0;
+  PestPreset p = sysData.presets[pIdx];
+  // Skala warna sesuai kecerahan (0 - 100%)
+  uint8_t r = (uint16_t)p.r * p.brightness / 100;
+  uint8_t g = (uint16_t)p.g * p.brightness / 100;
+  uint8_t b = (uint16_t)p.b * p.brightness / 100;
+  uint32_t color = ws2812b.Color(r, g, b);
+  for (int i = 0; i < NUM_WS2812B; i++) {
+    ws2812b.setPixelColor(i, color);
+  }
+  ws2812b.show();
 }
 
 // ==================== HELPER I2C ADDRESS CHECKER ====================
@@ -262,20 +315,27 @@ void setup() {
   sysData.zapCooldown_ms = 800;
   sysData.relayActiveLow = true;
   sysData.shuntResistor_ohm = 0.1;
+  sysData.activePreset = 0;
+  for (int i = 0; i < 5; i++) {
+    sysData.presets[i] = DEFAULT_PRESETS[i];
+  }
   sysData.bt1Raw = 1;
   sysData.bt2Raw = 1;
   sysData.bt3Raw = 1;
   sysData.currentDistance = 9999;
   softBaseMillis = millis();
 
-  // 2. Inisialisasi GPIO Pin Relay & Tombol
+  // 2. Inisialisasi GPIO Pin Relay & WS2812B
   pinMode(PIN_RELAY_1, OUTPUT);
-  pinMode(PIN_RELAY_2, OUTPUT);
   pinMode(PIN_RELAY_3, OUTPUT);
-
   digitalWrite(PIN_RELAY_1, getRelayPinLevel(false, sysData.relayActiveLow));
-  digitalWrite(PIN_RELAY_2, getRelayPinLevel(false, sysData.relayActiveLow));
   digitalWrite(PIN_RELAY_3, getRelayPinLevel(false, sysData.relayActiveLow));
+
+  // Inisialisasi LED Atraktor WS2812B (Pin 12)
+  ws2812b.begin();
+  ws2812b.clear();
+  ws2812b.show();
+  Serial.printf("[WS2812B] Driver NeoPixel diinisialisasi pada Pin D%d (Jumlah LED: %d)\n", PIN_WS2812B, NUM_WS2812B);
 
   pinMode(PIN_BT1, INPUT_PULLUP);
   pinMode(PIN_BT2, INPUT_PULLUP);
@@ -337,6 +397,8 @@ void taskWebServerCore0(void *pvParameters) {
   server.on("/api/sync-rtc", HTTP_POST, handleSyncRtc);
   server.on("/api/reset-count", HTTP_POST, handleResetCounter);
   server.on("/api/relay-test", HTTP_POST, handleManualRelay);
+  server.on("/api/set-active-preset", HTTP_POST, handleSetActivePreset);
+  server.on("/api/save-preset", HTTP_POST, handleSavePreset);
 
   // Captive Portal Fallbacks
   server.on("/generate_204", HTTP_GET, handleRoot);
@@ -468,17 +530,18 @@ void loop() {
       wasIdleSleeping = true;
       idleOledOffTime = currentMillis + 5000; // OLED mati dalam 5 detik
 
-      // Matikan semua relay saat masuk idle
+      // Matikan semua relay & LED saat masuk idle
       sysData.relay1State = false;
       sysData.relay2State = false;
+      sysData.ledState = false;
       digitalWrite(PIN_RELAY_1, getRelayPinLevel(false, sysData.relayActiveLow));
-      digitalWrite(PIN_RELAY_2, getRelayPinLevel(false, sysData.relayActiveLow));
+      applyLedColorCore1(false);
 
       // Aktifkan WiFi Modem Sleep (hemat ~40mA)
       esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
 
       Serial.println(F("[POWER] >>> MASUK MODE IDLE / HEMAT DAYA <<<"));
-      Serial.println(F("[POWER] Sensor VL53/INA STOP | OLED mati 5s | WiFi Modem Sleep ON"));
+      Serial.println(F("[POWER] Sensor VL53/INA STOP | OLED mati 5s | WiFi Modem Sleep ON | LED WS2812B PADAM"));
       Serial.printf("[POWER] Jadwal aktif: %02d:%02d - %02d:%02d | Sekarang: %02d:%02d\n",
                     sysData.startHour, sysData.startMin, sysData.endHour, sysData.endMin,
                     sysData.rtcHour, sysData.rtcMinute);
@@ -568,13 +631,15 @@ void loop() {
     checkScheduledOperationCore1();
 
     // Tampilkan waktu dari RTC di Serial Monitor setiap detik
-    Serial.printf("[RTC WAKTU] %02d/%02d/%04d %02d:%02d:%02d [%s] | Mode: %s | Status: %s | UV: %s\n",
+    Serial.printf("[RTC WAKTU] %02d/%02d/%04d %02d:%02d:%02d [%s] | Mode: %s | Status: %s | LED WS2812B: %s (P%d: %s)\n",
                   sysData.rtcDay, sysData.rtcMonth, sysData.rtcYear,
                   sysData.rtcHour, sysData.rtcMinute, sysData.rtcSecond,
                   sysData.rtcReady ? "DS3231" : (sysData.usingSoftClock ? "Soft-Clock" : "OFFLINE"),
                   sysData.mode == MODE_AUTO ? "AUTO" : (sysData.mode == MODE_MANUAL_ON ? "MANUAL-ON" : "MANUAL-OFF"),
                   sysData.isSystemRunning ? "RUNNING" : "STANDBY",
-                  sysData.relay2State ? "ON" : "OFF");
+                  sysData.relay2State ? "ON" : "OFF",
+                  sysData.activePreset + 1,
+                  sysData.presets[sysData.activePreset].name);
   }
 
   // 4. Kontrol Relay 1 (Zapper Trigger Timer)
@@ -583,11 +648,20 @@ void loop() {
     digitalWrite(PIN_RELAY_1, getRelayPinLevel(false, sysData.relayActiveLow));
   }
 
-  // 5. Kontrol Relay 2 (Lampu UV) mengikuti status isSystemRunning
-  if (sysData.relay2State != sysData.isSystemRunning) {
+  // 5. Kontrol LED WS2812B (Lampu Atraktor Hama) mengikuti status isSystemRunning / reqUpdateLed
+  if (sysData.relay2State != sysData.isSystemRunning || sysData.reqUpdateLed) {
     sysData.relay2State = sysData.isSystemRunning;
-    digitalWrite(PIN_RELAY_2, getRelayPinLevel(sysData.relay2State, sysData.relayActiveLow));
-    Serial.printf("[UV] Lampu UV (Relay 2): %s\n", sysData.relay2State ? "MENYALA" : "PADAM");
+    sysData.ledState = sysData.isSystemRunning;
+    sysData.reqUpdateLed = false;
+    applyLedColorCore1(sysData.isSystemRunning);
+    Serial.printf("[WS2812B] Lampu Atraktor: %s (Preset %d: %s | R:%d G:%d B:%d @%d%%)\n",
+                  sysData.isSystemRunning ? "MENYALA" : "PADAM",
+                  sysData.activePreset + 1,
+                  sysData.presets[sysData.activePreset].name,
+                  sysData.presets[sysData.activePreset].r,
+                  sysData.presets[sysData.activePreset].g,
+                  sysData.presets[sysData.activePreset].b,
+                  sysData.presets[sysData.activePreset].brightness);
   }
 
   // 6. Pembacaan Sensor ToF VL53L0X setiap 60 ms
@@ -662,7 +736,8 @@ void handlePendingWebRequestsCore1() {
       } else if (manualRelayCmd == 2) {
         sysData.isSystemRunning = !sysData.isSystemRunning;
         sysData.relay2State = sysData.isSystemRunning;
-        digitalWrite(PIN_RELAY_2, getRelayPinLevel(sysData.relay2State, sysData.relayActiveLow));
+        sysData.ledState = sysData.isSystemRunning;
+        applyLedColorCore1(sysData.isSystemRunning);
         sysData.mode = sysData.isSystemRunning ? MODE_MANUAL_ON : MODE_MANUAL_OFF;
         doSaveConfig = true;
       }
@@ -973,7 +1048,7 @@ void updateDisplayCore1() {
 
   display.setCursor(75, 0);
   if (local.isSystemRunning) {
-    display.print(F("[RUN:UV]"));
+    display.print(F("[RUN:LED]"));
   } else {
     display.print(F("[STBY]"));
   }
@@ -1049,7 +1124,7 @@ void updateDisplayCore1() {
     display.print(F("IP: 192.168.4.1"));
 
     display.setCursor(0, 57);
-    display.printf("UV Lamp: %s", local.relay2State ? "MENYALA" : "PADAM");
+    display.printf("LED P%d: %s", local.activePreset + 1, local.ledState ? "ON" : "OFF");
   }
 
   display.display();
@@ -1069,11 +1144,33 @@ void loadConfigurations() {
   sysData.zapCooldown_ms    = prefs.getUShort("cool", 800);
   sysData.relayActiveLow    = prefs.getBool("actLow", true);
   sysData.shuntResistor_ohm = prefs.getFloat("shunt", 0.1);
+  sysData.activePreset      = prefs.getUChar("actPre", 0);
+  if (sysData.activePreset >= 5) sysData.activePreset = 0;
+
+  for (int i = 0; i < 5; i++) {
+    char keyR[8], keyG[8], keyB[8], keyBr[8], keyNm[8];
+    snprintf(keyR, sizeof(keyR), "pr%d_r", i);
+    snprintf(keyG, sizeof(keyG), "pr%d_g", i);
+    snprintf(keyB, sizeof(keyB), "pr%d_b", i);
+    snprintf(keyBr, sizeof(keyBr), "pr%d_br", i);
+    snprintf(keyNm, sizeof(keyNm), "pr%d_nm", i);
+
+    sysData.presets[i].r = prefs.getUChar(keyR, sysData.presets[i].r);
+    sysData.presets[i].g = prefs.getUChar(keyG, sysData.presets[i].g);
+    sysData.presets[i].b = prefs.getUChar(keyB, sysData.presets[i].b);
+    sysData.presets[i].brightness = prefs.getUChar(keyBr, sysData.presets[i].brightness);
+    String savedName = prefs.getString(keyNm, sysData.presets[i].name);
+    if (savedName.length() > 0) {
+      strncpy(sysData.presets[i].name, savedName.c_str(), sizeof(sysData.presets[i].name) - 1);
+      sysData.presets[i].name[sizeof(sysData.presets[i].name) - 1] = '\0';
+    }
+  }
   prefs.end();
 
-  Serial.printf("[NVS] Data Dimuat: Count=%lu, Mode=%d, Jadwal=%02d:%02d s/d %02d:%02d\n",
+  Serial.printf("[NVS] Data Dimuat: Count=%lu, Mode=%d, Jadwal=%02d:%02d s/d %02d:%02d | Preset Aktif: #%d (%s)\n",
                 (unsigned long)sysData.pestCounter, sysData.mode,
-                sysData.startHour, sysData.startMin, sysData.endHour, sysData.endMin);
+                sysData.startHour, sysData.startMin, sysData.endHour, sysData.endMin,
+                sysData.activePreset + 1, sysData.presets[sysData.activePreset].name);
 }
 
 void saveConfigurations() {
@@ -1088,8 +1185,24 @@ void saveConfigurations() {
   prefs.putUShort("cool", sysData.zapCooldown_ms);
   prefs.putBool("actLow", sysData.relayActiveLow);
   prefs.putFloat("shunt", sysData.shuntResistor_ohm);
+  prefs.putUChar("actPre", sysData.activePreset);
+
+  for (int i = 0; i < 5; i++) {
+    char keyR[8], keyG[8], keyB[8], keyBr[8], keyNm[8];
+    snprintf(keyR, sizeof(keyR), "pr%d_r", i);
+    snprintf(keyG, sizeof(keyG), "pr%d_g", i);
+    snprintf(keyB, sizeof(keyB), "pr%d_b", i);
+    snprintf(keyBr, sizeof(keyBr), "pr%d_br", i);
+    snprintf(keyNm, sizeof(keyNm), "pr%d_nm", i);
+
+    prefs.putUChar(keyR, sysData.presets[i].r);
+    prefs.putUChar(keyG, sysData.presets[i].g);
+    prefs.putUChar(keyB, sysData.presets[i].b);
+    prefs.putUChar(keyBr, sysData.presets[i].brightness);
+    prefs.putString(keyNm, sysData.presets[i].name);
+  }
   prefs.end();
-  Serial.println(F("[NVS] Konfigurasi berhasil disimpan ke flash."));
+  Serial.println(F("[NVS] Konfigurasi (termasuk 5 Preset LED WS2812B) berhasil disimpan ke flash."));
 }
 
 void savePestCounter() {
@@ -1182,7 +1295,7 @@ void handleRoot() {
     "<div class='container'>"
     "  <div class='header'>"
     "    <h1>&#x1F99F; SMART PEST TRAP</h1>"
-    "    <p>Pengendali Perangkap Hama & Lampu UV Otomatis berbasis ESP32</p>"
+    "    <p>Pengendali Perangkap Hama & Atraktor LED WS2812B berbasis ESP32</p>"
     "    <span class='badge-core'>FreeRTOS Dual-Core & Smart Auto-Recovery</span>"
     "  </div>"
     "  <div class='card'>"
@@ -1265,8 +1378,8 @@ void handleRoot() {
     "        <div style='font-size:16px;font-weight:600;margin-top:6px;color:#f8fafc;' id='valRtc'>--:--:--</div>"
     "      </div>"
     "      <div class='stat-box'>"
-    "        <div class='stat-lbl'>Lampu UV (Relay 2)</div>"
-    "        <div style='font-size:16px;font-weight:600;margin-top:6px;' id='valUvStatus'>-</div>"
+    "        <div class='stat-lbl'>Atraktor LED (WS2812B)</div>"
+    "        <div style='font-size:15px;font-weight:600;margin-top:6px;' id='valUvStatus'>-</div>"
     "      </div>"
     "    </div>"
     "    <div style='margin-top:12px;display:flex;gap:8px;'>"
@@ -1284,7 +1397,7 @@ void handleRoot() {
     "        <label>Mode Operasi:</label>"
     "        <select id='modeSelect' name='mode'>"
     "          <option value='0'>Otomatis (Berdasarkan Jadwal RTC)</option>"
-    "          <option value='1'>Manual ON (Selalu Aktif / UV Menyala)</option>"
+    "          <option value='1'>Manual ON (Selalu Aktif / LED Menyala)</option>"
     "          <option value='2'>Manual OFF (Selalu Mati)</option>"
     "        </select>"
     "      </div>"
@@ -1304,6 +1417,76 @@ void handleRoot() {
     "      <button type='submit'>Simpan Jadwal Operasi</button>"
     "      <div id='schedToast' class='toast'></div>"
     "    </form>"
+    "  </div>"
+  );
+
+  // ===== CHUNK 7B: PRESET WS2812B ATRAKTOR HAMA =====
+  sendChunk(
+    "  <div class='card'>"
+    "    <div class='card-title'>"
+    "      <span>&#x1F4A1; Preset Spektrum LED WS2812B (Atraktor Hama)</span>"
+    "      <span id='activePresetBadge' class='badge badge-run'>PRESET 1</span>"
+    "    </div>"
+    "    <div class='form-group'>"
+    "      <label>Pilih Spektrum Hama Aktif:</label>"
+    "      <div style='display:flex;gap:8px;'>"
+    "        <select id='activePresetSelect' style='flex:1;'></select>"
+    "        <button type='button' style='width:auto;white-space:nowrap;' onclick='applyActivePreset()'>&#x2714; Terapkan</button>"
+    "      </div>"
+    "      <div id='presetActiveToast' class='toast'></div>"
+    "    </div>"
+    "    <div style='margin-top:14px;padding-top:14px;border-top:1px solid var(--border);'>"
+    "      <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;'>"
+    "        <span style='font-size:14px;font-weight:600;color:#f8fafc;'>&#x270F;&#xFE0F; Edit Parameter Preset</span>"
+    "        <select id='editPresetSelect' onchange='loadPresetToForm(parseInt(this.value))' style='width:auto;padding:4px 8px;font-size:12px;'></select>"
+    "      </div>"
+    "      <form id='presetEditForm' onsubmit='savePresetForm(event)'>"
+    "        <div class='form-group'>"
+    "          <label>Target Hama / Nama Preset:</label>"
+    "          <input type='text' id='preName' maxlength='31' required>"
+    "        </div>"
+    "        <div class='grid-2'>"
+    "          <div class='form-group'>"
+    "            <label>Pilihan Warna Visual:</label>"
+    "            <div style='display:flex;gap:8px;align-items:center;'>"
+    "              <input type='color' id='preColorPicker' oninput='onColorPickerChange(this.value)' style='height:42px;width:55px;padding:2px;cursor:pointer;border-radius:8px;'>"
+    "              <div id='colorPreviewBox' style='flex:1;height:42px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;'>WARNA</div>"
+    "            </div>"
+    "          </div>"
+    "          <div class='form-group'>"
+    "            <label>Tingkat Kecerahan / Brightness:</label>"
+    "            <div style='display:flex;gap:10px;align-items:center;margin-top:8px;'>"
+    "              <input type='range' id='preBri' min='5' max='100' value='80' oninput='onBriSliderChange(this.value)' style='flex:1;cursor:pointer;'>"
+    "              <span id='lblBri' style='font-size:14px;font-weight:bold;width:45px;text-align:right;'>80%</span>"
+    "            </div>"
+    "          </div>"
+    "        </div>"
+    "        <div class='grid-3'>"
+    "          <div class='form-group'>"
+    "            <label>Red (0-255):</label>"
+    "            <input type='number' id='preR' min='0' max='255' oninput='onRgbInputChange()'>"
+    "          </div>"
+    "          <div class='form-group'>"
+    "            <label>Green (0-255):</label>"
+    "            <input type='number' id='preG' min='0' max='255' oninput='onRgbInputChange()'>"
+    "          </div>"
+    "          <div class='form-group'>"
+    "            <label>Blue (0-255):</label>"
+    "            <input type='number' id='preB' min='0' max='255' oninput='onRgbInputChange()'>"
+    "          </div>"
+    "        </div>"
+    "        <button type='submit' class='btn-secondary'>&#x1F4BE; Simpan Perubahan Preset Ini</button>"
+    "        <div id='presetEditToast' class='toast'></div>"
+    "      </form>"
+    "    </div>"
+    "    <div style='margin-top:14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--sub);line-height:1.6;'>"
+    "      <b style='color:var(--accent);display:block;margin-bottom:6px;'>&#x1F52C; Panduan Riset Spektrum Daya Tarik Hama:</b>"
+    "      <div>&bull; <b style='color:#38bdf8;'>Biru/UV (400-470nm):</b> Wereng Coklat (<i>Nilaparvata lugens</i>) & Penggerek Batang.</div>"
+    "      <div>&bull; <b style='color:#fbbf24;'>Kuning (570-590nm):</b> Kutu Kebul (<i>Bemisia tabaci</i>), Kutu Daun & Thrips.</div>"
+    "      <div>&bull; <b style='color:#34d399;'>Hijau/Cyan (500-520nm):</b> Lalat Buah (<i>Bactrocera</i>), Nyamuk & Serangga Air.</div>"
+    "      <div>&bull; <b style='color:#f8fafc;'>Putih Spektrum:</b> Ngengat Nokturnal & Ulat Grayak (<i>Spodoptera litura</i>).</div>"
+    "      <div>&bull; <b style='color:#c084fc;'>Ungu/Violet (380-420nm):</b> Rayap Laron, Kumbang Malam & Serangga Senja.</div>"
+    "    </div>"
     "  </div>"
   );
 
@@ -1361,7 +1544,7 @@ void handleRoot() {
     "        <span id='tagRelay1' class='relay-tag' style='background:rgba(56,189,248,0.2);color:#38bdf8;'>SIAP (KLIK PICU)</span>"
     "      </button>"
     "      <button type='button' id='btnRelay2' class='btn-relay btn-relay-off' onclick='testRelay(2)'>"
-    "        <span style='font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;'>&#x1F4A1; Relay 2 (Lampu UV)</span>"
+    "        <span style='font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;'>&#x1F4A1; Relay 2 (WS2812B Test)</span>"
     "        <span id='tagRelay2' class='relay-tag' style='background:rgba(239,68,68,0.2);color:#f87171;'>MATI (OFF)</span>"
     "      </button>"
     "    </div>"
@@ -1401,8 +1584,10 @@ void handleRoot() {
     "if(!d)return;"
     "var b=document.getElementById('statusBadge');"
     "var uvLbl=document.getElementById('valUvStatus');"
+    "var apb=document.getElementById('activePresetBadge');"
     "if(b){if(d.idle){b.className='badge badge-idle';b.innerText='\u26A1 IDLE (HEMAT DAYA)';}else if(d.running){b.className='badge badge-run';b.innerText='RUNNING (AKTIF)';}else{b.className='badge badge-stby';b.innerText='STANDBY (MATI)';}}"
-    "if(uvLbl){uvLbl.innerHTML=d.idle?'<span style=\"color:#a78bfa;font-weight:700;\">\u26A1 IDLE/SLEEP</span>':(d.running?'<span style=\"color:#34d399;font-weight:700;\">&#x25CF; MENYALA</span>':'<span style=\"color:#f87171;font-weight:700;\">&#x25CF; PADAM</span>');}"
+    "if(apb&&d.presets&&d.presets[d.actPre]){apb.innerText=d.presets[d.actPre].name;}"
+    "if(uvLbl){var pn=(d.presets&&d.presets[d.actPre])?(' ('+d.presets[d.actPre].name+')'):'';uvLbl.innerHTML=d.idle?'<span style=\"color:#a78bfa;font-weight:700;\">\u26A1 IDLE/SLEEP</span>':(d.running?'<span style=\"color:#34d399;font-weight:700;\">&#x25CF; MENYALA'+pn+'</span>':'<span style=\"color:#f87171;font-weight:700;\">&#x25CF; PADAM</span>');}"
     "updateRelayButtons(d.relay1,d.relay2);"
     "setHwBadge('hwOled',d.hwOled?'ONLINE':'DISCONNECTED',d.hwOled);"
     "if(d.hwRtc){setHwBadge('hwRtc','ONLINE',true);}else{setHwBadge('hwRtc',d.softClock?'SOFT-CLOCK':'OFFLINE',false,true);}"
@@ -1436,6 +1621,13 @@ void handleRoot() {
     "var pl=document.getElementById('pulse');if(pl)pl.value=d.pulse;"
     "var cl=document.getElementById('cool');if(cl)cl.value=d.cool;"
     "var al=document.getElementById('actLow');if(al)al.value=d.actLow?'1':'0';}"
+    "if(d.presets&&d.presets.length>=5){"
+    "window._presetsData=d.presets;"
+    "if(!window._preInit){"
+    "window._preInit=true;"
+    "window._currEdit=d.actPre;"
+    "initPresetDropdowns(d.actPre);"
+    "loadPresetToForm(d.actPre);}}"
     "}).catch(function(e){console.error('Fetch err:',e);});}"
   );
 
@@ -1479,6 +1671,20 @@ void handleRoot() {
     "fetch('/api/reset-count',{method:'POST'}).then(function(r){return r.text();}).then(function(m){alert(m);fetchStatus();});}"
     "function testRelay(num){var f=new FormData();f.append('relay',num);"
     "fetch('/api/relay-test',{method:'POST',body:f}).then(function(r){return r.text();}).then(function(m){fetchStatus();});}"
+  );
+
+  // ===== CHUNK 15: JAVASCRIPT - WS2812B Preset handlers =====
+  sendChunk(
+    "function rgbToHex(r,g,b){return '#'+[r,g,b].map(function(x){var h=Math.min(255,Math.max(0,parseInt(x)||0)).toString(16);return h.length===1?'0'+h:h;}).join('');}"
+    "function hexToRgb(h){var m=/^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(h);return m?{r:parseInt(m[1],16),g:parseInt(m[2],16),b:parseInt(m[3],16)}:{r:0,g:0,b:0};}"
+    "function updateColorPreview(r,g,b,bri){var box=document.getElementById('colorPreviewBox');if(!box)return;var h=rgbToHex(r,g,b);box.style.backgroundColor=h;box.style.boxShadow='0 0 16px '+h;box.innerText=h.toUpperCase()+' ('+bri+'%)';}"
+    "function onColorPickerChange(hex){var rgb=hexToRgb(hex);document.getElementById('preR').value=rgb.r;document.getElementById('preG').value=rgb.g;document.getElementById('preB').value=rgb.b;updateColorPreview(rgb.r,rgb.g,rgb.b,document.getElementById('preBri').value);}"
+    "function onRgbInputChange(){var r=parseInt(document.getElementById('preR').value)||0;var g=parseInt(document.getElementById('preG').value)||0;var b=parseInt(document.getElementById('preB').value)||0;var h=rgbToHex(r,g,b);document.getElementById('preColorPicker').value=h;updateColorPreview(r,g,b,document.getElementById('preBri').value);}"
+    "function onBriSliderChange(v){document.getElementById('lblBri').innerText=v+'%';var r=parseInt(document.getElementById('preR').value)||0;var g=parseInt(document.getElementById('preG').value)||0;var b=parseInt(document.getElementById('preB').value)||0;updateColorPreview(r,g,b,v);}"
+    "function initPresetDropdowns(actIdx){var sa=document.getElementById('activePresetSelect');var se=document.getElementById('editPresetSelect');if(!sa||!se||!window._presetsData)return;sa.innerHTML='';se.innerHTML='';for(var i=0;i<window._presetsData.length;i++){var p=window._presetsData[i];var o1=document.createElement('option');o1.value=i;o1.text=(i+1)+'. '+p.name;if(i===actIdx)o1.selected=true;sa.appendChild(o1);var o2=document.createElement('option');o2.value=i;o2.text='Edit Preset '+(i+1)+' ('+p.name+')';if(i===window._currEdit)o2.selected=true;se.appendChild(o2);}}"
+    "function loadPresetToForm(idx){window._currEdit=idx;if(!window._presetsData||!window._presetsData[idx])return;var p=window._presetsData[idx];document.getElementById('preName').value=p.name;document.getElementById('preR').value=p.r;document.getElementById('preG').value=p.g;document.getElementById('preB').value=p.b;document.getElementById('preBri').value=p.bri;document.getElementById('lblBri').innerText=p.bri+'%';var h=rgbToHex(p.r,p.g,p.b);document.getElementById('preColorPicker').value=h;updateColorPreview(p.r,p.g,p.b,p.bri);var se=document.getElementById('editPresetSelect');if(se)se.value=idx;}"
+    "function applyActivePreset(){var s=document.getElementById('activePresetSelect');if(!s)return;var f=new FormData();f.append('preset',s.value);fetch('/api/set-active-preset',{method:'POST',body:f}).then(function(r){return r.text();}).then(function(m){showToast('presetActiveToast',m,false);fetchStatus();}).catch(function(e){showToast('presetActiveToast','Gagal: '+e,true);});}"
+    "function savePresetForm(e){e.preventDefault();var idx=window._currEdit;var nm=document.getElementById('preName').value;var r=document.getElementById('preR').value;var g=document.getElementById('preG').value;var b=document.getElementById('preB').value;var bri=document.getElementById('preBri').value;var f=new FormData();f.append('idx',idx);f.append('name',nm);f.append('r',r);f.append('g',g);f.append('b',b);f.append('bri',bri);fetch('/api/save-preset',{method:'POST',body:f}).then(function(r){return r.text();}).then(function(m){showToast('presetEditToast',m,false);if(window._presetsData&&window._presetsData[idx]){window._presetsData[idx]={name:nm,r:parseInt(r),g:parseInt(g),b:parseInt(b),bri:parseInt(bri)};var sa=document.getElementById('activePresetSelect');initPresetDropdowns(sa?parseInt(sa.value):0);}fetchStatus();}).catch(function(e){showToast('presetEditToast','Gagal: '+e,true);});}"
     "</script></body></html>"
   );
 
@@ -1527,7 +1733,7 @@ void handleApiStatus() {
   float pwr  = (isnan(local.power_mW) || isinf(local.power_mW)) ? 0.0 : local.power_mW;
 
   // Gunakan buffer statis (hemat heap, tidak ada fragmentasi dari String concatenation)
-  static char jsonBuf[650];
+  static char jsonBuf[1200];
   int len = snprintf(jsonBuf, sizeof(jsonBuf),
     "{\"count\":%lu,\"dist\":%u,"
     "\"volt\":%.2f,\"current\":%.1f,\"power\":%.1f,"
@@ -1539,7 +1745,14 @@ void handleApiStatus() {
     "\"rtcTime\":\"%s\",\"rtcDateTime\":\"%s\","
     "\"hwOled\":%s,\"hwRtc\":%s,\"hwVl\":%s,\"hwIna\":%s,"
     "\"softClock\":%s,"
-    "\"bt1\":%d,\"bt2\":%d,\"bt3\":%d}",
+    "\"bt1\":%d,\"bt2\":%d,\"bt3\":%d,"
+    "\"actPre\":%d,"
+    "\"presets\":["
+    "{\"name\":\"%s\",\"r\":%d,\"g\":%d,\"b\":%d,\"bri\":%d},"
+    "{\"name\":\"%s\",\"r\":%d,\"g\":%d,\"b\":%d,\"bri\":%d},"
+    "{\"name\":\"%s\",\"r\":%d,\"g\":%d,\"b\":%d,\"bri\":%d},"
+    "{\"name\":\"%s\",\"r\":%d,\"g\":%d,\"b\":%d,\"bri\":%d},"
+    "{\"name\":\"%s\",\"r\":%d,\"g\":%d,\"b\":%d,\"bri\":%d}]}",
     (unsigned long)local.pestCounter, (unsigned)local.currentDistance,
     volt, curr, pwr,
     local.isSystemRunning ? "true" : "false",
@@ -1559,7 +1772,13 @@ void handleApiStatus() {
     local.sensorReady ? "true" : "false",
     local.inaReady ? "true" : "false",
     local.usingSoftClock ? "true" : "false",
-    (int)local.bt1Raw, (int)local.bt2Raw, (int)local.bt3Raw
+    (int)local.bt1Raw, (int)local.bt2Raw, (int)local.bt3Raw,
+    (int)local.activePreset,
+    local.presets[0].name, local.presets[0].r, local.presets[0].g, local.presets[0].b, local.presets[0].brightness,
+    local.presets[1].name, local.presets[1].r, local.presets[1].g, local.presets[1].b, local.presets[1].brightness,
+    local.presets[2].name, local.presets[2].r, local.presets[2].g, local.presets[2].b, local.presets[2].brightness,
+    local.presets[3].name, local.presets[3].r, local.presets[3].g, local.presets[3].b, local.presets[3].brightness,
+    local.presets[4].name, local.presets[4].r, local.presets[4].g, local.presets[4].b, local.presets[4].brightness
   );
   (void)len; // suppress unused variable warning
 
@@ -1677,4 +1896,61 @@ void handleManualRelay() {
     }
   }
   server.send(400, "text/plain", "Parameter relay tidak valid!");
+}
+
+// API: Ganti Preset Warna Aktif (Core 0 -> Core 1 via Mutex)
+void handleSetActivePreset() {
+  if (server.hasArg("preset")) {
+    int p = server.arg("preset").toInt();
+    if (p >= 0 && p < 5) {
+      if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        sysData.activePreset = (uint8_t)p;
+        sysData.reqUpdateLed = true;
+        sysData.reqSaveConfig = true;
+        xSemaphoreGive(dataMutex);
+        server.send(200, "text/plain", "Preset atraktor aktif berhasil diubah!");
+        return;
+      } else {
+        server.send(503, "text/plain", "Sistem sibuk.");
+        return;
+      }
+    }
+  }
+  server.send(400, "text/plain", "Parameter preset tidak valid!");
+}
+
+// API: Simpan Kustomisasi Preset Warna (Core 0 -> Core 1 via Mutex)
+void handleSavePreset() {
+  if (server.hasArg("idx") && server.hasArg("r") && server.hasArg("g") && server.hasArg("b") && server.hasArg("bri")) {
+    int idx = server.arg("idx").toInt();
+    int r   = server.arg("r").toInt();
+    int g   = server.arg("g").toInt();
+    int b   = server.arg("b").toInt();
+    int bri = server.arg("bri").toInt();
+
+    if (idx >= 0 && idx < 5 && r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255 && bri >= 1 && bri <= 100) {
+      if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        sysData.presets[idx].r = (uint8_t)r;
+        sysData.presets[idx].g = (uint8_t)g;
+        sysData.presets[idx].b = (uint8_t)b;
+        sysData.presets[idx].brightness = (uint8_t)bri;
+        if (server.hasArg("name") && server.arg("name").length() > 0) {
+          String nm = server.arg("name");
+          strncpy(sysData.presets[idx].name, nm.c_str(), sizeof(sysData.presets[idx].name) - 1);
+          sysData.presets[idx].name[sizeof(sysData.presets[idx].name) - 1] = '\0';
+        }
+        if (sysData.activePreset == (uint8_t)idx) {
+          sysData.reqUpdateLed = true;
+        }
+        sysData.reqSaveConfig = true;
+        xSemaphoreGive(dataMutex);
+        server.send(200, "text/plain", "Konfigurasi preset atraktor berhasil disimpan!");
+        return;
+      } else {
+        server.send(503, "text/plain", "Sistem sibuk.");
+        return;
+      }
+    }
+  }
+  server.send(400, "text/plain", "Parameter preset tidak valid!");
 }
