@@ -231,13 +231,29 @@ class WebSocketService {
       await TelemetryService.recordCommand(ewsId, 'ews', cmdData.command || 'UNKNOWN', cmdData, cmdData.issuedBy);
     }
 
+    // D. Deteksi Telemetri Perangkap Hama: traps/{trapId}/telemetry
+    const trapMatch = topic.match(/^traps\/([^/]+)\/telemetry$/);
+    if (trapMatch) {
+      const trapId = trapMatch[1];
+      const parsedData = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      processedPayload = await TelemetryService.processTrapTelemetry(trapId, parsedData);
+    }
+
+    // E. Deteksi Perintah Kontrol Perangkap Hama: traps/{trapId}/command
+    const trapCmdMatch = topic.match(/^traps\/([^/]+)\/command$/);
+    if (trapCmdMatch) {
+      const trapId = trapCmdMatch[1];
+      const cmdData = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      await TelemetryService.recordCommand(trapId, 'trap', cmdData.command || 'UNKNOWN', cmdData, cmdData.issuedBy);
+    }
+
     // Broadcast ke seluruh klien yang subscribe pada topic ini
     this.broadcastToTopic(topic, processedPayload);
 
-    // Broadcast juga ke topic wildcard jika ada subscriber: e.g. ews/+/pitch atau ews/+/telemetry
+    // Broadcast juga ke topic wildcard jika ada subscriber: e.g. ews/+/telemetry atau traps/+/telemetry
     const parts = topic.split('/');
-    if (parts.length === 3 && parts[0] === 'ews') {
-      this.broadcastToTopic(`ews/+/${parts[2]}`, processedPayload);
+    if (parts.length === 3) {
+      this.broadcastToTopic(`${parts[0]}/+/${parts[2]}`, processedPayload);
     }
   }
 

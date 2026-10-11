@@ -57,15 +57,21 @@
 #include <RTClib.h>
 #include <INA226_WE.h>
 
+// Register Kontrol Perangkat Keras ESP32 (Brownout Detector)
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+// ==================== IDENTITAS PERANGKAT ====================
+#define device_id "device_03"
+
 // ==================== DEFINISI PIN SESUAI SKEMATIK ====================
 #define PIN_I2C_SDA     21    // D21 - I2C SDA
 #define PIN_I2C_SCL     22    // D22 - I2C SCL
 
-#define PIN_RELAY_1     14    // in1 (Relay 1 - Trigger Trap / Zapper)
+#define PIN_RELAY_1     13   // in1 (Relay 1 - Trigger Trap / Zapper)
 #define PIN_WS2812B     12    // in2 / D12 - Pin Data LED WS2812B (Menggantikan Relay 2 Lampu Atraktor)
 #define PIN_RELAY_2     PIN_WS2812B // Alias untuk kompatibilitas
-#define NUM_WS2812B     8     // Jumlah LED WS2812B (Dapat disesuaikan: 1, 8, 16, dll)
-#define PIN_RELAY_3     13    // in3 (Relay 3 - Auxiliary / Cadangan)
+#define NUM_WS2812B     30   // Jumlah LED WS2812B (Dapat disesuaikan: 1, 8, 16, dll)
+#define PIN_RELAY_3     12    // in3 (Relay 3 - Auxiliary / Cadangan)
 
 #define PIN_BT1         25    // bt1 - Tombol navigasi display
 #define PIN_BT2         26    // bt2 - Tombol ubah mode operasional (AUTO/ON/OFF)
@@ -226,14 +232,16 @@ unsigned long bt3DebounceTime = 0;
 unsigned long bt3PressStartTime = 0;
 const unsigned long DEBOUNCE_DELAY = 50;
 
-// Kredensial WiFi SoftAP
-const char* apSSID = "Perangkap-Hama-ESP32";
-const char* apPass = "12345678";
+// Kredensial WiFi SoftAP (di C/C++, dua string literal digabung langsung tanpa tanda '+')
+// Catatan: Panjang SSID maksimal 32 karakter untuk standar WiFi 802.11
+const char* apSSID = "Perangkap-Hama " device_id;
+const char* apPass = "123456786";
 
 // ==================== PROTOTYPE FUNGSI ====================
 void taskWebServerCore0(void *pvParameters);
 bool checkI2CAddress(uint8_t addr);
 void autoDetectHardwareCore1();
+bool isDateTimeValid(const DateTime& dt);
 void readVL53L0XCore1();
 void readINA226Core1();
 void readRTCCore1();
@@ -290,6 +298,10 @@ bool checkI2CAddress(uint8_t addr) {
 
 // ==================== SETUP (DIJALANKAN DI CORE 1) ====================
 void setup() {
+  // 0. Nonaktifkan Brownout Detector Hardware ESP32
+  // Mencegah ESP32 restart mendadak akibat penurunan tegangan sesaat saat modul radio WiFi dan relay aktif
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   delay(600);
   Serial.println(F("\n======================================================="));
@@ -326,10 +338,11 @@ void setup() {
   softBaseMillis = millis();
 
   // 2. Inisialisasi GPIO Pin Relay & WS2812B
-  pinMode(PIN_RELAY_1, OUTPUT);
-  pinMode(PIN_RELAY_3, OUTPUT);
+  // Set kondisi OFF sebelum konfigurasi OUTPUT agar koil relay tidak tersentak aktif saat booting
   digitalWrite(PIN_RELAY_1, getRelayPinLevel(false, sysData.relayActiveLow));
   digitalWrite(PIN_RELAY_3, getRelayPinLevel(false, sysData.relayActiveLow));
+  pinMode(PIN_RELAY_1, OUTPUT);
+  pinMode(PIN_RELAY_3, OUTPUT);
 
   // Inisialisasi LED Atraktor WS2812B (Pin 12)
   ws2812b.begin();
@@ -341,10 +354,15 @@ void setup() {
   pinMode(PIN_BT2, INPUT_PULLUP);
   pinMode(PIN_BT3, INPUT_PULLUP);
 
+  // Debug Info Identitas Perangkat & WiFi SoftAP
+  Serial.printf("[DEVICE] ID: %s | SoftAP SSID: %s | Pass: %s\n", device_id, apSSID, apPass);
   // Baca status awal tombol
   sysData.bt1Raw = digitalRead(PIN_BT1);
   sysData.bt2Raw = digitalRead(PIN_BT2);
   sysData.bt3Raw = digitalRead(PIN_BT3);
+  prevReportedBt1 = sysData.bt1Raw;
+  prevReportedBt2 = sysData.bt2Raw;
+  prevReportedBt3 = sysData.bt3Raw;
   Serial.printf("[INISIAL TOMBOL] bt1 (D25)=%d | bt2 (D26)=%d | bt3 (D27)=%d (1=LEPAS, 0=DITEKAN)\n",
                 sysData.bt1Raw, sysData.bt2Raw, sysData.bt3Raw);
 
@@ -353,12 +371,13 @@ void setup() {
 
   // 4. Inisialisasi Bus I2C dengan Timeout Aman
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-  Wire.setClock(400000);
-  Wire.setTimeOut(50); // Timeout 50ms: Mencegah I2C hang saat modul offline/dilepas
+  Wire.setClock(100000); // 100 kHz Standard Mode (sangat stabil untuk DS3231, INA226 & kabel jumper)
+  Wire.setTimeOut(50);   // Timeout 50ms: Mencegah I2C hang saat modul offline/dilepas
 
-  // Lakukan pemindaian awal perangkat I2C
+  // Lakukan pemindaian awal perangkat I2C & inisialisasi waktu
   Serial.println(F("[I2C SCAN] Memindai modul hardware di I2C bus (D21 SDA, D22 SCL)..."));
   autoDetectHardwareCore1();
+  readRTCCore1();
 
   // 5. Luncurkan Task Web Server di CORE 0
   xTaskCreatePinnedToCore(
@@ -378,8 +397,12 @@ void setup() {
 void taskWebServerCore0(void *pvParameters) {
   Serial.printf("[CORE 0] Task Web Server aktif pada Core ID: %d\n", xPortGetCoreID());
 
-  // Setup WiFi Access Point
+  // Beri jeda 150ms agar tegangan sistem stabil sebelum transceiver WiFi RF aktif
+  vTaskDelay(pdMS_TO_TICKS(150));
+
+  // Setup WiFi Access Point dengan batas TX Power untuk mencegah beban lonjakan arus
   WiFi.mode(WIFI_AP);
+  WiFi.setTxPower(WIFI_POWER_15dBm);
   WiFi.softAP(apSSID, apPass);
 
   IPAddress apIP = WiFi.softAPIP();
@@ -417,10 +440,12 @@ void taskWebServerCore0(void *pvParameters) {
 
 // ==================== CORE 1: DETEKSI & AUTO-RECOVERY HARDWARE ====================
 void autoDetectHardwareCore1() {
+  // Hanya scan modul yang belum siap / offline untuk mencegah gangguan bus I2C saat beroperasi
+
   // 1. Cek & Inisialisasi OLED SSD1306 (0x3C)
-  bool oledFound = checkI2CAddress(OLED_I2C_ADDR);
-  if (oledFound) {
-    if (!sysData.oledReady) {
+  if (!sysData.oledReady) {
+    bool oledFound = checkI2CAddress(OLED_I2C_ADDR);
+    if (oledFound) {
       if (display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
         sysData.oledReady = true;
         display.clearDisplay();
@@ -434,17 +459,12 @@ void autoDetectHardwareCore1() {
         Serial.println(F("[HARDWARE] OLED SSD1306 (0x3C): [ONLINE]"));
       }
     }
-  } else {
-    if (sysData.oledReady) {
-      Serial.println(F("[WARNING] OLED SSD1306 Terputus / Tidak Terdeteksi!"));
-    }
-    sysData.oledReady = false;
   }
 
   // 2. Cek & Inisialisasi RTC DS3231 (0x68)
-  bool rtcFound = checkI2CAddress(DS3231_I2C_ADDR);
-  if (rtcFound) {
-    if (!sysData.rtcReady) {
+  if (!sysData.rtcReady) {
+    bool rtcFound = checkI2CAddress(DS3231_I2C_ADDR);
+    if (rtcFound) {
       if (rtc.begin()) {
         sysData.rtcReady = true;
         sysData.usingSoftClock = false;
@@ -453,55 +473,48 @@ void autoDetectHardwareCore1() {
           rtc.adjust(DateTime(2026, 10, 3, 18, 0, 0));
         }
         DateTime now = rtc.now();
-        softBaseEpoch = now.unixtime();
-        softBaseMillis = millis();
-        Serial.printf("[HARDWARE] RTC DS3231 (0x68): [ONLINE] Waktu RTC: %02d/%02d/%04d %02d:%02d:%02d\n",
-                      now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second());
+        if (isDateTimeValid(now)) {
+          softBaseEpoch = now.unixtime();
+          softBaseMillis = millis();
+          Serial.printf("[HARDWARE] RTC DS3231 (0x68): [ONLINE] Waktu RTC: %02d/%02d/%04d %02d:%02d:%02d\n",
+                        now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second());
+        }
       }
+    } else {
+      if (!sysData.usingSoftClock) {
+        Serial.println(F("[WARNING] RTC DS3231 (0x68): [TIDAK TERDETEKSI] -> Mengaktifkan Smart Soft-Clock Internal!"));
+      }
+      sysData.usingSoftClock = true;
     }
-  } else {
-    if (sysData.rtcReady || !sysData.usingSoftClock) {
-      Serial.println(F("[WARNING] RTC DS3231 (0x68): [TIDAK TERDETEKSI] -> Mengaktifkan Smart Soft-Clock Internal!"));
-    }
-    sysData.rtcReady = false;
-    sysData.usingSoftClock = true;
   }
 
   // 3. Cek & Inisialisasi Sensor VL53L0X (0x29)
-  bool vlFound = checkI2CAddress(VL53_I2C_ADDR);
-  if (vlFound) {
-    if (!sysData.sensorReady) {
+  if (!sysData.sensorReady) {
+    bool vlFound = checkI2CAddress(VL53_I2C_ADDR);
+    if (vlFound) {
       if (sensorVL53.begin()) {
         sysData.sensorReady = true;
         Serial.println(F("[HARDWARE] Sensor VL53L0X (0x29): [ONLINE]"));
       }
+    } else {
+      sysData.currentDistance = 9999;
     }
-  } else {
-    if (sysData.sensorReady) {
-      Serial.println(F("[WARNING] Sensor VL53L0X Terputus!"));
-    }
-    sysData.sensorReady = false;
-    sysData.currentDistance = 9999;
   }
 
   // 4. Cek & Inisialisasi INA226 (0x40)
-  bool inaFound = checkI2CAddress(INA226_I2C_ADDR);
-  if (inaFound) {
-    if (!sysData.inaReady) {
+  if (!sysData.inaReady) {
+    bool inaFound = checkI2CAddress(INA226_I2C_ADDR);
+    if (inaFound) {
       if (ina226.init()) {
         sysData.inaReady = true;
         ina226.setResistorRange(sysData.shuntResistor_ohm, 3.2);
         Serial.println(F("[HARDWARE] Sensor INA226 (0x40): [ONLINE]"));
       }
+    } else {
+      sysData.busVoltage_V = 0.0;
+      sysData.current_mA = 0.0;
+      sysData.power_mW = 0.0;
     }
-  } else {
-    if (sysData.inaReady) {
-      Serial.println(F("[WARNING] Sensor INA226 Terputus!"));
-    }
-    sysData.inaReady = false;
-    sysData.busVoltage_V = 0.0;
-    sysData.current_mA = 0.0;
-    sysData.power_mW = 0.0;
   }
 }
 
@@ -618,10 +631,12 @@ void loop() {
 
   // ==================== MODE AKTIF / NORMAL OPERATION ====================
 
-  // 2. Auto-Detection / Hot-Plug Check setiap 3 detik
-  if (currentMillis - lastHardwareProbe >= 3000) {
+  // 2. Auto-Detection / Hot-Plug Check setiap 10 detik (hanya untuk modul yang offline)
+  if (currentMillis - lastHardwareProbe >= 10000) {
     lastHardwareProbe = currentMillis;
-    autoDetectHardwareCore1();
+    if (!sysData.oledReady || !sysData.rtcReady || !sysData.sensorReady || !sysData.inaReady) {
+      autoDetectHardwareCore1();
+    }
   }
 
   // 3. Baca RTC / Update Soft-Clock setiap 1000 ms & Evaluasi Jadwal
@@ -631,13 +646,14 @@ void loop() {
     checkScheduledOperationCore1();
 
     // Tampilkan waktu dari RTC di Serial Monitor setiap detik
-    Serial.printf("[RTC WAKTU] %02d/%02d/%04d %02d:%02d:%02d [%s] | Mode: %s | Status: %s | LED WS2812B: %s (P%d: %s)\n",
+    Serial.printf("[RTC WAKTU] %02d/%02d/%04d %02d:%02d:%02d [%s] | Mode: %s | Status: %s | LED WS2812B: %s | RLY1: %s | (P%d: %s)\n",
                   sysData.rtcDay, sysData.rtcMonth, sysData.rtcYear,
                   sysData.rtcHour, sysData.rtcMinute, sysData.rtcSecond,
                   sysData.rtcReady ? "DS3231" : (sysData.usingSoftClock ? "Soft-Clock" : "OFFLINE"),
                   sysData.mode == MODE_AUTO ? "AUTO" : (sysData.mode == MODE_MANUAL_ON ? "MANUAL-ON" : "MANUAL-OFF"),
                   sysData.isSystemRunning ? "RUNNING" : "STANDBY",
                   sysData.relay2State ? "ON" : "OFF",
+                  sysData.relay1State ? "ON" : "OFF",
                   sysData.activePreset + 1,
                   sysData.presets[sysData.activePreset].name);
   }
@@ -862,25 +878,66 @@ void readINA226Core1() {
 }
 
 // ==================== CORE 1: PEMBACAAN RTC / SMART SOFT-CLOCK ====================
+static uint8_t rtcConsecutiveErrors = 0;
+
+bool isDateTimeValid(const DateTime& dt) {
+  if (!dt.isValid()) return false;
+  if (dt.year() < 2024 || dt.year() > 2099) return false;
+  if (dt.month() < 1 || dt.month() > 12) return false;
+  if (dt.day() < 1 || dt.day() > 31) return false;
+  if (dt.hour() > 23 || dt.minute() > 59 || dt.second() > 59) return false;
+  return true;
+}
+
 void readRTCCore1() {
   DateTime curTime;
+  bool validRtcRead = false;
 
   if (sysData.rtcReady) {
     curTime = rtc.now();
-  } else {
-    // Smart Fallback ke Soft-Clock internal
+    if (isDateTimeValid(curTime)) {
+      validRtcRead = true;
+    } else {
+      // Glitch recovery: Beri jeda 1ms dan coba baca ulang
+      delayMicroseconds(1000);
+      curTime = rtc.now();
+      if (isDateTimeValid(curTime)) {
+        validRtcRead = true;
+      }
+    }
+
+    if (validRtcRead) {
+      rtcConsecutiveErrors = 0;
+      // Sinkronkan soft-clock baseline agar selalu presisi mengikuti RTC
+      softBaseEpoch = curTime.unixtime();
+      softBaseMillis = millis();
+    } else {
+      rtcConsecutiveErrors++;
+      if (rtcConsecutiveErrors >= 5) {
+        Serial.println(F("[WARNING] RTC DS3231 gagal merespons, beralih ke Smart Soft-Clock!"));
+        sysData.rtcReady = false;
+        sysData.usingSoftClock = true;
+      }
+    }
+  }
+
+  // Jika RTC offline atau pembacaan tadi gagal/glitch, gunakan Smart Soft-Clock
+  if (!validRtcRead) {
     unsigned long elapsedSec = (millis() - softBaseMillis) / 1000;
     curTime = DateTime(softBaseEpoch + elapsedSec);
   }
 
-  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(15)) == pdTRUE) {
-    sysData.rtcYear   = curTime.year();
-    sysData.rtcMonth  = curTime.month();
-    sysData.rtcDay    = curTime.day();
-    sysData.rtcHour   = curTime.hour();
-    sysData.rtcMinute = curTime.minute();
-    sysData.rtcSecond = curTime.second();
-    xSemaphoreGive(dataMutex);
+  // Hanya perbarui sysData jika tanggal dan waktu valid
+  if (isDateTimeValid(curTime)) {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(15)) == pdTRUE) {
+      sysData.rtcYear   = curTime.year();
+      sysData.rtcMonth  = curTime.month();
+      sysData.rtcDay    = curTime.day();
+      sysData.rtcHour   = curTime.hour();
+      sysData.rtcMinute = curTime.minute();
+      sysData.rtcSecond = curTime.second();
+      xSemaphoreGive(dataMutex);
+    }
   }
 }
 
@@ -1262,7 +1319,7 @@ void handleRoot() {
     ".btn-pin-val{font-size:20px;font-weight:bold;margin:4px 0;}"
   );
 
-  // ===== CHUNK 3: CSS (form, button, relay) =====
+  // ===== CHUNK 3: CSS (form, button, relay, modal) =====
   sendChunk(
     "label{font-size:13px;color:var(--sub);margin-bottom:4px;display:block;}"
     "input,select{width:100%;padding:10px 12px;background:#0f172a;border:1px solid var(--border);border-radius:8px;color:#fff;font-size:14px;outline:none;transition:0.2s;}"
@@ -1286,11 +1343,23 @@ void handleRoot() {
     "@keyframes zapGlow{from{opacity:0.85;transform:scale(0.99);}to{opacity:1;transform:scale(1.02);}}"
     ".toast{padding:10px;border-radius:8px;font-size:13px;text-align:center;display:none;margin-top:10px;}"
     ".footer{text-align:center;font-size:12px;color:var(--sub);margin-top:10px;}"
-    "@media (max-width:500px){.grid-2,.grid-3{grid-template-columns:1fr;}}"
+    ".nav-bar{display:grid;grid-template-columns:1fr 1fr;gap:10px;}"
+    ".btn-nav{background:#1e293b;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:0.2s;box-shadow:0 2px 4px rgba(0,0,0,0.15);}"
+    ".btn-nav:hover{background:#334155;border-color:var(--accent);color:#fff;}"
+    ".modal{display:none;position:fixed;z-index:9999;left:0;top:0;width:100%;height:100%;background:rgba(15,23,42,0.85);backdrop-filter:blur(5px);align-items:center;justify-content:center;padding:14px;}"
+    ".modal.open{display:flex;}"
+    ".modal-box{background:var(--card);border:1px solid var(--border);border-radius:16px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.6);display:flex;flex-direction:column;animation:popIn 0.2s ease-out;}"
+    "@keyframes popIn{from{opacity:0;transform:scale(0.96);}to{opacity:1;transform:scale(1);}}"
+    ".modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--card);z-index:10;}"
+    ".modal-header h3{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;}"
+    ".modal-close{background:none;border:none;color:var(--sub);font-size:24px;cursor:pointer;padding:0 6px;width:auto;line-height:1;}"
+    ".modal-close:hover{color:#fff;background:none;}"
+    ".modal-body{padding:16px;display:flex;flex-direction:column;gap:14px;}"
+    "@media (max-width:500px){.grid-2,.grid-3{grid-template-columns:1fr;}.nav-bar{grid-template-columns:1fr;}}"
     "</style></head><body>"
   );
 
-  // ===== CHUNK 4: HEADER & STATUS HARDWARE =====
+  // ===== CHUNK 4: HEADER & NAV MENU MODAL =====
   sendChunk(
     "<div class='container'>"
     "  <div class='header'>"
@@ -1298,50 +1367,9 @@ void handleRoot() {
     "    <p>Pengendali Perangkap Hama & Atraktor LED WS2812B berbasis ESP32</p>"
     "    <span class='badge-core'>FreeRTOS Dual-Core & Smart Auto-Recovery</span>"
     "  </div>"
-    "  <div class='card'>"
-    "    <div class='card-title'>&#x1F6E0;&#xFE0F; Status Modul Hardware (Auto-Detect)</div>"
-    "    <div class='grid-4'>"
-    "      <div class='stat-box'>"
-    "        <div class='stat-lbl'>OLED SSD1306</div>"
-    "        <div id='hwOled' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
-    "      </div>"
-    "      <div class='stat-box'>"
-    "        <div class='stat-lbl'>RTC DS3231</div>"
-    "        <div id='hwRtc' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
-    "      </div>"
-    "      <div class='stat-box'>"
-    "        <div class='stat-lbl'>ToF VL53L0X</div>"
-    "        <div id='hwVl' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
-    "      </div>"
-    "      <div class='stat-box'>"
-    "        <div class='stat-lbl'>Sensor INA226</div>"
-    "        <div id='hwIna' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
-    "      </div>"
-    "    </div>"
-    "  </div>"
-  );
-
-  // ===== CHUNK 5: STATUS TOMBOL & STATUS OPERASIONAL =====
-  sendChunk(
-    "  <div class='card'>"
-    "    <div class='card-title'>&#x1F518; Status Pin Tombol Fisik (Real-time 0/1)</div>"
-    "    <div class='grid-3'>"
-    "      <div class='btn-pin'>"
-    "        <div class='stat-lbl'>Tombol 1 (GPIO 25)</div>"
-    "        <div id='valBt1' class='btn-pin-val'>1</div>"
-    "        <span id='lblBt1' class='badge-hw-ok'>LEPAS (1)</span>"
-    "      </div>"
-    "      <div class='btn-pin'>"
-    "        <div class='stat-lbl'>Tombol 2 (GPIO 26)</div>"
-    "        <div id='valBt2' class='btn-pin-val'>1</div>"
-    "        <span id='lblBt2' class='badge-hw-ok'>LEPAS (1)</span>"
-    "      </div>"
-    "      <div class='btn-pin'>"
-    "        <div class='stat-lbl'>Tombol 3 (GPIO 27)</div>"
-    "        <div id='valBt3' class='btn-pin-val'>1</div>"
-    "        <span id='lblBt3' class='badge-hw-ok'>LEPAS (1)</span>"
-    "      </div>"
-    "    </div>"
+    "  <div class='nav-bar'>"
+    "    <button type='button' class='btn-nav' onclick=\"openModal('modalPreset')\">&#x1F4A1; Preset LED Atraktor</button>"
+    "    <button type='button' class='btn-nav' onclick=\"openModal('modalHw')\">&#x1F6E0;&#xFE0F; Status HW &amp; Tombol</button>"
     "  </div>"
     "  <div class='card'>"
     "    <div class='card-title'>"
@@ -1360,7 +1388,7 @@ void handleRoot() {
     "    </div>"
   );
 
-  // ===== CHUNK 6: SENSOR DATA & WAKTU =====
+  // ===== CHUNK 5: SENSOR DATA & WAKTU =====
   sendChunk(
     "    <div class='grid-2' style='margin-top:10px;'>"
     "      <div class='stat-box'>"
@@ -1388,7 +1416,7 @@ void handleRoot() {
     "  </div>"
   );
 
-  // ===== CHUNK 7: FORM JADWAL =====
+  // ===== CHUNK 6: FORM JADWAL & MODE OPERASI =====
   sendChunk(
     "  <div class='card'>"
     "    <div class='card-title'>&#x23F0; Pengaturan Jadwal & Mode Operasi</div>"
@@ -1420,77 +1448,7 @@ void handleRoot() {
     "  </div>"
   );
 
-  // ===== CHUNK 7B: PRESET WS2812B ATRAKTOR HAMA =====
-  sendChunk(
-    "  <div class='card'>"
-    "    <div class='card-title'>"
-    "      <span>&#x1F4A1; Preset Spektrum LED WS2812B (Atraktor Hama)</span>"
-    "      <span id='activePresetBadge' class='badge badge-run'>PRESET 1</span>"
-    "    </div>"
-    "    <div class='form-group'>"
-    "      <label>Pilih Spektrum Hama Aktif:</label>"
-    "      <div style='display:flex;gap:8px;'>"
-    "        <select id='activePresetSelect' style='flex:1;'></select>"
-    "        <button type='button' style='width:auto;white-space:nowrap;' onclick='applyActivePreset()'>&#x2714; Terapkan</button>"
-    "      </div>"
-    "      <div id='presetActiveToast' class='toast'></div>"
-    "    </div>"
-    "    <div style='margin-top:14px;padding-top:14px;border-top:1px solid var(--border);'>"
-    "      <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;'>"
-    "        <span style='font-size:14px;font-weight:600;color:#f8fafc;'>&#x270F;&#xFE0F; Edit Parameter Preset</span>"
-    "        <select id='editPresetSelect' onchange='loadPresetToForm(parseInt(this.value))' style='width:auto;padding:4px 8px;font-size:12px;'></select>"
-    "      </div>"
-    "      <form id='presetEditForm' onsubmit='savePresetForm(event)'>"
-    "        <div class='form-group'>"
-    "          <label>Target Hama / Nama Preset:</label>"
-    "          <input type='text' id='preName' maxlength='31' required>"
-    "        </div>"
-    "        <div class='grid-2'>"
-    "          <div class='form-group'>"
-    "            <label>Pilihan Warna Visual:</label>"
-    "            <div style='display:flex;gap:8px;align-items:center;'>"
-    "              <input type='color' id='preColorPicker' oninput='onColorPickerChange(this.value)' style='height:42px;width:55px;padding:2px;cursor:pointer;border-radius:8px;'>"
-    "              <div id='colorPreviewBox' style='flex:1;height:42px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;'>WARNA</div>"
-    "            </div>"
-    "          </div>"
-    "          <div class='form-group'>"
-    "            <label>Tingkat Kecerahan / Brightness:</label>"
-    "            <div style='display:flex;gap:10px;align-items:center;margin-top:8px;'>"
-    "              <input type='range' id='preBri' min='5' max='100' value='80' oninput='onBriSliderChange(this.value)' style='flex:1;cursor:pointer;'>"
-    "              <span id='lblBri' style='font-size:14px;font-weight:bold;width:45px;text-align:right;'>80%</span>"
-    "            </div>"
-    "          </div>"
-    "        </div>"
-    "        <div class='grid-3'>"
-    "          <div class='form-group'>"
-    "            <label>Red (0-255):</label>"
-    "            <input type='number' id='preR' min='0' max='255' oninput='onRgbInputChange()'>"
-    "          </div>"
-    "          <div class='form-group'>"
-    "            <label>Green (0-255):</label>"
-    "            <input type='number' id='preG' min='0' max='255' oninput='onRgbInputChange()'>"
-    "          </div>"
-    "          <div class='form-group'>"
-    "            <label>Blue (0-255):</label>"
-    "            <input type='number' id='preB' min='0' max='255' oninput='onRgbInputChange()'>"
-    "          </div>"
-    "        </div>"
-    "        <button type='submit' class='btn-secondary'>&#x1F4BE; Simpan Perubahan Preset Ini</button>"
-    "        <div id='presetEditToast' class='toast'></div>"
-    "      </form>"
-    "    </div>"
-    "    <div style='margin-top:14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--sub);line-height:1.6;'>"
-    "      <b style='color:var(--accent);display:block;margin-bottom:6px;'>&#x1F52C; Panduan Riset Spektrum Daya Tarik Hama:</b>"
-    "      <div>&bull; <b style='color:#38bdf8;'>Biru/UV (400-470nm):</b> Wereng Coklat (<i>Nilaparvata lugens</i>) & Penggerek Batang.</div>"
-    "      <div>&bull; <b style='color:#fbbf24;'>Kuning (570-590nm):</b> Kutu Kebul (<i>Bemisia tabaci</i>), Kutu Daun & Thrips.</div>"
-    "      <div>&bull; <b style='color:#34d399;'>Hijau/Cyan (500-520nm):</b> Lalat Buah (<i>Bactrocera</i>), Nyamuk & Serangga Air.</div>"
-    "      <div>&bull; <b style='color:#f8fafc;'>Putih Spektrum:</b> Ngengat Nokturnal & Ulat Grayak (<i>Spodoptera litura</i>).</div>"
-    "      <div>&bull; <b style='color:#c084fc;'>Ungu/Violet (380-420nm):</b> Rayap Laron, Kumbang Malam & Serangga Senja.</div>"
-    "    </div>"
-    "  </div>"
-  );
-
-  // ===== CHUNK 8: SINKRONISASI RTC & PARAMETER =====
+  // ===== CHUNK 7: SINKRONISASI RTC & PARAMETER =====
   sendChunk(
     "  <div class='card'>"
     "    <div class='card-title'>&#x1F552; Sinkronisasi Waktu (RTC & Soft-Clock)</div>"
@@ -1534,7 +1492,7 @@ void handleRoot() {
     "  </div>"
   );
 
-  // ===== CHUNK 9: RELAY TEST & FOOTER =====
+  // ===== CHUNK 8: RELAY TEST & FOOTER =====
   sendChunk(
     "  <div class='card'>"
     "    <div class='card-title'>&#x1F50C; Uji Coba Manual Relay</div>"
@@ -1554,6 +1512,143 @@ void handleRoot() {
     "  </div>"
     "  <div class='footer'>"
     "    &copy; 2026 Smart Pest Trap System &bull; ESP32 Smart Auto-Recovery"
+    "  </div>"
+    "</div>"
+  );
+
+  // ===== CHUNK 9A: MODAL HARDWARE & TOMBOL =====
+  sendChunk(
+    "<div id='modalHw' class='modal'>"
+    "  <div class='modal-box'>"
+    "    <div class='modal-header'>"
+    "      <h3>&#x1F6E0;&#xFE0F; Status Modul Hardware &amp; Tombol</h3>"
+    "      <button type='button' class='modal-close' onclick=\"closeModal('modalHw')\">&times;</button>"
+    "    </div>"
+    "    <div class='modal-body'>"
+    "      <div class='card'>"
+    "        <div class='card-title'>&#x1F4DF; Modul I2C (Auto-Detect)</div>"
+    "        <div class='grid-4'>"
+    "          <div class='stat-box'>"
+    "            <div class='stat-lbl'>OLED SSD1306</div>"
+    "            <div id='hwOled' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
+    "          </div>"
+    "          <div class='stat-box'>"
+    "            <div class='stat-lbl'>RTC DS3231</div>"
+    "            <div id='hwRtc' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
+    "          </div>"
+    "          <div class='stat-box'>"
+    "            <div class='stat-lbl'>ToF VL53L0X</div>"
+    "            <div id='hwVl' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
+    "          </div>"
+    "          <div class='stat-box'>"
+    "            <div class='stat-lbl'>Sensor INA226</div>"
+    "            <div id='hwIna' style='margin-top:6px;' class='badge-hw-err'>OFFLINE</div>"
+    "          </div>"
+    "        </div>"
+    "      </div>"
+    "      <div class='card'>"
+    "        <div class='card-title'>&#x1F518; Status Pin Tombol Fisik (Real-time 0/1)</div>"
+    "        <div class='grid-3'>"
+    "          <div class='btn-pin'>"
+    "            <div class='stat-lbl'>Tombol 1 (GPIO 25)</div>"
+    "            <div id='valBt1' class='btn-pin-val'>1</div>"
+    "            <span id='lblBt1' class='badge-hw-ok'>LEPAS (1)</span>"
+    "          </div>"
+    "          <div class='btn-pin'>"
+    "            <div class='stat-lbl'>Tombol 2 (GPIO 26)</div>"
+    "            <div id='valBt2' class='btn-pin-val'>1</div>"
+    "            <span id='lblBt2' class='badge-hw-ok'>LEPAS (1)</span>"
+    "          </div>"
+    "          <div class='btn-pin'>"
+    "            <div class='stat-lbl'>Tombol 3 (GPIO 27)</div>"
+    "            <div id='valBt3' class='btn-pin-val'>1</div>"
+    "            <span id='lblBt3' class='badge-hw-ok'>LEPAS (1)</span>"
+    "          </div>"
+    "        </div>"
+    "      </div>"
+    "      <button type='button' class='btn-secondary' onclick=\"closeModal('modalHw')\">&#x2715; Tutup</button>"
+    "    </div>"
+    "  </div>"
+    "</div>"
+  );
+
+  // ===== CHUNK 9B: MODAL PRESET LED WS2812B =====
+  sendChunk(
+    "<div id='modalPreset' class='modal'>"
+    "  <div class='modal-box'>"
+    "    <div class='modal-header'>"
+    "      <h3>&#x1F4A1; Preset Spektrum LED WS2812B</h3>"
+    "      <button type='button' class='modal-close' onclick=\"closeModal('modalPreset')\">&times;</button>"
+    "    </div>"
+    "    <div class='modal-body'>"
+    "      <div class='card'>"
+    "        <div class='card-title'>"
+    "          <span>Pilih Spektrum Aktif</span>"
+    "          <span id='activePresetBadge' class='badge badge-run'>PRESET 1</span>"
+    "        </div>"
+    "        <div class='form-group'>"
+    "          <label>Pilih Spektrum Hama Aktif:</label>"
+    "          <div style='display:flex;gap:8px;'>"
+    "            <select id='activePresetSelect' style='flex:1;'></select>"
+    "            <button type='button' style='width:auto;white-space:nowrap;' onclick='applyActivePreset()'>&#x2714; Terapkan</button>"
+    "          </div>"
+    "          <div id='presetActiveToast' class='toast'></div>"
+    "        </div>"
+    "      </div>"
+    "      <div class='card'>"
+    "        <div class='card-title'>"
+    "          <span style='font-size:14px;font-weight:600;'>&#x270F;&#xFE0F; Edit Parameter Preset</span>"
+    "          <select id='editPresetSelect' onchange='loadPresetToForm(parseInt(this.value))' style='width:auto;padding:4px 8px;font-size:12px;'></select>"
+    "        </div>"
+    "        <form id='presetEditForm' onsubmit='savePresetForm(event)'>"
+    "          <div class='form-group'>"
+    "            <label>Target Hama / Nama Preset:</label>"
+    "            <input type='text' id='preName' maxlength='31' required>"
+    "          </div>"
+    "          <div class='grid-2'>"
+    "            <div class='form-group'>"
+    "              <label>Pilihan Warna Visual:</label>"
+    "              <div style='display:flex;gap:8px;align-items:center;'>"
+    "                <input type='color' id='preColorPicker' oninput='onColorPickerChange(this.value)' style='height:42px;width:55px;padding:2px;cursor:pointer;border-radius:8px;'>"
+    "                <div id='colorPreviewBox' style='flex:1;height:42px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;'>WARNA</div>"
+    "              </div>"
+    "            </div>"
+    "            <div class='form-group'>"
+    "              <label>Tingkat Kecerahan / Brightness:</label>"
+    "              <div style='display:flex;gap:10px;align-items:center;margin-top:8px;'>"
+    "                <input type='range' id='preBri' min='5' max='100' value='80' oninput='onBriSliderChange(this.value)' style='flex:1;cursor:pointer;'>"
+    "                <span id='lblBri' style='font-size:14px;font-weight:bold;width:45px;text-align:right;'>80%</span>"
+    "              </div>"
+    "            </div>"
+    "          </div>"
+    "          <div class='grid-3'>"
+    "            <div class='form-group'>"
+    "              <label>Red (0-255):</label>"
+    "              <input type='number' id='preR' min='0' max='255' oninput='onRgbInputChange()'>"
+    "            </div>"
+    "            <div class='form-group'>"
+    "              <label>Green (0-255):</label>"
+    "              <input type='number' id='preG' min='0' max='255' oninput='onRgbInputChange()'>"
+    "            </div>"
+    "            <div class='form-group'>"
+    "              <label>Blue (0-255):</label>"
+    "              <input type='number' id='preB' min='0' max='255' oninput='onRgbInputChange()'>"
+    "            </div>"
+    "          </div>"
+    "          <button type='submit' class='btn-secondary'>&#x1F4BE; Simpan Perubahan Preset Ini</button>"
+    "          <div id='presetEditToast' class='toast'></div>"
+    "        </form>"
+    "      </div>"
+    "      <div style='background:#0f172a;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--sub);line-height:1.6;'>"
+    "        <b style='color:var(--accent);display:block;margin-bottom:6px;'>&#x1F52C; Panduan Riset Spektrum Daya Tarik Hama:</b>"
+    "        <div>&bull; <b style='color:#38bdf8;'>Biru/UV (400-470nm):</b> Wereng Coklat & Penggerek Batang.</div>"
+    "        <div>&bull; <b style='color:#fbbf24;'>Kuning (570-590nm):</b> Kutu Kebul, Kutu Daun & Thrips.</div>"
+    "        <div>&bull; <b style='color:#34d399;'>Hijau/Cyan (500-520nm):</b> Lalat Buah, Nyamuk & Serangga Air.</div>"
+    "        <div>&bull; <b style='color:#f8fafc;'>Putih Spektrum:</b> Ngengat Nokturnal & Ulat Grayak.</div>"
+    "        <div>&bull; <b style='color:#c084fc;'>Ungu/Violet (380-420nm):</b> Rayap Laron, Kumbang Malam & Serangga Senja.</div>"
+    "      </div>"
+    "      <button type='button' class='btn-secondary' onclick=\"closeModal('modalPreset')\">&#x2715; Tutup</button>"
+    "    </div>"
     "  </div>"
     "</div>"
   );
@@ -1633,6 +1728,9 @@ void handleRoot() {
 
   // ===== CHUNK 13: JAVASCRIPT - helper functions & action functions =====
   sendChunk(
+    "function openModal(id){var m=document.getElementById(id);if(m)m.classList.add('open');}"
+    "function closeModal(id){var m=document.getElementById(id);if(m)m.classList.remove('open');}"
+    "window.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('modal')){e.target.classList.remove('open');}});"
     "function setHwBadge(id,text,isOk,isWarn){"
     "var el=document.getElementById(id);if(!el)return;"
     "el.innerText=text;el.className=isOk?'badge-hw-ok':(isWarn?'badge-hw-warn':'badge-hw-err');}"

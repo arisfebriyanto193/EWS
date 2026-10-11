@@ -30,7 +30,10 @@ router.delete('/ews/:id/telkomsel', ewsController.deleteTelkomselConfig);
 
 // 3. Pest Trap Routes
 router.get('/traps', trapController.getAllTraps);
+router.post('/traps', trapController.createTrap);
 router.get('/traps/:id', trapController.getTrapById);
+router.put('/traps/:id', trapController.updateTrap);
+router.delete('/traps/:id', trapController.deleteTrap);
 router.post('/traps/:id/control', trapController.controlTrap);
 
 // 4. Alarm History & Mitigation Routes

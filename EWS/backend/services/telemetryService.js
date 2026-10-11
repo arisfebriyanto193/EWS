@@ -446,11 +446,17 @@ class TelemetryService {
       photoelectricCount: parseInt(trapData.photoelectricCount || 0, 10),
       containerCapacityPercent: parseInt(trapData.containerCapacityPercent || 0, 10),
       batteryVoltage: parseFloat(trapData.batteryVoltage || 12.6),
-      solarChargingCurrent: parseInt(trapData.solarChargingCurrent || 1400, 10),
+      solarChargingCurrent: parseInt(trapData.solarChargingCurrent || 0, 10),
+      currentDistance: parseInt(trapData.currentDistance || 0, 10),
       uvLedStatus: trapData.uvLedStatus !== undefined ? (trapData.uvLedStatus ? 1 : 0) : 1,
-      blowerStatus: trapData.blowerStatus !== undefined ? (trapData.blowerStatus ? 1 : 0) : 1,
-      mode: trapData.mode || 'otomatis_malam',
+      blowerStatus: trapData.blowerStatus !== undefined ? (trapData.blowerStatus ? 1 : 0) : 0,
+      mode: trapData.mode || 'otomatis',
       status: trapData.status || 'aktif',
+      activePreset: trapData.activePreset !== undefined ? parseInt(trapData.activePreset, 10) : undefined,
+      startTime: trapData.startTime || undefined,
+      endTime: trapData.endTime || undefined,
+      ledRotationInterval: trapData.ledRotationInterval !== undefined ? parseInt(trapData.ledRotationInterval, 10) : undefined,
+      presets: trapData.presets || undefined,
     };
 
     if (isDbConnected && pool) {
@@ -459,8 +465,8 @@ class TelemetryService {
         await pool.query(
           `INSERT INTO pest_trap_logs (
             trap_id, pir_trigger_count, photoelectric_count, container_capacity_percent,
-            battery_voltage, solar_charging_current, uv_led_status, blower_status, mode, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            battery_voltage, solar_charging_current, current_distance, uv_led_status, blower_status, mode, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             trapId,
             data.pirTriggerCount,
@@ -468,6 +474,7 @@ class TelemetryService {
             data.containerCapacityPercent,
             data.batteryVoltage,
             data.solarChargingCurrent,
+            data.currentDistance,
             data.uvLedStatus,
             data.blowerStatus,
             data.mode,
@@ -476,6 +483,7 @@ class TelemetryService {
         );
 
         // Update status master di tabel pest_traps
+        const presetsJsonStr = data.presets ? JSON.stringify(data.presets) : undefined;
         await pool.query(
           `UPDATE pest_traps SET
             pir_trigger_count = ?,
@@ -483,10 +491,16 @@ class TelemetryService {
             container_capacity_percent = ?,
             battery_voltage = ?,
             solar_charging_current = ?,
+            current_distance = ?,
             uv_led_status = ?,
             blower_status = ?,
             mode = ?,
             status = ?,
+            active_preset = COALESCE(?, active_preset),
+            start_time = COALESCE(?, start_time),
+            end_time = COALESCE(?, end_time),
+            led_rotation_interval = COALESCE(?, led_rotation_interval),
+            presets_json = COALESCE(?, presets_json),
             last_seen_at = NOW()
           WHERE id = ?`,
           [
@@ -495,10 +509,16 @@ class TelemetryService {
             data.containerCapacityPercent,
             data.batteryVoltage,
             data.solarChargingCurrent,
+            data.currentDistance,
             data.uvLedStatus,
             data.blowerStatus,
             data.mode,
             data.status,
+            data.activePreset !== undefined ? data.activePreset : null,
+            data.startTime || null,
+            data.endTime || null,
+            data.ledRotationInterval !== undefined ? data.ledRotationInterval : null,
+            presetsJsonStr || null,
             trapId,
           ]
         );
