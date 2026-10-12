@@ -258,31 +258,56 @@ exports.controlTrap = async (req, res) => {
 
     const presetsJsonStr = presets !== undefined ? (presets ? JSON.stringify(presets) : null) : undefined;
 
-    await pool.query(
-      `UPDATE pest_traps SET
-        mode = COALESCE(?, mode),
-        uv_led_status = COALESCE(?, uv_led_status),
-        blower_status = COALESCE(?, blower_status),
-        status = COALESCE(?, status),
-        active_preset = COALESCE(?, active_preset),
-        start_time = COALESCE(?, start_time),
-        end_time = COALESCE(?, end_time),
-        led_rotation_interval = COALESCE(?, led_rotation_interval),
-        presets_json = COALESCE(?, presets_json)
-      WHERE id = ?`,
-      [
-        mode || null,
-        uvLedStatus !== undefined ? (uvLedStatus ? 1 : 0) : null,
-        blowerStatus !== undefined ? (blowerStatus ? 1 : 0) : null,
-        status || null,
-        activePreset !== undefined ? activePreset : null,
-        startTime || null,
-        endTime || null,
-        ledRotationInterval !== undefined ? ledRotationInterval : null,
-        presetsJsonStr !== undefined ? presetsJsonStr : null,
-        id,
-      ]
-    );
+    const [existing] = await pool.query('SELECT id FROM pest_traps WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      await pool.query(
+        `INSERT INTO pest_traps (
+          id, name, location, uv_led_status, blower_status,
+          mode, status, active_preset, start_time, end_time,
+          led_rotation_interval, presets_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          `Perangkap Hama ${id}`,
+          'Area Perkebunan Warga',
+          uvLedStatus !== undefined ? (uvLedStatus ? 1 : 0) : 1,
+          blowerStatus !== undefined ? (blowerStatus ? 1 : 0) : 0,
+          mode || 'otomatis',
+          status || 'aktif',
+          activePreset !== undefined ? activePreset : 0,
+          startTime || '18:00',
+          endTime || '06:00',
+          ledRotationInterval !== undefined ? ledRotationInterval : 15,
+          presetsJsonStr !== undefined ? presetsJsonStr : null,
+        ]
+      );
+    } else {
+      await pool.query(
+        `UPDATE pest_traps SET
+          mode = COALESCE(?, mode),
+          uv_led_status = COALESCE(?, uv_led_status),
+          blower_status = COALESCE(?, blower_status),
+          status = COALESCE(?, status),
+          active_preset = COALESCE(?, active_preset),
+          start_time = COALESCE(?, start_time),
+          end_time = COALESCE(?, end_time),
+          led_rotation_interval = COALESCE(?, led_rotation_interval),
+          presets_json = COALESCE(?, presets_json)
+        WHERE id = ?`,
+        [
+          mode || null,
+          uvLedStatus !== undefined ? (uvLedStatus ? 1 : 0) : null,
+          blowerStatus !== undefined ? (blowerStatus ? 1 : 0) : null,
+          status || null,
+          activePreset !== undefined ? activePreset : null,
+          startTime || null,
+          endTime || null,
+          ledRotationInterval !== undefined ? ledRotationInterval : null,
+          presetsJsonStr !== undefined ? presetsJsonStr : null,
+          id,
+        ]
+      );
+    }
 
     // Ambil data terbaru
     const [rows] = await pool.query('SELECT * FROM pest_traps WHERE id = ?', [id]);

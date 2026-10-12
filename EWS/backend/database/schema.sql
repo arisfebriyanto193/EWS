@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS `pest_traps` (
   `solar_charging_current` INT NOT NULL DEFAULT 1400 COMMENT 'Arus Panel / Beban INA226 (mA)',
   `current_distance` INT NOT NULL DEFAULT 0 COMMENT 'Jarak Deteksi VL53L0X (mm)',
   `mode` VARCHAR(30) NOT NULL DEFAULT 'otomatis' COMMENT 'manual, otomatis, otomatis-led',
-  `status` ENUM('aktif', 'standby', 'wadah_penuh', 'baterai_lemah') NOT NULL DEFAULT 'aktif',
+  `status` ENUM('aktif', 'standby', 'wadah_penuh', 'baterai_lemah', 'offline') NOT NULL DEFAULT 'aktif',
   `active_preset` INT NOT NULL DEFAULT 0 COMMENT 'Indeks Preset Warna LED (0-4)',
   `start_time` VARCHAR(10) NOT NULL DEFAULT '18:00' COMMENT 'Jam Mulai Operasi Jadwal',
   `end_time` VARCHAR(10) NOT NULL DEFAULT '06:00' COMMENT 'Jam Selesai Operasi Jadwal',

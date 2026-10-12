@@ -441,6 +441,8 @@ class TelemetryService {
     const pool = db.getPool();
     const isDbConnected = db.getIsConnected();
 
+    const normalizedMode = trapData.mode ? String(trapData.mode).replace('-', '_') : 'otomatis';
+
     const data = {
       pirTriggerCount: parseInt(trapData.pirTriggerCount || 0, 10),
       photoelectricCount: parseInt(trapData.photoelectricCount || 0, 10),
@@ -450,7 +452,7 @@ class TelemetryService {
       currentDistance: parseInt(trapData.currentDistance || 0, 10),
       uvLedStatus: trapData.uvLedStatus !== undefined ? (trapData.uvLedStatus ? 1 : 0) : 1,
       blowerStatus: trapData.blowerStatus !== undefined ? (trapData.blowerStatus ? 1 : 0) : 0,
-      mode: trapData.mode || 'otomatis',
+      mode: normalizedMode,
       status: trapData.status || 'aktif',
       activePreset: trapData.activePreset !== undefined ? parseInt(trapData.activePreset, 10) : undefined,
       startTime: trapData.startTime || undefined,
@@ -461,12 +463,48 @@ class TelemetryService {
 
     if (isDbConnected && pool) {
       try {
+        const presetsJsonStr = data.presets ? JSON.stringify(data.presets) : undefined;
+
+        // Pastikan node trap terdaftar di pest_traps sebelum insert log (cegah FK error)
+        const [existing] = await pool.query('SELECT id FROM pest_traps WHERE id = ?', [trapId]);
+        if (existing.length === 0) {
+          await pool.query(
+            `INSERT INTO pest_traps (
+              id, name, location, uv_led_status, blower_status,
+              pir_trigger_count, photoelectric_count, container_capacity_percent,
+              battery_voltage, solar_charging_current, current_distance,
+              mode, status, active_preset, start_time, end_time,
+              led_rotation_interval, presets_json, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [
+              trapId,
+              `Perangkap Hama ${trapId}`,
+              'Lokasi Terpasang',
+              data.uvLedStatus,
+              data.blowerStatus,
+              data.pirTriggerCount,
+              data.photoelectricCount,
+              data.containerCapacityPercent,
+              data.batteryVoltage,
+              data.solarChargingCurrent,
+              data.currentDistance,
+              data.mode,
+              data.status,
+              data.activePreset !== undefined ? data.activePreset : 0,
+              data.startTime || '18:00',
+              data.endTime || '06:00',
+              data.ledRotationInterval !== undefined ? data.ledRotationInterval : 15,
+              presetsJsonStr || null,
+            ]
+          );
+        }
+
         // Simpan log ke pest_trap_logs
         await pool.query(
           `INSERT INTO pest_trap_logs (
             trap_id, pir_trigger_count, photoelectric_count, container_capacity_percent,
-            battery_voltage, solar_charging_current, current_distance, uv_led_status, blower_status, mode, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            battery_voltage, solar_charging_current, current_distance, uv_led_status, blower_status, mode, status, active_preset
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             trapId,
             data.pirTriggerCount,
@@ -479,11 +517,11 @@ class TelemetryService {
             data.blowerStatus,
             data.mode,
             data.status,
+            data.activePreset !== undefined ? data.activePreset : 0,
           ]
         );
 
         // Update status master di tabel pest_traps
-        const presetsJsonStr = data.presets ? JSON.stringify(data.presets) : undefined;
         await pool.query(
           `UPDATE pest_traps SET
             pir_trigger_count = ?,
