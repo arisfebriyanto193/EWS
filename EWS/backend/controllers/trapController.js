@@ -34,6 +34,9 @@ function formatTrapNode(trap) {
     ledColor: trap.led_color || '#3b82f6',
     presets: presets,
     lastSeenAt: trap.last_seen_at ? new Date(trap.last_seen_at).toISOString() : null,
+    isOnline: trap.last_seen_at
+      ? (Date.now() - new Date(trap.last_seen_at).getTime()) < 10 * 60 * 1000 // Online jika data masuk < 10 menit lalu
+      : false,
   };
 }
 
@@ -383,6 +386,49 @@ exports.controlTrap = async (req, res) => {
     });
   } catch (error) {
     console.error('Error controlling trap:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/traps/:id/battery-history
+exports.getBatteryHistory = async (req, res) => {
+  try {
+    const pool = db.getPool();
+    const isDbConnected = db.getIsConnected();
+
+    if (!isDbConnected || !pool) {
+      return res.status(503).json({ success: false, message: 'Database belum terhubung' });
+    }
+
+    const { id } = req.params;
+    // Default: 24 jam terakhir, bisa diganti dengan query ?hours=48 atau ?days=7
+    const hours = parseInt(req.query.hours || '24', 10);
+    const days = parseInt(req.query.days || '0', 10);
+    const totalHours = days > 0 ? days * 24 : hours;
+
+    const [rows] = await pool.query(
+      `SELECT 
+        battery_voltage AS voltage,
+        solar_charging_current AS solarCurrent,
+        created_at AS timestamp
+      FROM pest_trap_logs 
+      WHERE trap_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
+      ORDER BY created_at ASC`,
+      [id, totalHours]
+    );
+
+    return res.json({
+      success: true,
+      data: rows.map((r) => ({
+        voltage: parseFloat(r.voltage),
+        solarCurrent: parseInt(r.solarCurrent || 0, 10),
+        timestamp: new Date(r.timestamp).toISOString(),
+      })),
+      trapId: id,
+      periodHours: totalHours,
+    });
+  } catch (error) {
+    console.error('Error fetching battery history:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

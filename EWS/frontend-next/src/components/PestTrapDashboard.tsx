@@ -1,6 +1,7 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PestTrapNode, ColorPresetItem } from '../types';
+import { api } from '../services/api';
 import {
   Battery,
   Bug,
@@ -37,6 +38,160 @@ const DEFAULT_PRESETS: ColorPresetItem[] = [
   { id: 4, name: 'Biru Tua Fototaksis', r: 0, g: 40, b: 255 },
   { id: 5, name: 'Merah Pengalih Perhatian', r: 255, g: 0, b: 0 },
 ];
+
+// ============ Battery Voltage Chart Component (SVG) ============
+const BatteryChart: React.FC<{ trapId: string }> = ({ trapId }) => {
+  const [data, setData] = useState<{ voltage: number; solarCurrent: number; timestamp: string }[]>([]);
+  const [period, setPeriod] = useState<number>(24); // hours
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const result = await api.getBatteryHistory(trapId, { hours: period });
+        if (!cancelled) setData(result);
+      } catch {
+        if (!cancelled) setData([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchData();
+    return () => { cancelled = true; };
+  }, [trapId, period]);
+
+  const W = 700;
+  const H = 200;
+  const PAD = { top: 20, right: 20, bottom: 35, left: 45 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const voltages = data.map((d) => d.voltage);
+  const minV = voltages.length > 0 ? Math.floor(Math.min(...voltages) * 10) / 10 - 0.2 : 10;
+  const maxV = voltages.length > 0 ? Math.ceil(Math.max(...voltages) * 10) / 10 + 0.2 : 14;
+  const rangeV = maxV - minV || 1;
+
+  const points = data.map((d, i) => {
+    const x = PAD.left + (i / Math.max(data.length - 1, 1)) * chartW;
+    const y = PAD.top + chartH - ((d.voltage - minV) / rangeV) * chartH;
+    return { x, y, ...d };
+  });
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const areaPath = linePath + ` L ${(PAD.left + chartW).toFixed(1)} ${(PAD.top + chartH).toFixed(1)} L ${PAD.left.toFixed(1)} ${(PAD.top + chartH).toFixed(1)} Z`;
+
+  // Y axis labels
+  const ySteps = 5;
+  const yLabels = Array.from({ length: ySteps + 1 }, (_, i) => {
+    const val = minV + (rangeV / ySteps) * i;
+    return { val: val.toFixed(1), y: PAD.top + chartH - (i / ySteps) * chartH };
+  });
+
+  // X axis: show ~6 time labels
+  const xLabelCount = Math.min(6, data.length);
+  const xLabels = data.length > 0
+    ? Array.from({ length: xLabelCount }, (_, i) => {
+        const idx = Math.round((i / (xLabelCount - 1)) * (data.length - 1));
+        const d = data[idx];
+        const date = new Date(d.timestamp);
+        return {
+          label: date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          x: PAD.left + (idx / Math.max(data.length - 1, 1)) * chartW,
+        };
+      })
+    : [];
+
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Battery className="w-4 h-4 text-amber-500" />
+          <h4 className="text-sm font-bold text-slate-900 dark:text-white">Grafik Tegangan Baterai</h4>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {[6, 12, 24, 48, 168].map((h) => (
+            <button
+              key={h}
+              onClick={() => setPeriod(h)}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                period === h
+                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {h < 24 ? `${h}j` : h === 24 ? '1h' : h === 48 ? '2h' : '7h'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-[200px] text-xs text-slate-400">Memuat data...</div>
+      ) : data.length === 0 ? (
+        <div className="flex items-center justify-center h-[200px] text-xs text-slate-400">
+          Belum ada data baterai untuk periode ini
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto min-w-[500px]" preserveAspectRatio="xMidYMid meet">
+            {/* Grid lines */}
+            {yLabels.map((yl, i) => (
+              <g key={i}>
+                <line x1={PAD.left} y1={yl.y} x2={PAD.left + chartW} y2={yl.y} stroke="currentColor" strokeOpacity={0.08} strokeDasharray="4 2" />
+                <text x={PAD.left - 6} y={yl.y + 3} textAnchor="end" className="fill-slate-400 dark:fill-slate-500" fontSize="9" fontFamily="monospace">
+                  {yl.val}V
+                </text>
+              </g>
+            ))}
+
+            {/* X axis labels */}
+            {xLabels.map((xl, i) => (
+              <text key={i} x={xl.x} y={H - 6} textAnchor="middle" className="fill-slate-400 dark:fill-slate-500" fontSize="9" fontFamily="monospace">
+                {xl.label}
+              </text>
+            ))}
+
+            {/* Area fill */}
+            {points.length > 1 && (
+              <path d={areaPath} fill="url(#battGrad)" opacity={0.3} />
+            )}
+
+            {/* Line */}
+            {points.length > 1 && (
+              <path d={linePath} fill="none" stroke="#f59e0b" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            )}
+
+            {/* Dots (show only ~20 to avoid clutter) */}
+            {points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 20)) === 0 || i === points.length - 1).map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r={2.5} fill="#f59e0b" stroke="white" strokeWidth={1} />
+            ))}
+
+            {/* Gradient definition */}
+            <defs>
+              <linearGradient id="battGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+      )}
+
+      {data.length > 0 && (
+        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-800">
+          <span>{data.length} titik data dalam {period < 24 ? `${period} jam` : `${period / 24} hari`} terakhir</span>
+          <span>
+            Min: <strong className="text-slate-700 dark:text-slate-300">{Math.min(...voltages).toFixed(2)}V</strong>
+            {' • '}Max: <strong className="text-slate-700 dark:text-slate-300">{Math.max(...voltages).toFixed(2)}V</strong>
+            {' • '}Rata-rata: <strong className="text-slate-700 dark:text-slate-300">{(voltages.reduce((a, b) => a + b, 0) / voltages.length).toFixed(2)}V</strong>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   traps,
@@ -260,14 +415,12 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <Bug className="w-3.5 h-3.5" />
                 <span>{t.id}</span>
                 <span
-                  className="w-2.5 h-2.5 rounded-full border border-black/20"
-                  style={{
-                    backgroundColor: t.uvLedStatus
-                      ? (t.presets && t.presets[t.activePreset || 0]
-                          ? `rgb(${t.presets[t.activePreset || 0].r}, ${t.presets[t.activePreset || 0].g}, ${t.presets[t.activePreset || 0].b})`
-                          : '#10b981')
-                      : '#94a3b8',
-                  }}
+                  className={`w-2.5 h-2.5 rounded-full border ${
+                    t.isOnline
+                      ? 'bg-emerald-500 border-emerald-400 animate-pulse'
+                      : 'bg-slate-400 border-slate-300'
+                  }`}
+                  title={t.isOnline ? 'Online' : 'Offline'}
                 />
               </button>
             );
@@ -293,6 +446,19 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   {activeTrap.id}
                 </span>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">{activeTrap.name}</h3>
+
+                {/* Online/Offline Badge */}
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
+                    activeTrap.isOnline
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-900'
+                      : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${activeTrap.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                  {activeTrap.isOnline ? 'Online' : 'Offline'}
+                </span>
+
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
                     activeTrap.containerCapacityPercent > 80
@@ -304,7 +470,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Lokasi: {activeTrap.location} {activeTrap.lastSeenAt ? `• Terakhir online: ${new Date(activeTrap.lastSeenAt).toLocaleTimeString()}` : ''}
+                Lokasi: {activeTrap.location}
+                {activeTrap.lastSeenAt
+                  ? ` • Terakhir terlihat: ${new Date(activeTrap.lastSeenAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                  : ' • Belum pernah terhubung'}
               </p>
             </div>
 
@@ -744,6 +913,9 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Battery Voltage History Chart */}
+          <BatteryChart trapId={activeTrap.id} />
         </>
       )}
 

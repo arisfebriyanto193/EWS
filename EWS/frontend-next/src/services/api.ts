@@ -315,6 +315,22 @@ export const api = {
     return this.controlTrap(id, payload);
   },
 
+  // 3.2 Battery History (Grafik Tegangan Baterai per Trap)
+  async getBatteryHistory(
+    id: string,
+    options?: { hours?: number; days?: number }
+  ): Promise<{ voltage: number; solarCurrent: number; timestamp: string }[]> {
+    const q = new URLSearchParams();
+    if (options?.hours) q.append('hours', options.hours.toString());
+    if (options?.days) q.append('days', options.days.toString());
+    const res = await fetch(`${API_BASE}/traps/${id}/battery-history?${q.toString()}`);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return [];
+    }
+    return data.data || [];
+  },
+
   // 4. Alarm History
   async getAlarmLogs(): Promise<AlarmLog[]> {
     const res = await fetch(`${API_BASE}/alarms?limit=50`);

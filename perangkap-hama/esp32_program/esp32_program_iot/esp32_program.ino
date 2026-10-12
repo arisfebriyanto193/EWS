@@ -427,8 +427,9 @@ void readSensors() {
       }
 
       // Cooldown: cek apakah sudah lewat interval minimum antar trigger
+      unsigned long nowMs = millis();
       unsigned long cooldownMs = (unsigned long)manualIntervalMin * 60000UL;
-      bool cooldownPassed = (now - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
+      bool cooldownPassed = (nowMs - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
 
       if (canTrigger && !blowerEnabled && cooldownPassed &&
           currentDistance > 10 && currentDistance <= distThreshold_mm) {
@@ -436,8 +437,8 @@ void readSensors() {
         digitalWrite(PIN_RELAY_1, HIGH);
         blowerEnabled = true;
         zapperActive = true;
-        blowerOffTime = now + ((unsigned long)manualDurationSec * 1000UL);
-        lastBlowerTrigger = now;
+        blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
+        lastBlowerTrigger = nowMs;
         pestCounter++;
         Serial.print("⚡🌀 Hama Terdeteksi! Jarak: ");
         Serial.print(currentDistance);
@@ -1148,8 +1149,9 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     String cmd = data["command"].as<String>();
     if (cmd == "TRIGGER_ZAP") {
       digitalWrite(PIN_RELAY_1, HIGH);
+      blowerEnabled = true;
       zapperActive = true;
-      zapOffTime = millis() + zapPulse_ms;
+      blowerOffTime = millis() + ((unsigned long)manualDurationSec * 1000UL);
     } else if (cmd == "RESET_COUNTER") {
       pestCounter = 0;
     }

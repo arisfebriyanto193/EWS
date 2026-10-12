@@ -35,6 +35,7 @@ router.get('/traps/:id', trapController.getTrapById);
 router.put('/traps/:id', trapController.updateTrap);
 router.delete('/traps/:id', trapController.deleteTrap);
 router.post('/traps/:id/control', trapController.controlTrap);
+router.get('/traps/:id/battery-history', trapController.getBatteryHistory);
 
 // 4. Alarm History & Mitigation Routes
 router.get('/alarms', alarmController.getAlarms);
