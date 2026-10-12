@@ -32,6 +32,8 @@ function formatTrapNode(trap) {
     manualIntervalMin: parseInt(trap.manual_interval_min || 15, 10),
     manualDurationSec: parseInt(trap.manual_duration_sec || 3, 10),
     ledColor: trap.led_color || '#3b82f6',
+    blowerMode: trap.blower_mode || 'sensor',
+    ledRunning: trap.led_running !== null && trap.led_running !== undefined ? Boolean(trap.led_running) : false,
     presets: presets,
     lastSeenAt: trap.last_seen_at ? new Date(trap.last_seen_at).toISOString() : null,
     isOnline: trap.last_seen_at
@@ -172,6 +174,8 @@ exports.updateTrap = async (req, res) => {
       manualIntervalMin,
       manualDurationSec,
       ledColor,
+      blowerMode,
+      ledRunning,
       presets,
     } = req.body;
 
@@ -190,6 +194,8 @@ exports.updateTrap = async (req, res) => {
         manual_interval_min = COALESCE(?, manual_interval_min),
         manual_duration_sec = COALESCE(?, manual_duration_sec),
         led_color = COALESCE(?, led_color),
+        blower_mode = COALESCE(?, blower_mode),
+        led_running = COALESCE(?, led_running),
         presets_json = COALESCE(?, presets_json)
       WHERE id = ?`,
       [
@@ -203,6 +209,8 @@ exports.updateTrap = async (req, res) => {
         manualIntervalMin !== undefined ? manualIntervalMin : null,
         manualDurationSec !== undefined ? manualDurationSec : null,
         ledColor || null,
+        blowerMode !== undefined ? blowerMode : null,
+        ledRunning !== undefined ? (ledRunning ? 1 : 0) : null,
         presetsJsonStr !== undefined ? presetsJsonStr : null,
         id,
       ]
@@ -275,6 +283,8 @@ exports.controlTrap = async (req, res) => {
       manualIntervalMin,
       manualDurationSec,
       ledColor,
+      blowerMode,
+      ledRunning,
       presets,
       command = 'SET_CONTROL',
     } = req.body;
@@ -288,8 +298,8 @@ exports.controlTrap = async (req, res) => {
         `INSERT INTO pest_traps (
           id, name, location, uv_led_status, blower_status,
           mode, status, active_preset, start_time, end_time,
-          led_rotation_interval, manual_interval_min, manual_duration_sec, led_color, presets_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          led_rotation_interval, manual_interval_min, manual_duration_sec, led_color, blower_mode, led_running, presets_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           `Perangkap Hama ${id}`,
@@ -305,6 +315,8 @@ exports.controlTrap = async (req, res) => {
           manualIntervalMin !== undefined ? manualIntervalMin : 15,
           manualDurationSec !== undefined ? manualDurationSec : 3,
           ledColor || '#3b82f6',
+          blowerMode || 'sensor',
+          ledRunning !== undefined ? (ledRunning ? 1 : 0) : 0,
           presetsJsonStr !== undefined ? presetsJsonStr : null,
         ]
       );
@@ -322,6 +334,8 @@ exports.controlTrap = async (req, res) => {
           manual_interval_min = COALESCE(?, manual_interval_min),
           manual_duration_sec = COALESCE(?, manual_duration_sec),
           led_color = COALESCE(?, led_color),
+          blower_mode = COALESCE(?, blower_mode),
+          led_running = COALESCE(?, led_running),
           presets_json = COALESCE(?, presets_json)
         WHERE id = ?`,
         [
@@ -336,6 +350,8 @@ exports.controlTrap = async (req, res) => {
           manualIntervalMin !== undefined ? manualIntervalMin : null,
           manualDurationSec !== undefined ? manualDurationSec : null,
           ledColor || null,
+          blowerMode !== undefined ? blowerMode : null,
+          ledRunning !== undefined ? (ledRunning ? 1 : 0) : null,
           presetsJsonStr !== undefined ? presetsJsonStr : null,
           id,
         ]
@@ -360,6 +376,8 @@ exports.controlTrap = async (req, res) => {
       manualIntervalMin,
       manualDurationSec,
       ledColor,
+      blowerMode,
+      ledRunning,
       presets,
       payload: {
         command,
@@ -374,6 +392,8 @@ exports.controlTrap = async (req, res) => {
         manualIntervalMin,
         manualDurationSec,
         ledColor,
+        blowerMode,
+        ledRunning,
         presets,
       },
       timestamp: new Date().toISOString(),

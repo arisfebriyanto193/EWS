@@ -148,6 +148,8 @@ CREATE TABLE IF NOT EXISTS `pest_traps` (
   `active_preset` INT NOT NULL DEFAULT 0 COMMENT 'Indeks Preset Warna LED (0-4)',
   `manual_interval_min` INT NOT NULL DEFAULT 15 COMMENT 'Interval Siklus Mode Manual (menit)',
   `manual_duration_sec` INT NOT NULL DEFAULT 3 COMMENT 'Durasi Nyala Mode Manual (detik)',
+  `blower_mode` VARCHAR(20) NOT NULL DEFAULT 'sensor' COMMENT 'sensor / time',
+  `led_running` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1: ganti warna per rotasi, 0: 1 warna statis',
   `led_color` VARCHAR(50) DEFAULT 'UV / Ungu' COMMENT 'Nama/Label Spektrum Warna LED Aktif',
   `start_time` VARCHAR(10) NOT NULL DEFAULT '18:00' COMMENT 'Jam Mulai Operasi Jadwal',
   `end_time` VARCHAR(10) NOT NULL DEFAULT '06:00' COMMENT 'Jam Selesai Operasi Jadwal',

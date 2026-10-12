@@ -661,6 +661,8 @@ export default function App() {
       manualIntervalMin: updated.manualIntervalMin,
       manualDurationSec: updated.manualDurationSec,
       ledColor: updated.ledColor,
+      blowerMode: updated.blowerMode,
+      ledRunning: updated.ledRunning,
       presets: updated.presets,
     }).catch((err: any) => {
       console.warn('Gagal sinkron kendali perangkap hama:', err?.message || err);

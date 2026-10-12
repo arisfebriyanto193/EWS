@@ -288,6 +288,20 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     });
   };
 
+  const handleBlowerModeChange = (trap: PestTrapNode, blowerMode: 'sensor' | 'time') => {
+    onUpdateTrap({
+      ...trap,
+      blowerMode,
+    });
+  };
+
+  const handleLedRunningChange = (trap: PestTrapNode, ledRunning: boolean) => {
+    onUpdateTrap({
+      ...trap,
+      ledRunning,
+    });
+  };
+
   const openEditPresetModal = (idx: number) => {
     const p = presets[idx];
     if (!p) return;
@@ -488,72 +502,169 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
             </div>
           </div>
 
-          {/* Mode Operasi Selector */}
+          {/* Mode Operasi Selector (2 Mode Saja) */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">Pilih Mode Kerja Sistem</h4>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                Mode Aktif: <strong className="text-blue-600 dark:text-blue-400 uppercase">{activeTrap.mode}</strong>
+                Mode Aktif: <strong className="text-blue-600 dark:text-blue-400 uppercase">{activeTrap.mode === 'manual' ? 'MANUAL' : 'OTOMATIS'}</strong>
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Mode 1: Manual */}
               <button
+                type="button"
                 onClick={() => handleModeChange(activeTrap, 'manual')}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative ${
                   activeTrap.mode === 'manual'
-                    ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
+                    ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
                     : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">1. Mode Manual</span>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">1. Mode Manual</span>
+                  </div>
                   {activeTrap.mode === 'manual' && <Check className="w-4 h-4 text-blue-600" />}
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  LED nyala terus sebagai penarik hama. Blower otomatis menyala {activeTrap.manualDurationSec || 3} dtk saat sensor VL53 mendeteksi hama (cooldown {activeTrap.manualIntervalMin || 15} menit).
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Lampu penarik hama aktif menyala terus (24 jam non-stop). Blower dan rotasi lampu bekerja mengikuti parameter yang dikonfigurasi di bawah.
                 </p>
               </button>
 
               {/* Mode 2: Otomatis */}
               <button
+                type="button"
                 onClick={() => handleModeChange(activeTrap, 'otomatis')}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                  activeTrap.mode === 'otomatis'
-                    ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative ${
+                  activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led'
+                    ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
                     : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">2. Mode Otomatis (Jadwal + Preset)</span>
-                  {activeTrap.mode === 'otomatis' && <Check className="w-4 h-4 text-blue-600" />}
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">2. Mode Otomatis (Jadwal RTC DS3231)</span>
+                  </div>
+                  {(activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led') && <Check className="w-4 h-4 text-blue-600" />}
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  LED aktif sesuai jadwal RTC dengan 1 warna preset. Blower otomatis saat sensor mendeteksi hama.
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Bekerja otomatis sesuai jam operasional ({activeTrap.startTime || '18:00'} - {activeTrap.endTime || '06:00'}). Di luar jadwal, sistem masuk mode standby hemat daya.
                 </p>
               </button>
+            </div>
+          </div>
 
-              {/* Mode 3: Otomatis-LED (Rotasi) */}
-              <button
-                onClick={() => handleModeChange(activeTrap, 'otomatis_led')}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                  activeTrap.mode === 'otomatis_led'
-                    ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">3. Mode Otomatis-LED (Rotasi)</span>
-                  {activeTrap.mode === 'otomatis_led' && <Check className="w-4 h-4 text-blue-600" />}
+          {/* Parameter Kontrol: Blower Mode & LED Running */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Pengaturan Parameter Blower &amp; Lampu LED</h4>
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Tersinkronisasi otomatis dengan ESP32</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Opsi Pemicu Blower */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <Wind className="w-4 h-4 text-cyan-600" />
+                    Pilihan Pemicu Blower
+                  </label>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-cyan-100 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 font-semibold">
+                    {activeTrap.blowerMode === 'time' ? 'Siklus Waktu' : 'Sensor VL53L0X'}
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  LED aktif sesuai jadwal, warna berganti otomatis bergiliran setiap interval menit. Blower otomatis dari sensor.
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleBlowerModeChange(activeTrap, 'sensor')}
+                    className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
+                      activeTrap.blowerMode !== 'time'
+                        ? 'bg-white dark:bg-slate-900 border-cyan-500 text-cyan-700 dark:text-cyan-300 ring-2 ring-cyan-500/20 shadow-xs'
+                        : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">🎯 Sensor Jarak</span>
+                    <span className="text-[10px] font-normal text-slate-500">Nyala saat hama mendekat</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleBlowerModeChange(activeTrap, 'time')}
+                    className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
+                      activeTrap.blowerMode === 'time'
+                        ? 'bg-white dark:bg-slate-900 border-cyan-500 text-cyan-700 dark:text-cyan-300 ring-2 ring-cyan-500/20 shadow-xs'
+                        : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">⏱️ Siklus Waktu</span>
+                    <span className="text-[10px] font-normal text-slate-500">Nyala berkala tiap interval</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {activeTrap.blowerMode === 'time'
+                    ? `Blower akan otomatis menyala selama ${activeTrap.manualDurationSec || 3} detik setiap ${activeTrap.manualIntervalMin || 15} menit sekali.`
+                    : `Blower akan menyala selama ${activeTrap.manualDurationSec || 3} detik saat sensor jarak mendeteksi objek hama (dengan jeda cooldown ${activeTrap.manualIntervalMin || 15} menit).`}
                 </p>
-              </button>
+              </div>
+
+              {/* Opsi Rotasi Lampu (LED Running) */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <RotateCw className="w-4 h-4 text-purple-600" />
+                    Mode Rotasi Warna Lampu (LED Running)
+                  </label>
+                  <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-semibold ${
+                    activeTrap.ledRunning
+                      ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {activeTrap.ledRunning ? 'ON (Berganti Warna)' : 'OFF (1 Warna)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleLedRunningChange(activeTrap, true)}
+                    className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
+                      activeTrap.ledRunning
+                        ? 'bg-white dark:bg-slate-900 border-purple-500 text-purple-700 dark:text-purple-300 ring-2 ring-purple-500/20 shadow-xs'
+                        : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">🌈 LED Running: ON</span>
+                    <span className="text-[10px] font-normal text-slate-500">Berganti warna otomatis</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleLedRunningChange(activeTrap, false)}
+                    className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
+                      !activeTrap.ledRunning
+                        ? 'bg-white dark:bg-slate-900 border-purple-500 text-purple-700 dark:text-purple-300 ring-2 ring-purple-500/20 shadow-xs'
+                        : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">💡 LED Running: OFF</span>
+                    <span className="text-[10px] font-normal text-slate-500">1 warna preset tetap</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {activeTrap.ledRunning
+                    ? `Lampu LED NeoPixel akan berganti warna secara otomatis antar preset setiap ${activeTrap.ledRotationInterval || 15} menit.`
+                    : `Lampu LED NeoPixel akan terus menyala pada 1 warna preset yang dipilih di palet warna di bawah.`}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -562,7 +673,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Konfigurasi Jadwal, Rotasi &amp; Blower</h4>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Detail Konfigurasi Waktu &amp; Durasi</h4>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400">Sinkron dengan Modul RTC DS3231 &amp; ESP32</span>
             </div>
@@ -602,7 +713,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <RotateCw className="w-3.5 h-3.5 text-purple-600" />
-                  Rotasi Lampu (Otomatis-LED)
+                  Rotasi Lampu (LED Running)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -615,14 +726,14 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Warna LED berganti setiap sekian menit</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">Warna berganti setiap sekian menit jika LED Running ON</span>
               </div>
 
-              {/* Manual Mode: Interval Siklus */}
+              {/* Manual Mode: Interval Siklus / Cooldown */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <Timer className="w-3.5 h-3.5 text-emerald-600" />
-                  Cooldown Blower
+                  {activeTrap.blowerMode === 'time' ? 'Interval Siklus Blower' : 'Jeda Cooldown Blower'}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -635,10 +746,12 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Jeda minimum antar trigger blower</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  {activeTrap.blowerMode === 'time' ? 'Blower nyala berkala tiap menit ini' : 'Jeda minimum antar deteksi sensor'}
+                </span>
               </div>
 
-              {/* Manual Mode: Durasi Nyala */}
+              {/* Durasi Nyala Blower */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <Zap className="w-3.5 h-3.5 text-amber-500" />
@@ -655,7 +768,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Detik</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Lama blower menyala saat hama terdeteksi</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">Lama blower berputar dalam satu siklus/triger</span>
               </div>
             </div>
           </div>

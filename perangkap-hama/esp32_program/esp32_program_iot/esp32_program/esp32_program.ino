@@ -104,18 +104,23 @@ String trapName = "Perangkap Hama 01 - Kebun Kopi";
 TrapMode currentMode = MODE_OTOMATIS;
 uint8_t activePreset = 0;
 
+// Konfigurasi Mode Cerdas
+bool ledRunning = false;             // Jika true: LED berganti warna bergiliran sesuai interval. Jika false: 1 warna statis.
+String blowerMode = "sensor";        // "sensor" (VL53L0X) atau "time" (interval berkala)
+unsigned long lastBlowerTimeCycle = 0; // Waktu siklus terakhir untuk blowerMode == "time"
+
 // Jadwal Operasi (Format 24 Jam)
 uint8_t startHour = 18;
 uint8_t startMin  = 0;
 uint8_t endHour   = 6;
 uint8_t endMin    = 0;
 
-// Interval Ganti Warna (Menit) untuk Mode OTOMATIS_LED
+// Interval Ganti Warna (Menit) untuk Mode LED Running
 uint16_t ledRotationInterval = 15;
 
-// Pengaturan Blower: Durasi nyala & cooldown antar trigger
-uint16_t manualIntervalMin   = 15; // Cooldown minimal antar trigger blower (menit)
-uint16_t manualDurationSec   = 3;  // Durasi blower menyala saat deteksi hama (detik)
+// Pengaturan Blower: Durasi nyala & cooldown / interval berkala
+uint16_t manualIntervalMin   = 15; // Cooldown minimal antar trigger sensor atau interval siklus blower (menit)
+uint16_t manualDurationSec   = 3;  // Durasi blower menyala saat deteksi hama / siklus waktu (detik)
 
 // Parameter Deteksi Hama
 uint16_t distThreshold_mm = 150;   // Ambang batas deteksi hama (mm)
@@ -418,36 +423,39 @@ void readSensors() {
     if (measure.RangeStatus != 4) { // Status 4 = out of range / error
       currentDistance = measure.RangeMilliMeter;
 
-      // Cek: Apakah LED sedang aktif (sistem sedang menarik hama)?
-      bool canTrigger = false;
-      if (currentMode == MODE_MANUAL && uvLedEnabled) {
-        canTrigger = true; // Manual mode: LED nyala terus, bisa trigger kapan saja
-      } else if ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()) {
-        canTrigger = true; // Otomatis: hanya trigger saat dalam jadwal
-      }
+      // Pemicu blower via sensor VL53L0X hanya berjalan jika blowerMode == "sensor"
+      if (blowerMode == "sensor") {
+        // Cek: Apakah LED sedang aktif (sistem sedang menarik hama)?
+        bool canTrigger = false;
+        if (currentMode == MODE_MANUAL && uvLedEnabled) {
+          canTrigger = true; // Manual mode: LED nyala terus, bisa trigger kapan saja
+        } else if ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()) {
+          canTrigger = true; // Otomatis: hanya trigger saat dalam jadwal
+        }
 
-      // Cooldown: cek apakah sudah lewat interval minimum antar trigger
-      unsigned long nowMs = millis();
-      unsigned long cooldownMs = (unsigned long)manualIntervalMin * 60000UL;
-      bool cooldownPassed = (nowMs - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
+        // Cooldown: cek apakah sudah lewat interval minimum antar trigger
+        unsigned long nowMs = millis();
+        unsigned long cooldownMs = (unsigned long)manualIntervalMin * 60000UL;
+        bool cooldownPassed = (nowMs - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
 
-      if (canTrigger && !blowerEnabled && cooldownPassed &&
-          currentDistance > 10 && currentDistance <= distThreshold_mm) {
-        // TRIGGER BLOWER! Hama terdeteksi mendekat!
-        digitalWrite(PIN_RELAY_1, HIGH);
-        blowerEnabled = true;
-        zapperActive = true;
-        blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
-        lastBlowerTrigger = nowMs;
-        pestCounter++;
-        Serial.print("⚡🌀 Hama Terdeteksi! Jarak: ");
-        Serial.print(currentDistance);
-        Serial.print(" mm | Blower ON selama ");
-        Serial.print(manualDurationSec);
-        Serial.print(" detik | Total Hama: ");
-        Serial.println(pestCounter);
-        savePreferences(); // Simpan counter
-        sendTelemetryToEws(); // Laporkan ke server
+        if (canTrigger && !blowerEnabled && cooldownPassed &&
+            currentDistance > 10 && currentDistance <= distThreshold_mm) {
+          // TRIGGER BLOWER! Hama terdeteksi mendekat!
+          digitalWrite(PIN_RELAY_1, HIGH);
+          blowerEnabled = true;
+          zapperActive = true;
+          blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
+          lastBlowerTrigger = nowMs;
+          pestCounter++;
+          Serial.print("⚡🌀 Hama Terdeteksi Sensor! Jarak: ");
+          Serial.print(currentDistance);
+          Serial.print(" mm | Blower ON selama ");
+          Serial.print(manualDurationSec);
+          Serial.print(" detik | Total Hama: ");
+          Serial.println(pestCounter);
+          savePreferences(); // Simpan counter
+          sendTelemetryToEws(); // Laporkan ke server
+        }
       }
     }
   }
@@ -475,58 +483,76 @@ void updateActuators() {
 
   // ============================================================
   // LOGIKA LED WS2812B (ATRAKTOR / PENARIK HAMA)
-  // LED nyala TERUS selama uvLedEnabled=true dan mode mengizinkan.
-  // Warna berganti otomatis setiap ledRotationInterval menit.
+  // - Jika uvLedEnabled == false -> LED MATI
+  // - Di MODE_MANUAL -> LED MENYALA TERUS
+  // - Di MODE_OTOMATIS -> LED MENYALA SESUAI JADWAL RTC
+  // - Jika ledRunning == true -> LED berganti warna tiap ledRotationInterval menit
+  // - Jika ledRunning == false -> LED menyala 1 warna statis (activePreset)
   // ============================================================
 
-  // Jika saklar LED UV dinonaktifkan (dari Web / Dashboard), matikan LED
   if (!uvLedEnabled) {
     turnOffLed();
     ledIsOn = false;
-    return;
-  }
+  } else {
+    bool shouldLedBeOn = false;
+    if (currentMode == MODE_MANUAL) {
+      shouldLedBeOn = true;
+    } else if (currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) {
+      shouldLedBeOn = isWithinSchedule();
+    } else if (currentMode == MODE_SLEEP) {
+      enterDeepSleep();
+      return;
+    }
 
-  // Rotasi warna otomatis (berlaku di semua mode selama LED aktif)
-  unsigned long rotIntervalMs = (unsigned long)ledRotationInterval * 60000UL;
-  if (rotIntervalMs > 0 && (now - lastLedRotate >= rotIntervalMs)) {
-    lastLedRotate = now;
-    activePreset = (activePreset + 1) % 5;
-    Serial.print("🎨 [Auto-Rotate LED] Beralih ke Preset ");
-    Serial.print(activePreset + 1);
-    Serial.print(": ");
-    Serial.println(presets[activePreset].name);
-  }
+    if (shouldLedBeOn) {
+      // Rotasi warna otomatis hanya jika fitur ledRunning aktif
+      if (ledRunning) {
+        unsigned long rotIntervalMs = (unsigned long)ledRotationInterval * 60000UL;
+        if (rotIntervalMs > 0 && (now - lastLedRotate >= rotIntervalMs)) {
+          lastLedRotate = now;
+          activePreset = (activePreset + 1) % 5;
+          Serial.print("🎨 [Auto-Rotate LED] Beralih ke Preset ");
+          Serial.print(activePreset + 1);
+          Serial.print(": ");
+          Serial.println(presets[activePreset].name);
+        }
+      }
 
-  switch (currentMode) {
-    case MODE_MANUAL:
-      // Manual: LED nyala TERUS (sebagai penarik hama)
       applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
       ledIsOn = true;
-      break;
-
-    case MODE_OTOMATIS:
-    case MODE_OTOMATIS_LED:
-      // Otomatis: LED nyala hanya saat berada dalam jadwal jam RTC
-      if (isWithinSchedule()) {
-        applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
-        ledIsOn = true;
-      } else {
-        turnOffLed();
-        ledIsOn = false;
-      }
-      break;
-
-    case MODE_SLEEP:
-      enterDeepSleep();
-      break;
+    } else {
+      turnOffLed();
+      ledIsOn = false;
+    }
   }
 
   // ============================================================
-  // LOGIKA BLOWER (RELAY 1) - PENGHISAP HAMA
-  // Blower TIDAK dikendalikan di sini. Blower hanya nyala
-  // saat sensor VL53L0X mendeteksi hama (di readSensors()).
-  // Auto turn-off dilakukan di loop() berdasarkan blowerOffTime.
+  // LOGIKA BLOWER (RELAY 1) UNTUK MODE WAKTU (blowerMode == "time")
+  // Blower otomatis menyala berkala setiap manualIntervalMin menit
+  // selama manualDurationSec detik tanpa menunggu sensor VL53L0X.
   // ============================================================
+  if (blowerMode == "time") {
+    bool canBlowerRun = false;
+    if (currentMode == MODE_MANUAL && uvLedEnabled) {
+      canBlowerRun = true;
+    } else if ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()) {
+      canBlowerRun = true;
+    }
+
+    if (canBlowerRun && !blowerEnabled) {
+      unsigned long cycleIntervalMs = (unsigned long)manualIntervalMin * 60000UL;
+      if (cycleIntervalMs > 0 && (now - lastBlowerTimeCycle >= cycleIntervalMs || lastBlowerTimeCycle == 0)) {
+        digitalWrite(PIN_RELAY_1, HIGH);
+        blowerEnabled = true;
+        zapperActive = true;
+        blowerOffTime = now + ((unsigned long)manualDurationSec * 1000UL);
+        lastBlowerTimeCycle = now;
+        Serial.print("🌀 [Blower Siklus Waktu] Blower ON selama ");
+        Serial.print(manualDurationSec);
+        Serial.println(" detik (Interval Berkala)");
+      }
+    }
+  }
 }
 
 void applyLedColor(uint8_t r, uint8_t g, uint8_t b) {
@@ -1157,6 +1183,19 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     }
   }
 
+  // 10. Konfigurasi Mode Blower (sensor / time) & LED Running (berganti warna / 1 warna)
+  if (data.containsKey("blowerMode")) {
+    blowerMode = data["blowerMode"].as<String>();
+  } else if (data.containsKey("blower_mode")) {
+    blowerMode = data["blower_mode"].as<String>();
+  }
+
+  if (data.containsKey("ledRunning")) {
+    ledRunning = data["ledRunning"].as<bool>();
+  } else if (data.containsKey("led_running")) {
+    ledRunning = data["led_running"].as<bool>();
+  }
+
   updateActuators();
   savePreferences();
   sendTelemetryToEws();
@@ -1185,6 +1224,8 @@ void sendTelemetryToEws() {
   p["ledColor"] = presets[activePreset].name;
   p["manualIntervalMin"] = manualIntervalMin;
   p["manualDurationSec"] = manualDurationSec;
+  p["blowerMode"] = blowerMode;
+  p["ledRunning"] = ledRunning;
 
   char sTime[10], eTime[10];
   snprintf(sTime, sizeof(sTime), "%02d:%02d", startHour, startMin);
@@ -1214,7 +1255,9 @@ void loadPreferences() {
   manualDurationSec    = prefs.getUShort("m_dur", 3);
   pestCounter          = prefs.getUInt("p_count", 0);
   uvLedEnabled         = prefs.getBool("uv_en", true);
-  // Blower SELALU mati saat boot (hanya aktif dari trigger sensor VL53)
+  ledRunning           = prefs.getBool("led_run", true);
+  blowerMode           = prefs.getString("bl_mode", "sensor");
+  // Blower SELALU mati saat boot (hanya aktif dari trigger sensor VL53 atau waktu)
   blowerEnabled = false;
   zapperActive = false;
 
@@ -1243,6 +1286,8 @@ void savePreferences() {
   prefs.putUShort("m_dur", manualDurationSec);
   prefs.putUInt("p_count", pestCounter);
   prefs.putBool("uv_en", uvLedEnabled);
+  prefs.putBool("led_run", ledRunning);
+  prefs.putString("bl_mode", blowerMode);
   // blowerEnabled tidak perlu disimpan karena selalu MATI saat boot
 
   for (int i = 0; i < 5; i++) {

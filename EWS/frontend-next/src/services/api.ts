@@ -277,6 +277,8 @@ export const api = {
       ledRotationInterval?: number;
       manualIntervalMin?: number;
       manualDurationSec?: number;
+      blowerMode?: 'sensor' | 'time';
+      ledRunning?: boolean;
       ledColor?: string;
       presets?: any[];
       command?: string;

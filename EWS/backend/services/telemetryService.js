@@ -458,6 +458,8 @@ class TelemetryService {
       manualIntervalMin: trapData.manualIntervalMin !== undefined ? parseInt(trapData.manualIntervalMin, 10) : (trapData.manualInterval !== undefined ? parseInt(trapData.manualInterval, 10) : undefined),
       manualDurationSec: trapData.manualDurationSec !== undefined ? parseInt(trapData.manualDurationSec, 10) : (trapData.manualDuration !== undefined ? parseInt(trapData.manualDuration, 10) : undefined),
       ledColor: trapData.ledColor || undefined,
+      blowerMode: trapData.blowerMode || (trapData.blower_mode || undefined),
+      ledRunning: trapData.ledRunning !== undefined ? Boolean(trapData.ledRunning) : (trapData.led_running !== undefined ? Boolean(trapData.led_running) : undefined),
       startTime: trapData.startTime || undefined,
       endTime: trapData.endTime || undefined,
       ledRotationInterval: trapData.ledRotationInterval !== undefined ? parseInt(trapData.ledRotationInterval, 10) : undefined,
@@ -548,6 +550,8 @@ class TelemetryService {
             start_time = COALESCE(?, start_time),
             end_time = COALESCE(?, end_time),
             led_rotation_interval = COALESCE(?, led_rotation_interval),
+            blower_mode = COALESCE(?, blower_mode),
+            led_running = COALESCE(?, led_running),
             presets_json = COALESCE(?, presets_json),
             last_seen_at = NOW()
           WHERE id = ?`,
@@ -569,6 +573,8 @@ class TelemetryService {
             data.startTime || null,
             data.endTime || null,
             data.ledRotationInterval !== undefined ? data.ledRotationInterval : null,
+            data.blowerMode !== undefined ? data.blowerMode : null,
+            data.ledRunning !== undefined ? (data.ledRunning ? 1 : 0) : null,
             presetsJsonStr || null,
             trapId,
           ]
