@@ -346,7 +346,20 @@ exports.controlTrap = async (req, res) => {
     // Kirim instruksi ke mikrokontroler ESP32 Trap via WebSocket topic: traps/{id}/command
     wsService.publish(`traps/${id}/command`, {
       command,
+      mode,
+      uvLedStatus: uvLedStatus !== undefined ? (uvLedStatus ? true : false) : undefined,
+      blowerStatus: blowerStatus !== undefined ? (blowerStatus ? true : false) : undefined,
+      status,
+      activePreset,
+      startTime,
+      endTime,
+      ledRotationInterval,
+      manualIntervalMin,
+      manualDurationSec,
+      ledColor,
+      presets,
       payload: {
+        command,
         mode,
         uvLedStatus,
         blowerStatus,

@@ -346,7 +346,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   {activeTrap.mode === 'manual' && <Check className="w-4 h-4 text-blue-600" />}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Siklus berulang: menyala tiap {activeTrap.manualIntervalMin || 15} menit selama {activeTrap.manualDurationSec || 3} detik, atau kendali tombol fisik &amp; saklar manual.
+                  LED nyala terus sebagai penarik hama. Blower otomatis menyala {activeTrap.manualDurationSec || 3} dtk saat sensor VL53 mendeteksi hama (cooldown {activeTrap.manualIntervalMin || 15} menit).
                 </p>
               </button>
 
@@ -364,7 +364,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   {activeTrap.mode === 'otomatis' && <Check className="w-4 h-4 text-blue-600" />}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Lampu &amp; blower aktif otomatis sesuai rentang jam RTC dengan 1 warna preset yang telah ditentukan.
+                  LED aktif sesuai jadwal RTC dengan 1 warna preset. Blower otomatis saat sensor mendeteksi hama.
                 </p>
               </button>
 
@@ -382,7 +382,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   {activeTrap.mode === 'otomatis_led' && <Check className="w-4 h-4 text-blue-600" />}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Aktif sesuai jadwal, dan warna lampu berganti otomatis bergiliran setiap interval menit yang ditentukan.
+                  LED aktif sesuai jadwal, warna berganti otomatis bergiliran setiap interval menit. Blower otomatis dari sensor.
                 </p>
               </button>
             </div>
@@ -393,7 +393,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Konfigurasi Jadwal, Rotasi &amp; Siklus Manual</h4>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Konfigurasi Jadwal, Rotasi &amp; Blower</h4>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400">Sinkron dengan Modul RTC DS3231 &amp; ESP32</span>
             </div>
@@ -446,14 +446,14 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Berganti tiap sekian menit di Otomatis-LED</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">Warna LED berganti setiap sekian menit</span>
               </div>
 
               {/* Manual Mode: Interval Siklus */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <Timer className="w-3.5 h-3.5 text-emerald-600" />
-                  Interval Siklus Manual
+                  Cooldown Blower
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -466,14 +466,14 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Jeda waktu siklus di Mode Manual</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">Jeda minimum antar trigger blower</span>
               </div>
 
               {/* Manual Mode: Durasi Nyala */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <Zap className="w-3.5 h-3.5 text-amber-500" />
-                  Durasi Nyala Manual
+                  Durasi Nyala Blower
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -486,7 +486,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Detik</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Lama nyala tiap siklus (misal: 3 detik)</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">Lama blower menyala saat hama terdeteksi</span>
               </div>
             </div>
           </div>
@@ -614,13 +614,13 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   </button>
                 </div>
 
-                {/* Actuator 2: Blower */}
+                {/* Actuator 2: Blower (Status dari sensor, bisa test manual) */}
                 <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-10 h-10 rounded-lg flex items-center justify-center border ${
                         activeTrap.blowerStatus
-                          ? 'bg-blue-100 dark:bg-blue-950/80 border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400'
+                          ? 'bg-blue-100 dark:bg-blue-950/80 border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 animate-pulse'
                           : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400'
                       }`}
                     >
@@ -628,7 +628,11 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white">Centrifugal Blower Hisap</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">12V 15-25W Driver MOSFET</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {activeTrap.blowerStatus
+                          ? `Aktif (otomatis mati setelah ${activeTrap.manualDurationSec || 3} dtk)`
+                          : 'Standby — Otomatis nyala saat sensor VL53 deteksi hama'}
+                      </p>
                     </div>
                   </div>
 
@@ -640,7 +644,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                         : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
                     }`}
                   >
-                    {activeTrap.blowerStatus ? 'ON' : 'OFF'}
+                    {activeTrap.blowerStatus ? 'AKTIF' : 'TEST'}
                   </button>
                 </div>
 
