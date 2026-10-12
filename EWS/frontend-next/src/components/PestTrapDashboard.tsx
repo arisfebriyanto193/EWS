@@ -18,6 +18,8 @@ import {
   Gauge,
   Calendar,
   Layers,
+  Timer,
+  Zap,
 } from 'lucide-react';
 
 interface PestTrapDashboardProps {
@@ -95,9 +97,11 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   };
 
   const handlePresetSelect = (trap: PestTrapNode, presetId: number) => {
+    const selected = presets[presetId];
     onUpdateTrap({
       ...trap,
       activePreset: presetId,
+      ledColor: selected ? selected.name : trap.ledColor,
     });
   };
 
@@ -112,6 +116,20 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     onUpdateTrap({
       ...trap,
       ledRotationInterval: Math.max(1, interval),
+    });
+  };
+
+  const handleManualIntervalChange = (trap: PestTrapNode, interval: number) => {
+    onUpdateTrap({
+      ...trap,
+      manualIntervalMin: Math.max(1, interval),
+    });
+  };
+
+  const handleManualDurationChange = (trap: PestTrapNode, duration: number) => {
+    onUpdateTrap({
+      ...trap,
+      manualDurationSec: Math.max(1, duration),
     });
   };
 
@@ -161,6 +179,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
           endTime: '06:00',
           activePreset: 0,
           ledRotationInterval: 15,
+          manualIntervalMin: 15,
+          manualDurationSec: 3,
           presets: DEFAULT_PRESETS,
         });
         setSelectedTrapId(newTrapId.trim().toUpperCase());
@@ -326,7 +346,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   {activeTrap.mode === 'manual' && <Check className="w-4 h-4 text-blue-600" />}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Kendali langsung manual dari saklar/tombol fisik dan web dashboard tanpa mengikuti jadwal otomatis.
+                  Siklus berulang: menyala tiap {activeTrap.manualIntervalMin || 15} menit selama {activeTrap.manualDurationSec || 3} detik, atau kendali tombol fisik &amp; saklar manual.
                 </p>
               </button>
 
@@ -368,17 +388,17 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
             </div>
           </div>
 
-          {/* Schedule & LED Rotation Interval Card */}
+          {/* Schedule, LED Rotation & Manual Cycling Card */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Konfigurasi Jadwal &amp; Rotasi Warna</h4>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Konfigurasi Jadwal, Rotasi &amp; Siklus Manual</h4>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Sinkron dengan Modul RTC DS3231</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Sinkron dengan Modul RTC DS3231 &amp; ESP32</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               {/* Jam Mulai */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
@@ -413,7 +433,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <RotateCw className="w-3.5 h-3.5 text-purple-600" />
-                  Interval Rotasi Warna Lampu
+                  Rotasi Lampu (Otomatis-LED)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -426,7 +446,47 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">Warna berganti tiap sekian menit (Mode Otomatis-LED)</span>
+                <span className="text-[10px] text-slate-500 mt-1 block">Berganti tiap sekian menit di Otomatis-LED</span>
+              </div>
+
+              {/* Manual Mode: Interval Siklus */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Timer className="w-3.5 h-3.5 text-emerald-600" />
+                  Interval Siklus Manual
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={activeTrap.manualIntervalMin || 15}
+                    onChange={(e) => handleManualIntervalChange(activeTrap, parseInt(e.target.value, 10) || 1)}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">Jeda waktu siklus di Mode Manual</span>
+              </div>
+
+              {/* Manual Mode: Durasi Nyala */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  Durasi Nyala Manual
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={3600}
+                    value={activeTrap.manualDurationSec || 3}
+                    onChange={(e) => handleManualDurationChange(activeTrap, parseInt(e.target.value, 10) || 1)}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Detik</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">Lama nyala tiap siklus (misal: 3 detik)</span>
               </div>
             </div>
           </div>

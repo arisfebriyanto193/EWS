@@ -455,6 +455,9 @@ class TelemetryService {
       mode: normalizedMode,
       status: trapData.status || 'aktif',
       activePreset: trapData.activePreset !== undefined ? parseInt(trapData.activePreset, 10) : undefined,
+      manualIntervalMin: trapData.manualIntervalMin !== undefined ? parseInt(trapData.manualIntervalMin, 10) : (trapData.manualInterval !== undefined ? parseInt(trapData.manualInterval, 10) : undefined),
+      manualDurationSec: trapData.manualDurationSec !== undefined ? parseInt(trapData.manualDurationSec, 10) : (trapData.manualDuration !== undefined ? parseInt(trapData.manualDuration, 10) : undefined),
+      ledColor: trapData.ledColor || undefined,
       startTime: trapData.startTime || undefined,
       endTime: trapData.endTime || undefined,
       ledRotationInterval: trapData.ledRotationInterval !== undefined ? parseInt(trapData.ledRotationInterval, 10) : undefined,
@@ -473,9 +476,9 @@ class TelemetryService {
               id, name, location, uv_led_status, blower_status,
               pir_trigger_count, photoelectric_count, container_capacity_percent,
               battery_voltage, solar_charging_current, current_distance,
-              mode, status, active_preset, start_time, end_time,
-              led_rotation_interval, presets_json, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+              mode, status, active_preset, manual_interval_min, manual_duration_sec, led_color,
+              start_time, end_time, led_rotation_interval, presets_json, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
             [
               trapId,
               `Perangkap Hama ${trapId}`,
@@ -491,6 +494,9 @@ class TelemetryService {
               data.mode,
               data.status,
               data.activePreset !== undefined ? data.activePreset : 0,
+              data.manualIntervalMin !== undefined ? data.manualIntervalMin : 15,
+              data.manualDurationSec !== undefined ? data.manualDurationSec : 3,
+              data.ledColor || 'UV / Ungu',
               data.startTime || '18:00',
               data.endTime || '06:00',
               data.ledRotationInterval !== undefined ? data.ledRotationInterval : 15,
@@ -499,12 +505,12 @@ class TelemetryService {
           );
         }
 
-        // Simpan log ke pest_trap_logs
+        // Simpan log ke pest_trap_logs (termasuk status led dan warna led saat log dicatat)
         await pool.query(
           `INSERT INTO pest_trap_logs (
             trap_id, pir_trigger_count, photoelectric_count, container_capacity_percent,
-            battery_voltage, solar_charging_current, current_distance, uv_led_status, blower_status, mode, status, active_preset
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            battery_voltage, solar_charging_current, current_distance, uv_led_status, led_color, blower_status, mode, status, active_preset
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             trapId,
             data.pirTriggerCount,
@@ -514,6 +520,7 @@ class TelemetryService {
             data.solarChargingCurrent,
             data.currentDistance,
             data.uvLedStatus,
+            data.ledColor || 'UV / Ungu',
             data.blowerStatus,
             data.mode,
             data.status,
@@ -535,6 +542,9 @@ class TelemetryService {
             mode = ?,
             status = ?,
             active_preset = COALESCE(?, active_preset),
+            manual_interval_min = COALESCE(?, manual_interval_min),
+            manual_duration_sec = COALESCE(?, manual_duration_sec),
+            led_color = COALESCE(?, led_color),
             start_time = COALESCE(?, start_time),
             end_time = COALESCE(?, end_time),
             led_rotation_interval = COALESCE(?, led_rotation_interval),
@@ -553,6 +563,9 @@ class TelemetryService {
             data.mode,
             data.status,
             data.activePreset !== undefined ? data.activePreset : null,
+            data.manualIntervalMin !== undefined ? data.manualIntervalMin : null,
+            data.manualDurationSec !== undefined ? data.manualDurationSec : null,
+            data.ledColor || null,
             data.startTime || null,
             data.endTime || null,
             data.ledRotationInterval !== undefined ? data.ledRotationInterval : null,

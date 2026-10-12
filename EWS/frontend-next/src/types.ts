@@ -139,6 +139,9 @@ export interface PestTrapNode {
   startTime?: string; // e.g. "18:00"
   endTime?: string; // e.g. "06:00"
   ledRotationInterval?: number; // menit
+  manualIntervalMin?: number; // Interval siklus berkala mode manual (menit)
+  manualDurationSec?: number; // Durasi menyala mode manual (detik)
+  ledColor?: string; // Hex kode / warna LED aktif
   presets?: ColorPresetItem[];
   lastSeenAt?: string | null;
 }

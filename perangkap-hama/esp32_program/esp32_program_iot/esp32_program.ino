@@ -113,6 +113,10 @@ uint8_t endMin    = 0;
 // Interval Ganti Warna (Menit) untuk Mode OTOMATIS_LED
 uint16_t ledRotationInterval = 15;
 
+// Siklus Mode Manual (Menyala berkala tiap X menit selama Y detik)
+uint16_t manualIntervalMin   = 15; // Interval jeda siklus manual (menit)
+uint16_t manualDurationSec   = 3;  // Lama durasi menyala (detik)
+
 // Parameter Deteksi & Zapper
 uint16_t distThreshold_mm = 150;  // Ambang batas deteksi hama (mm)
 uint16_t zapPulse_ms      = 150;  // Durasi pulsa zapper aktif (ms)
@@ -145,11 +149,13 @@ char wsPath[32]       = "/ws";
 bool wsUseSsl         = true;
 
 // Timing Non-blocking
-unsigned long lastSensorRead   = 0;
-unsigned long lastOledUpdate   = 0;
-unsigned long lastTelemetryPub = 0;
-unsigned long lastLedRotate    = 0;
-unsigned long zapOffTime       = 0;
+const unsigned long TELEMETRY_INTERVAL_MS = 300000UL; // Kirim data IoT ke EWS setiap 5 menit (300.000 ms)
+unsigned long lastSensorRead       = 0;
+unsigned long lastOledUpdate       = 0;
+unsigned long lastTelemetryPub     = 0;
+unsigned long lastLedRotate        = 0;
+unsigned long lastManualCycleStart = 0;
+unsigned long zapOffTime           = 0;
 
 // Debounce Tombol
 unsigned long bt1LastPress = 0;
@@ -292,8 +298,8 @@ void loop() {
     updateOledDisplay();
   }
 
-  // 6. Kirim Telemetri IoT ke Server EWS setiap 5 detik
-  if (now - lastTelemetryPub >= 5000) {
+  // 6. Kirim Telemetri IoT ke Server EWS setiap 5 menit (300.000 ms)
+  if (now - lastTelemetryPub >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryPub = now;
     sendTelemetryToEws();
   }
@@ -382,9 +388,9 @@ void readSensors() {
     if (measure.RangeStatus != 4) { // Status 4 = out of range / error
       currentDistance = measure.RangeMilliMeter;
 
-      // Cek deteksi hama jika sistem sedang dalam jadwal aktif / mode manual
-      bool canTrigger = (currentMode == MODE_MANUAL) ||
-                        ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule());
+      // Cek deteksi hama jika sistem sedang dalam jadwal aktif / mode manual siklus aktif
+      bool canTrigger = (currentMode == MODE_MANUAL ? ledIsOn :
+                        ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()));
 
       if (canTrigger && currentDistance > 10 && currentDistance <= distThreshold_mm) {
         if (!zapperActive) {
@@ -425,11 +431,29 @@ void updateActuators() {
   unsigned long now = millis();
 
   switch (currentMode) {
-    case MODE_MANUAL:
-      // Manual ON: Lampu LED selalu menyala dengan preset aktif
-      applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
-      ledIsOn = true;
+    case MODE_MANUAL: {
+      // Siklus Mode Manual: Menyala berkala tiap manualIntervalMin menit selama manualDurationSec detik
+      unsigned long cyclePeriodMs = (unsigned long)manualIntervalMin * 60000UL;
+      unsigned long onDurationMs  = (unsigned long)manualDurationSec * 1000UL;
+
+      if (cyclePeriodMs == 0 || onDurationMs >= cyclePeriodMs) {
+        applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
+        ledIsOn = true;
+      } else {
+        if (now - lastManualCycleStart >= cyclePeriodMs) {
+          lastManualCycleStart = now;
+        }
+
+        if (now - lastManualCycleStart < onDurationMs) {
+          applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
+          ledIsOn = true;
+        } else {
+          turnOffLed();
+          ledIsOn = false;
+        }
+      }
       break;
+    }
 
     case MODE_OTOMATIS:
       // Otomatis: Menyala hanya saat berada dalam jadwal jam RTC
@@ -524,7 +548,10 @@ void handlePhysicalButtons() {
         bt2LastPress = now;
         if (currentMode == MODE_MANUAL) currentMode = MODE_OTOMATIS;
         else if (currentMode == MODE_OTOMATIS) currentMode = MODE_OTOMATIS_LED;
-        else currentMode = MODE_MANUAL;
+        else {
+          currentMode = MODE_MANUAL;
+          lastManualCycleStart = millis();
+        }
 
         Serial.print("🔘 [Tombol 2] Ganti Mode ke: ");
         if (currentMode == MODE_MANUAL) Serial.println("MANUAL");
@@ -776,6 +803,9 @@ void setupWebServer() {
     doc["startTime"] = String(startHour) + ":" + (startMin < 10 ? "0" : "") + String(startMin);
     doc["endTime"] = String(endHour) + ":" + (endMin < 10 ? "0" : "") + String(endMin);
     doc["ledRotationInterval"] = ledRotationInterval;
+    doc["manualIntervalMin"] = manualIntervalMin;
+    doc["manualDurationSec"] = manualDurationSec;
+    doc["ledColor"] = presets[activePreset].name;
 
     JsonArray pArr = doc.createNestedArray("presets");
     for (int i = 0; i < 5; i++) {
@@ -795,7 +825,10 @@ void setupWebServer() {
   server.on("/api/mode", HTTP_POST, []() {
     if (server.hasArg("val")) {
       String m = server.arg("val");
-      if (m == "manual") currentMode = MODE_MANUAL;
+      if (m == "manual") {
+        currentMode = MODE_MANUAL;
+        lastManualCycleStart = millis();
+      }
       else if (m == "otomatis") currentMode = MODE_OTOMATIS;
       else if (m == "otomatis-led" || m == "otomatis_led") currentMode = MODE_OTOMATIS_LED;
       else if (m == "sleep") {
@@ -869,6 +902,14 @@ void setupWebServer() {
       int rot = server.arg("rot").toInt();
       if (rot >= 1 && rot <= 180) ledRotationInterval = rot;
     }
+    if (server.hasArg("m_int")) {
+      int mi = server.arg("m_int").toInt();
+      if (mi >= 1 && mi <= 1440) manualIntervalMin = mi;
+    }
+    if (server.hasArg("m_dur")) {
+      int md = server.arg("m_dur").toInt();
+      if (md >= 1 && md <= 3600) manualDurationSec = md;
+    }
     savePreferences();
     sendTelemetryToEws();
     server.send(200, "application/json", "{\"status\":\"ok\"}");
@@ -939,7 +980,10 @@ void handleWsMessage(uint8_t *payload, size_t length) {
   // 1. Ubah Mode
   if (data.containsKey("mode")) {
     String m = data["mode"].as<String>();
-    if (m == "manual") currentMode = MODE_MANUAL;
+    if (m == "manual") {
+      currentMode = MODE_MANUAL;
+      lastManualCycleStart = millis();
+    }
     else if (m == "otomatis") currentMode = MODE_OTOMATIS;
     else if (m == "otomatis-led" || m == "otomatis_led") currentMode = MODE_OTOMATIS_LED;
     else if (m == "sleep") {
@@ -978,7 +1022,17 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     if (rot >= 1 && rot <= 180) ledRotationInterval = rot;
   }
 
-  // 5. Update Preset Warna dari Web Dashboard
+  // 5. Ubah Pengaturan Siklus Manual
+  if (data.containsKey("manualIntervalMin")) {
+    int mInt = data["manualIntervalMin"].as<int>();
+    if (mInt >= 1 && mInt <= 1440) manualIntervalMin = mInt;
+  }
+  if (data.containsKey("manualDurationSec")) {
+    int mDur = data["manualDurationSec"].as<int>();
+    if (mDur >= 1 && mDur <= 3600) manualDurationSec = mDur;
+  }
+
+  // 6. Update Preset Warna dari Web Dashboard
   if (data.containsKey("presets")) {
     JsonArray pArr = data["presets"].as<JsonArray>();
     int i = 0;
@@ -991,7 +1045,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     }
   }
 
-  // 6. Manual Zap / Reset Trigger
+  // 7. Manual Zap / Reset Trigger
   if (data.containsKey("command")) {
     String cmd = data["command"].as<String>();
     if (cmd == "TRIGGER_ZAP") {
@@ -1027,6 +1081,9 @@ void sendTelemetryToEws() {
   p["currentDistance"] = currentDistance;
   p["mode"] = (currentMode == MODE_MANUAL ? "manual" : (currentMode == MODE_OTOMATIS ? "otomatis" : "otomatis_led"));
   p["activePreset"] = activePreset;
+  p["ledColor"] = presets[activePreset].name;
+  p["manualIntervalMin"] = manualIntervalMin;
+  p["manualDurationSec"] = manualDurationSec;
 
   char sTime[10], eTime[10];
   snprintf(sTime, sizeof(sTime), "%02d:%02d", startHour, startMin);
@@ -1052,6 +1109,8 @@ void loadPreferences() {
   endHour              = prefs.getUChar("e_hr", 6);
   endMin               = prefs.getUChar("e_min", 0);
   ledRotationInterval  = prefs.getUShort("rot_int", 15);
+  manualIntervalMin    = prefs.getUShort("m_int", 15);
+  manualDurationSec    = prefs.getUShort("m_dur", 3);
   pestCounter          = prefs.getUInt("p_count", 0);
 
   // Load custom presets jika ada
@@ -1075,6 +1134,8 @@ void savePreferences() {
   prefs.putUChar("e_hr", endHour);
   prefs.putUChar("e_min", endMin);
   prefs.putUShort("rot_int", ledRotationInterval);
+  prefs.putUShort("m_int", manualIntervalMin);
+  prefs.putUShort("m_dur", manualDurationSec);
   prefs.putUInt("p_count", pestCounter);
 
   for (int i = 0; i < 5; i++) {

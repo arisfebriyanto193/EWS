@@ -275,6 +275,9 @@ export const api = {
       startTime?: string;
       endTime?: string;
       ledRotationInterval?: number;
+      manualIntervalMin?: number;
+      manualDurationSec?: number;
+      ledColor?: string;
       presets?: any[];
       command?: string;
     }
@@ -302,6 +305,9 @@ export const api = {
       startTime?: string;
       endTime?: string;
       ledRotationInterval?: number;
+      manualIntervalMin?: number;
+      manualDurationSec?: number;
+      ledColor?: string;
       presets?: any[];
       command?: string;
     }

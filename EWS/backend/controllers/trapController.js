@@ -29,6 +29,9 @@ function formatTrapNode(trap) {
     startTime: trap.start_time || '18:00',
     endTime: trap.end_time || '06:00',
     ledRotationInterval: parseInt(trap.led_rotation_interval || 15, 10),
+    manualIntervalMin: parseInt(trap.manual_interval_min || 15, 10),
+    manualDurationSec: parseInt(trap.manual_duration_sec || 3, 10),
+    ledColor: trap.led_color || '#3b82f6',
     presets: presets,
     lastSeenAt: trap.last_seen_at ? new Date(trap.last_seen_at).toISOString() : null,
   };
@@ -79,6 +82,9 @@ exports.createTrap = async (req, res) => {
       endTime = '06:00',
       activePreset = 0,
       ledRotationInterval = 15,
+      manualIntervalMin = 15,
+      manualDurationSec = 3,
+      ledColor = '#3b82f6',
       presets = null,
     } = req.body;
 
@@ -106,13 +112,13 @@ exports.createTrap = async (req, res) => {
         pir_trigger_count, photoelectric_count, container_capacity_percent,
         battery_voltage, solar_charging_current, current_distance,
         mode, status, active_preset, start_time, end_time,
-        led_rotation_interval, presets_json
+        led_rotation_interval, manual_interval_min, manual_duration_sec, led_color, presets_json
       ) VALUES (
         ?, ?, ?, 1, 0,
         0, 0, 0,
         12.60, 0, 0,
         ?, 'aktif', ?, ?, ?,
-        ?, ?
+        ?, ?, ?, ?, ?
       )`,
       [
         id,
@@ -123,6 +129,9 @@ exports.createTrap = async (req, res) => {
         startTime,
         endTime,
         ledRotationInterval,
+        manualIntervalMin,
+        manualDurationSec,
+        ledColor,
         presetsJsonStr,
       ]
     );
@@ -157,6 +166,9 @@ exports.updateTrap = async (req, res) => {
       endTime,
       activePreset,
       ledRotationInterval,
+      manualIntervalMin,
+      manualDurationSec,
+      ledColor,
       presets,
     } = req.body;
 
@@ -172,6 +184,9 @@ exports.updateTrap = async (req, res) => {
         end_time = COALESCE(?, end_time),
         active_preset = COALESCE(?, active_preset),
         led_rotation_interval = COALESCE(?, led_rotation_interval),
+        manual_interval_min = COALESCE(?, manual_interval_min),
+        manual_duration_sec = COALESCE(?, manual_duration_sec),
+        led_color = COALESCE(?, led_color),
         presets_json = COALESCE(?, presets_json)
       WHERE id = ?`,
       [
@@ -182,6 +197,9 @@ exports.updateTrap = async (req, res) => {
         endTime || null,
         activePreset !== undefined ? activePreset : null,
         ledRotationInterval !== undefined ? ledRotationInterval : null,
+        manualIntervalMin !== undefined ? manualIntervalMin : null,
+        manualDurationSec !== undefined ? manualDurationSec : null,
+        ledColor || null,
         presetsJsonStr !== undefined ? presetsJsonStr : null,
         id,
       ]
@@ -251,6 +269,9 @@ exports.controlTrap = async (req, res) => {
       startTime,
       endTime,
       ledRotationInterval,
+      manualIntervalMin,
+      manualDurationSec,
+      ledColor,
       presets,
       command = 'SET_CONTROL',
     } = req.body;
@@ -264,8 +285,8 @@ exports.controlTrap = async (req, res) => {
         `INSERT INTO pest_traps (
           id, name, location, uv_led_status, blower_status,
           mode, status, active_preset, start_time, end_time,
-          led_rotation_interval, presets_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          led_rotation_interval, manual_interval_min, manual_duration_sec, led_color, presets_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           `Perangkap Hama ${id}`,
@@ -278,6 +299,9 @@ exports.controlTrap = async (req, res) => {
           startTime || '18:00',
           endTime || '06:00',
           ledRotationInterval !== undefined ? ledRotationInterval : 15,
+          manualIntervalMin !== undefined ? manualIntervalMin : 15,
+          manualDurationSec !== undefined ? manualDurationSec : 3,
+          ledColor || '#3b82f6',
           presetsJsonStr !== undefined ? presetsJsonStr : null,
         ]
       );
@@ -292,6 +316,9 @@ exports.controlTrap = async (req, res) => {
           start_time = COALESCE(?, start_time),
           end_time = COALESCE(?, end_time),
           led_rotation_interval = COALESCE(?, led_rotation_interval),
+          manual_interval_min = COALESCE(?, manual_interval_min),
+          manual_duration_sec = COALESCE(?, manual_duration_sec),
+          led_color = COALESCE(?, led_color),
           presets_json = COALESCE(?, presets_json)
         WHERE id = ?`,
         [
@@ -303,6 +330,9 @@ exports.controlTrap = async (req, res) => {
           startTime || null,
           endTime || null,
           ledRotationInterval !== undefined ? ledRotationInterval : null,
+          manualIntervalMin !== undefined ? manualIntervalMin : null,
+          manualDurationSec !== undefined ? manualDurationSec : null,
+          ledColor || null,
           presetsJsonStr !== undefined ? presetsJsonStr : null,
           id,
         ]
@@ -325,6 +355,9 @@ exports.controlTrap = async (req, res) => {
         startTime,
         endTime,
         ledRotationInterval,
+        manualIntervalMin,
+        manualDurationSec,
+        ledColor,
         presets,
       },
       timestamp: new Date().toISOString(),
