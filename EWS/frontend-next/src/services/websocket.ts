@@ -48,6 +48,8 @@ class FrontendWebSocket {
         this.subscribe('ews/+/solar_current');
         this.subscribe('ews/+/gsm');
         this.subscribe('alarms');
+        this.subscribe('traps/+/telemetry');
+        this.subscribe('traps/+/status');
       };
 
       this.ws.onmessage = (event) => {
@@ -59,7 +61,7 @@ class FrontendWebSocket {
             // Panggil listener spesifik topik
             this.notifyListeners(topic, payload);
 
-            // Cek pattern wildcard ews/{ewsId}/{actionOrSensor}
+            // Cek pattern wildcard ews/{ewsId}/{actionOrSensor} atau traps/{trapId}/{action}
             const parts = topic.split('/');
             if (parts.length === 3 && parts[0] === 'ews') {
               const ewsId = parts[1];
@@ -70,6 +72,10 @@ class FrontendWebSocket {
 
               // Notifikasi event generik sensor update
               this.notifyListeners('ews/sensor_update', { ewsId, sensorKey: subTopic, payload });
+            } else if (parts.length === 3 && parts[0] === 'traps') {
+              const trapId = parts[1];
+              const subTopic = parts[2];
+              this.notifyListeners(`traps/+/${subTopic}`, { trapId, subTopic, payload });
             }
           } else if (type) {
             // Notifikasi sistem (connected, subscribed, error)

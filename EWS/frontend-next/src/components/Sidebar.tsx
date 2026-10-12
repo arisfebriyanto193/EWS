@@ -17,6 +17,7 @@ import {
   X,
   ChevronRight,
   ShieldAlert,
+  Bug,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -209,6 +210,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {pendingAlarmCount}
                 </span>
               )}
+            </button>
+
+            {/* Perangkap Hama IoT */}
+            <button
+              onClick={() => handleNavClick('pest-traps')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                activeTab === 'pest-traps'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Bug
+                  className={`w-4 h-4 ${
+                    activeTab === 'pest-traps'
+                      ? 'text-white'
+                      : 'text-emerald-500'
+                  }`}
+                />
+                <span>Perangkap Hama IoT</span>
+              </div>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                  activeTab === 'pest-traps'
+                    ? 'bg-emerald-700 text-white'
+                    : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400'
+                }`}
+              >
+                Aktif
+              </span>
             </button>
           </div>
 

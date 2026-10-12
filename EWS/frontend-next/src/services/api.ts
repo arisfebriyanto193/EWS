@@ -227,7 +227,58 @@ export const api = {
     return data.data;
   },
 
-  async controlTrap(id: string, payload: { mode?: string; uvLedStatus?: boolean; blowerStatus?: boolean; status?: string }): Promise<void> {
+  async createTrap(trapData: Partial<PestTrapNode>): Promise<PestTrapNode> {
+    const res = await fetch(`${API_BASE}/traps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(trapData),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menambahkan perangkap hama');
+    }
+    return data.data;
+  },
+
+  async updateTrap(id: string, trapData: Partial<PestTrapNode>): Promise<PestTrapNode> {
+    const res = await fetch(`${API_BASE}/traps/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(trapData),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal memperbarui perangkap hama');
+    }
+    return data.data;
+  },
+
+  async deleteTrap(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/traps/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeader() },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menghapus perangkap hama');
+    }
+  },
+
+  async controlTrap(
+    id: string,
+    payload: {
+      mode?: string;
+      uvLedStatus?: boolean;
+      blowerStatus?: boolean;
+      status?: string;
+      activePreset?: number;
+      startTime?: string;
+      endTime?: string;
+      ledRotationInterval?: number;
+      presets?: any[];
+      command?: string;
+    }
+  ): Promise<PestTrapNode> {
     const res = await fetch(`${API_BASE}/traps/${id}/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -237,9 +288,24 @@ export const api = {
     if (!res.ok || !data.success) {
       throw new Error(data.message || 'Gagal mengirim kontrol ke perangkap hama');
     }
+    return data.data;
   },
 
-  async controlPestTrap(id: string, payload: { mode?: string; uvLedStatus?: boolean; blowerStatus?: boolean; status?: string }): Promise<void> {
+  async controlPestTrap(
+    id: string,
+    payload: {
+      mode?: string;
+      uvLedStatus?: boolean;
+      blowerStatus?: boolean;
+      status?: string;
+      activePreset?: number;
+      startTime?: string;
+      endTime?: string;
+      ledRotationInterval?: number;
+      presets?: any[];
+      command?: string;
+    }
+  ): Promise<PestTrapNode> {
     return this.controlTrap(id, payload);
   },
 

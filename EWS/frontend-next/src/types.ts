@@ -113,19 +113,34 @@ export interface EWSNode {
   };
 }
 
+export interface ColorPresetItem {
+  id: number;
+  name: string;
+  r: number;
+  g: number;
+  b: number;
+}
+
 export interface PestTrapNode {
   id: string; // e.g. "TRAP-01"
   name: string;
   location: string;
-  uvLedStatus: boolean; // LED UV 395-405nm ~5W
-  blowerStatus: boolean; // Centrifugal blower 12V 15-25W
+  uvLedStatus: boolean; // LED UV / Multi-color
+  blowerStatus: boolean; // Centrifugal blower
   pirTriggerCount: number; // HC-SR501 trigger count
   photoelectricCount: number; // E3F-DS30C4 catch count
-  containerCapacityPercent: number; // Wadah penampungan kasa
-  batteryVoltage: number; // VRLA 12V 12Ah
-  solarChargingCurrent: number; // Solar 30Wp (mA)
-  mode: 'otomatis_malam' | 'manual' | 'hemat_energi' | 'standby';
-  status: 'aktif' | 'standby' | 'wadah_penuh' | 'baterai_lemah';
+  containerCapacityPercent: number; // Wadah penampungan (VL53L0X)
+  batteryVoltage: number; // INA226 / ADC
+  solarChargingCurrent: number; // INA226 Solar / Battery current (mA)
+  currentDistance?: number; // VL53L0X distance in mm
+  mode: 'manual' | 'otomatis' | 'otomatis_led' | 'otomatis_malam' | 'hemat_energi' | 'standby';
+  status: 'aktif' | 'standby' | 'wadah_penuh' | 'baterai_lemah' | 'mati';
+  activePreset?: number;
+  startTime?: string; // e.g. "18:00"
+  endTime?: string; // e.g. "06:00"
+  ledRotationInterval?: number; // menit
+  presets?: ColorPresetItem[];
+  lastSeenAt?: string | null;
 }
 
 export interface AlarmLog {

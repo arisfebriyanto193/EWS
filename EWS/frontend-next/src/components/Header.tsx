@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   User,
   Plus,
+  Bug,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -49,6 +50,10 @@ export const Header: React.FC<HeaderProps> = ({
     title = 'Pengaturan Akun & Keamanan';
     Icon = User;
     subtitle = 'Profil petugas operasional dan pembaruan kata sandi';
+  } else if (activeTab === 'pest-traps') {
+    title = 'Perangkap Hama IoT';
+    Icon = Bug;
+    subtitle = 'Monitoring perangkap serangga, kendali RGB UV LED, dan jadwal otomatis';
   } else if (activeEws) {
     title = activeEws.name;
     Icon = Radio;

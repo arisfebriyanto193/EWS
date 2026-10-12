@@ -33,6 +33,7 @@ import { EngineeringDocsModal } from './EngineeringDocsModal';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { AddEWSModal } from './AddEWSModal';
+import { PestTrapDashboard } from './PestTrapDashboard';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -303,6 +304,40 @@ export default function App() {
       }
     });
 
+    // G. Real-time Telemetri Perangkap Hama (topik: traps/{id}/telemetry)
+    const unsubTrapTelemetry = wsClient.on('traps/+/telemetry', (payload: any) => {
+      if (payload && payload.trapId && payload.payload) {
+        const data = payload.payload;
+        setPestTraps((prev) =>
+          prev.map((t) => {
+            if (t.id === payload.trapId) {
+              return {
+                ...t,
+                ...data,
+                lastSeenAt: new Date().toISOString(),
+              };
+            }
+            return t;
+          })
+        );
+      }
+    });
+
+    const unsubTrapCreated = wsClient.on('traps/node/created', (payload: any) => {
+      if (payload && payload.trap) {
+        setPestTraps((prev) => {
+          if (prev.some((t) => t.id === payload.trap.id)) return prev;
+          return [...prev, payload.trap];
+        });
+      }
+    });
+
+    const unsubTrapDeleted = wsClient.on('traps/node/deleted', (payload: any) => {
+      if (payload && payload.trapId) {
+        setPestTraps((prev) => prev.filter((t) => t.id !== payload.trapId));
+      }
+    });
+
     return () => {
       unsubStatus();
       unsubEws();
@@ -312,6 +347,9 @@ export default function App() {
       unsubNodeCreated();
       unsubNodeDeleted();
       unsubTelegramUpdated();
+      unsubTrapTelemetry();
+      unsubTrapCreated();
+      unsubTrapDeleted();
     };
   }, []);
 
@@ -612,12 +650,42 @@ export default function App() {
   // Mengontrol Aktuator Perangkap Hama
   const handleUpdateTrap = (updated: PestTrapNode) => {
     setPestTraps((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-    api.controlPestTrap(updated.id, {
+    api.controlTrap(updated.id, {
       uvLedStatus: updated.uvLedStatus,
       blowerStatus: updated.blowerStatus,
+      mode: updated.mode,
+      activePreset: updated.activePreset,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
+      ledRotationInterval: updated.ledRotationInterval,
+      presets: updated.presets,
     }).catch((err: any) => {
       console.warn('Gagal sinkron kendali perangkap hama:', err?.message || err);
     });
+  };
+
+  const handleAddTrap = async (newTrapData: Partial<PestTrapNode>) => {
+    try {
+      const created = await api.createTrap(newTrapData);
+      setPestTraps((prev) => {
+        if (prev.some((t) => t.id === created.id)) return prev;
+        return [...prev, created];
+      });
+      return created;
+    } catch (err: any) {
+      alert(`Gagal menambah perangkat perangkap: ${err?.message || err}`);
+      throw err;
+    }
+  };
+
+  const handleDeleteTrap = async (id: string) => {
+    try {
+      await api.deleteTrap(id);
+      setPestTraps((prev) => prev.filter((t) => t.id !== id));
+    } catch (err: any) {
+      alert(`Gagal menghapus perangkat perangkap: ${err?.message || err}`);
+      throw err;
+    }
   };
 
   // Check if any siren is currently blaring
@@ -743,6 +811,16 @@ export default function App() {
               logs={alarmLogs}
               currentUser={currentUser}
               onAcknowledgeLog={handleAcknowledgeLog}
+            />
+          )}
+
+          {/* 4. Perangkap Hama IoT */}
+          {activeTab === 'pest-traps' && (
+            <PestTrapDashboard
+              traps={pestTraps}
+              onUpdateTrap={handleUpdateTrap}
+              onAddTrap={handleAddTrap}
+              onDeleteTrap={handleDeleteTrap}
             />
           )}
 
