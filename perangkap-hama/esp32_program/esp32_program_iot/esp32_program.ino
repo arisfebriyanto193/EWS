@@ -797,7 +797,7 @@ void setupWebServer() {
       String m = server.arg("val");
       if (m == "manual") currentMode = MODE_MANUAL;
       else if (m == "otomatis") currentMode = MODE_OTOMATIS;
-      else if (m == "otomatis-led") currentMode = MODE_OTOMATIS_LED;
+      else if (m == "otomatis-led" || m == "otomatis_led") currentMode = MODE_OTOMATIS_LED;
       else if (m == "sleep") {
         server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Entering sleep\"}");
         delay(200);
@@ -941,7 +941,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     String m = data["mode"].as<String>();
     if (m == "manual") currentMode = MODE_MANUAL;
     else if (m == "otomatis") currentMode = MODE_OTOMATIS;
-    else if (m == "otomatis-led") currentMode = MODE_OTOMATIS_LED;
+    else if (m == "otomatis-led" || m == "otomatis_led") currentMode = MODE_OTOMATIS_LED;
     else if (m == "sleep") {
       enterDeepSleep();
       return;
@@ -1025,7 +1025,7 @@ void sendTelemetryToEws() {
   p["batteryVoltage"] = serialized(String(busVoltage_V, 2));
   p["solarChargingCurrent"] = (int)current_mA;
   p["currentDistance"] = currentDistance;
-  p["mode"] = (currentMode == MODE_MANUAL ? "manual" : (currentMode == MODE_OTOMATIS ? "otomatis" : "otomatis-led"));
+  p["mode"] = (currentMode == MODE_MANUAL ? "manual" : (currentMode == MODE_OTOMATIS ? "otomatis" : "otomatis_led"));
   p["activePreset"] = activePreset;
 
   char sTime[10], eTime[10];
