@@ -99,8 +99,12 @@ ColorPreset presets[5] = {
 // ==============================================================================
 // 3. VARIABEL SISTEM & STATE
 // ==============================================================================
-String trapId = "TRAP-01";
-String trapName = "Perangkap Hama 01 - Kebun Kopi";
+String trapId = "TRAP-02";
+// ==============================================================================
+// 3. VARIABEL SISTEM & STATE
+// ==============================================================================
+
+String trapName = "Perangkap Hama 02";
 TrapMode currentMode = MODE_OTOMATIS;
 uint8_t activePreset = 0;
 
