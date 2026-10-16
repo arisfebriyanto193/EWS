@@ -12,6 +12,7 @@ import {
   User,
   Plus,
   Bug,
+  GraduationCap,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -38,51 +39,66 @@ export const Header: React.FC<HeaderProps> = ({
   onAddEwsClick,
 }) => {
   // Breadcrumb / Title mapping
-  let title = 'Ringkasan Sistem';
+  let title = 'Dashboard Ringkasan Multi-Node';
   let Icon = LayoutDashboard;
-  let subtitle = 'Monitoring seluruh titik pantau dan telemetri multi-node';
+  let subtitle = 'Pusat telemetri sensor kestabilan lereng & deteksi dini bencana';
 
   if (activeTab === 'alarm-history') {
-    title = 'Riwayat Alarm & Mitigasi';
+    title = 'Riwayat Insiden & Log Mitigasi';
     Icon = Activity;
-    subtitle = 'Log catatan darurat, pemicu sensor, dan konfirmasi operator';
+    subtitle = 'Catatan ambang batas sensor, aktivasi sirine, dan tindakan operator';
   } else if (activeTab === 'account-settings') {
-    title = 'Pengaturan Akun & Keamanan';
+    title = 'Konfigurasi Akun & Otoritas';
     Icon = User;
-    subtitle = 'Profil petugas operasional dan pembaruan kata sandi';
+    subtitle = 'Data profil peneliti/operator lapangan dan keamanan akses';
   } else if (activeTab === 'pest-traps') {
-    title = 'Perangkap Hama IoT';
+    title = 'Monitoring Perangkap Hama IoT';
     Icon = Bug;
-    subtitle = 'Monitoring perangkap serangga, kendali RGB UV LED, dan jadwal otomatis';
+    subtitle = 'Kendali fototaksis LED UV, status daya surya, dan perhitungan serangga';
   } else if (activeEws) {
     title = activeEws.name;
     Icon = Radio;
-    subtitle = `${activeEws.location} (${activeEws.coordinates?.lat ?? '-'}, ${activeEws.coordinates?.lng ?? '-'})`;
+    subtitle = `${activeEws.location} \u2022 Koordinat: ${activeEws.coordinates?.lat ?? '-'}, ${activeEws.coordinates?.lng ?? '-'}`;
   }
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs border-b border-slate-200 dark:border-slate-800 transition-colors">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#110e1f]/95 backdrop-blur-xs border-b border-slate-200 dark:border-purple-950/40 transition-colors duration-150">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Left: Mobile Menu Trigger + Breadcrumb Title */}
+          {/* Left: Mobile Menu Trigger + Academic Breadcrumb Title */}
           <div className="flex items-center gap-3">
             <button
               onClick={onOpenMobileMenu}
-              className="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-              aria-label="Buka Menu"
+              className="lg:hidden p-2 rounded-lg text-slate-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer"
+              aria-label="Buka Menu Navigasi"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/70 border border-purple-200 dark:border-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center shrink-0">
                 <Icon className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight leading-tight line-clamp-1">
-                  {title}
-                </h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block line-clamp-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight leading-tight line-clamp-1">
+                    {title}
+                  </h2>
+                  {activeEws && (
+                    <span
+                      className={`text-[10px] px-2 py-0.2 rounded-full font-semibold uppercase font-mono ${
+                        activeEws.status === 'bahaya'
+                          ? 'bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900'
+                          : activeEws.status === 'siaga'
+                          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900'
+                          : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900'
+                      }`}
+                    >
+                      {activeEws.status}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-purple-300/70 hidden sm:block line-clamp-1">
                   {subtitle}
                 </p>
               </div>
@@ -96,10 +112,10 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onAddEwsClick}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 active:scale-[0.98] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Tambah Titik</span>
+                <span>Registrasi Titik Baru</span>
               </button>
             )}
 
@@ -107,10 +123,10 @@ export const Header: React.FC<HeaderProps> = ({
             {anySirenActive && (
               <button
                 onClick={onToggleMute}
-                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors animate-pulse cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 {globalMute ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                <span>{globalMute ? 'Unmute Sirine' : 'Mute Sirine'}</span>
+                <span>{globalMute ? 'Buka Suara Sirine' : 'Senyapkan Sirine'}</span>
               </button>
             )}
           </div>
@@ -121,14 +137,14 @@ export const Header: React.FC<HeaderProps> = ({
       {activeSirenNodes.length > 0 && (
         <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between text-xs font-bold shadow-md">
           <div className="flex items-center gap-2 truncate">
-            <ShieldAlert className="w-4 h-4 shrink-0 animate-bounce" />
+            <ShieldAlert className="w-4 h-4 shrink-0" />
             <span className="truncate">
               PERINGATAN BAHAYA: Sirine 12V 110dB Aktif di {activeSirenNodes.map((e) => e.name).join(', ')}!
             </span>
           </div>
           <button
             onClick={onToggleMute}
-            className="shrink-0 ml-2 px-2 py-0.5 rounded bg-red-950/80 hover:bg-red-900 text-[11px] font-semibold border border-red-300/30"
+            className="shrink-0 ml-2 px-2.5 py-0.5 rounded bg-red-950/80 hover:bg-red-900 text-[11px] font-semibold border border-red-300/30 transition-colors"
           >
             {globalMute ? 'Buka Suara' : 'Senyapkan'}
           </button>

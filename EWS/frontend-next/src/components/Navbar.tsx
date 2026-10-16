@@ -70,7 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={() => onSelectTab(isOperator && assignedEws ? assignedEws : 'overview')}
-              className="w-10 h-10 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-bold shadow-xs transition-colors cursor-pointer"
+              className="w-10 h-10 rounded-lg bg-purple-700 hover:bg-purple-800 text-white flex items-center justify-center font-bold shadow-xs transition-colors cursor-pointer"
               title="Kembali ke Ringkasan Sistem"
             >
               <ShieldAlert className="w-5 h-5 text-white" />
@@ -81,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
                   PUSDALOPS BPBD &bull; EWS MONITORING
                 </span>
-                <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                   {ewsNodes.length > 0 ? `${ewsNodes.length} TITIK TERPADU` : 'STANDBY'}
                 </span>
               </div>
@@ -101,7 +101,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   wsStatus === 'connected'
                     ? 'bg-emerald-500'
                     : wsStatus === 'connecting'
-                    ? 'bg-amber-500 animate-pulse'
+                    ? 'bg-amber-500'
                     : 'bg-red-500'
                 }`}
               />
@@ -136,7 +136,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
               title="Spesifikasi Teknis & Box IP65"
             >
-              <Layers className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <Layers className="w-3.5 h-3.5 text-purple-700 dark:text-purple-400" />
               <span>Dokumen Teknis</span>
             </button>
 
@@ -185,8 +185,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => onSelectTab('overview')}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 activeTab === 'overview'
-                  ? 'bg-blue-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-purple-700 text-white font-semibold shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-purple-900/30'
               }`}
             >
               Ringkasan EWS {ewsNodes.length > 0 ? `(${ewsNodes.length})` : ''}
@@ -203,10 +203,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => onSelectTab(ews.id)}
                 className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
                   isSelected
-                    ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                    ? 'bg-purple-700 text-white font-semibold shadow-xs'
                     : isAssigned
-                    ? 'text-blue-600 dark:text-blue-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                    ? 'text-purple-700 dark:text-purple-400 font-semibold hover:bg-slate-100 dark:hover:bg-purple-900/30'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-purple-900/30'
                 }`}
               >
                 <span>{ews.id}</span>
@@ -230,8 +230,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onSelectTab('pest-traps')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'pest-traps'
-                ? 'bg-emerald-600 text-white font-semibold shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-emerald-700 text-white font-semibold shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-purple-900/30'
             }`}
           >
             <Bug className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -244,7 +244,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'alarm-history'
                 ? 'bg-amber-600 text-white font-semibold shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-purple-900/30'
             }`}
           >
             <Activity className="w-3.5 h-3.5 text-amber-500" />
@@ -263,8 +263,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
                 className={`w-full text-left px-3 py-2 rounded-lg font-medium ${
                   activeTab === 'overview'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    ? 'bg-purple-700 text-white'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-purple-900/30'
                 }`}
               >
                 Ringkasan EWS {ewsNodes.length > 0 ? `(${ewsNodes.length})` : ''}
@@ -280,12 +280,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
                 className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between font-medium ${
                   activeTab === ews.id
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    ? 'bg-purple-700 text-white'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-purple-900/30'
                 }`}
               >
                 <span>{ews.id} &bull; {ews.name}</span>
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-purple-950/60 text-slate-700 dark:text-purple-300">
                   {ews.status}
                 </span>
               </button>

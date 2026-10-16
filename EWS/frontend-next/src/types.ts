@@ -103,13 +103,28 @@ export interface EWSNode {
   telegramConfig: TelegramConfig;
   telkomselConfig?: TelkomselConfig;
   thresholds: {
-    tiltWarning: number; // degrees
-    tiltDanger: number;
-    rainWarning: number; // mm/jam
-    rainDanger: number;
-    soilMoistureWarning: number; // %
-    vibrationDanger: number; // g
-    batteryLowVoltage: number; // V
+    // 1. Titik Acuan Aman & Toleransi Inclinometer MPU-6050
+    safeTiltPitch: number; // Baseline sudut Pitch posisi aman (derajat, misal 0.0°)
+    safeTiltRoll: number;  // Baseline sudut Roll posisi aman (derajat, misal 0.0°)
+    tiltTolerance: number; // Toleransi aman simpangan (± derajat, misal ±2.0°)
+    tiltWarning: number;   // Ambang Siaga simpangan sudut (derajat)
+    tiltDanger: number;    // Ambang Bahaya simpangan sudut (derajat)
+
+    // 2. Curah Hujan & Kalibrasi Tipping Bucket
+    rainWarning: number;     // Hujan Siaga (mm/jam)
+    rainDanger: number;      // Hujan Bahaya (mm/jam)
+    rainCalibPerTip: number; // Kalibrasi volume curah hujan per jungkitan (mm/tip)
+
+    // 3. Kelembapan Tanah & Kalibrasi ADC Ktanah
+    safeSoilMoisture: number;      // Baseline aman kelembapan tanah (%)
+    soilMoistureTolerance: number; // Toleransi simpangan aman kelembapan tanah (± %)
+    soilMoistureWarning: number;   // Ambang Siaga kelembapan jenuh (%)
+    soilAdcDry: number;            // Nilai ADC saat tanah kering kerontang (0%)
+    soilAdcWet: number;            // Nilai ADC saat tanah basah jenuh (100%)
+
+    // 4. Getaran & Proteksi Baterai Aki
+    vibrationDanger: number;   // Ambang Getaran Bahaya (g / pulsa)
+    batteryLowVoltage: number; // Batas Baterai Lemah Cut-Off (Volt)
   };
 }
 

@@ -49,7 +49,7 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
   const isOperator = currentUser.role.startsWith('operator_');
   const roleLabel =
     currentUser.role === 'superadmin'
-      ? 'Super Administrator'
+      ? 'Peneliti Utama / Super Administrator'
       : isOperator
       ? `Operator Lapangan (${currentUser.assignedEwsId || 'EWS'})`
       : 'Pengguna Publik';
@@ -142,48 +142,54 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
       {/* Page Title */}
       <div>
         <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
-          <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          <span>Pengaturan Akun & Keamanan</span>
+          <User className="w-5 h-5 text-purple-700 dark:text-purple-400" />
+          <span>Pengaturan Akun &amp; Hak Otoritas</span>
         </h2>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Kelola informasi identitas petugas, otoritas akses sistem EWS, dan kredensial kata sandi.
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-purple-300/70 mt-1">
+          Kelola profil peneliti/operator, unit kerja instansi, dan kredensial keamanan akses.
         </p>
       </div>
 
       {/* Account Overview Summary Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs transition-colors">
+      <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0">
-              <img
-                src={currentUser.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullName)}&background=2563eb&color=fff`}
-                alt={currentUser.fullName}
-                className="w-full h-full object-cover"
-              />
+            <div className="w-14 h-14 rounded-xl overflow-hidden border border-purple-200 dark:border-purple-800/80 bg-purple-50 dark:bg-purple-950 flex items-center justify-center shrink-0">
+              {currentUser.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.fullName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-xl font-bold text-purple-700 dark:text-purple-300">
+                  {currentUser.fullName.charAt(0)}
+                </span>
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   {currentUser.fullName}
                 </h3>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                   {currentUser.username}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {currentUser.department || 'Pusdalops Penanggulangan Bencana'}
+              <p className="text-xs text-slate-500 dark:text-purple-300/70 mt-0.5">
+                {currentUser.department || 'Pusdalops Penanggulangan Bencana & Riset Geoteknik'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-              <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-[#1a162b] text-xs font-medium text-slate-700 dark:text-purple-200 border border-slate-200 dark:border-purple-900/40">
+              <Shield className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               <span>{roleLabel}</span>
             </div>
             {isOperator && currentUser.assignedEwsId && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-mono font-semibold">
-                <Radio className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-mono font-semibold">
+                <Radio className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                 <span>Pos: {currentUser.assignedEwsId}</span>
               </div>
             )}
@@ -193,13 +199,13 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Form 1: Edit Profil */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs transition-colors space-y-4">
-          <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs transition-colors space-y-4">
+          <div className="border-b border-slate-200 dark:border-purple-900/30 pb-3">
             <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <User className="w-4 h-4 text-purple-700 dark:text-purple-400" />
               <span>Informasi Profil Petugas</span>
             </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-purple-300/70 mt-0.5">
               Pembaruan nama resmi dan unit dinas penanggung jawab.
             </p>
           </div>
@@ -230,10 +236,10 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
                 type="text"
                 value={currentUser.username}
                 disabled
-                className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 text-xs text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">
-                ID pengguna bersifat permanen dan tidak dapat diubah.
+              <span className="text-[11px] text-slate-400 dark:text-purple-400/60 mt-1 block">
+                ID pengguna bersifat permanen dan terdaftar pada database sistem.
               </span>
             </div>
 
@@ -246,7 +252,7 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Masukkan nama lengkap..."
-                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#1a162b] border border-slate-300 dark:border-purple-900/40 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-600"
                 required
               />
             </div>
@@ -254,14 +260,14 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
                 <Building className="w-3.5 h-3.5 text-slate-400" />
-                <span>Instansi / Unit Kerja</span>
+                <span>Instansi / Unit Kerja Laboratorium</span>
               </label>
               <input
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                placeholder="Contoh: Pusdalops BPBD, Dinas Pertanian, dsb."
-                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Contoh: Lab Geoteknik, Pusdalops BPBD, dsb."
+                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#1a162b] border border-slate-300 dark:border-purple-900/40 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-600"
               />
             </div>
 
@@ -269,7 +275,7 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
               <button
                 type="submit"
                 disabled={isSavingProfile}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-xs active:scale-[0.98]"
               >
                 {isSavingProfile ? (
                   <span>Menyimpan...</span>
@@ -285,13 +291,13 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
         </div>
 
         {/* Form 2: Ganti Kata Sandi */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs transition-colors space-y-4">
-          <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs transition-colors space-y-4">
+          <div className="border-b border-slate-200 dark:border-purple-900/30 pb-3">
             <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <KeyRound className="w-4 h-4 text-purple-700 dark:text-purple-400" />
               <span>Ganti Kata Sandi</span>
             </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-purple-300/70 mt-0.5">
               Gunakan kombinasi kata sandi yang aman untuk proteksi akun operasional.
             </p>
           </div>
@@ -324,13 +330,13 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
                   value={oldPassword}
                   onChange={(e) => setOldPassword(e.target.value)}
                   placeholder="Masukkan kata sandi lama..."
-                  className="w-full px-3 py-2 pr-10 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 pr-10 rounded-lg bg-white dark:bg-[#1a162b] border border-slate-300 dark:border-purple-900/40 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-600"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowOldPassword(!showOldPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-purple-700 dark:hover:text-purple-300 cursor-pointer"
                 >
                   {showOldPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -347,13 +353,13 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimal 6 karakter..."
-                  className="w-full px-3 py-2 pr-10 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 pr-10 rounded-lg bg-white dark:bg-[#1a162b] border border-slate-300 dark:border-purple-900/40 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-600"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-purple-700 dark:hover:text-purple-300 cursor-pointer"
                 >
                   {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -369,7 +375,7 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Ulangi kata sandi baru..."
-                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#1a162b] border border-slate-300 dark:border-purple-900/40 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-600"
                 required
               />
             </div>
@@ -378,7 +384,7 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
               <button
                 type="submit"
                 disabled={isChangingPassword}
-                className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-black dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-xs active:scale-[0.98]"
               >
                 {isChangingPassword ? (
                   <span>Memproses...</span>
@@ -395,17 +401,17 @@ export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
       </div>
 
       {/* Permissions / Role Information */}
-      <div className="bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-4 text-xs text-slate-600 dark:text-slate-400">
+      <div className="bg-slate-50 dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-4 text-xs text-slate-600 dark:text-purple-300/80">
         <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200 mb-1">
-          <FileBadge className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span>Matriks Hak Akses Akun: {roleLabel}</span>
+          <FileBadge className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+          <span>Matriks Hak Akses &amp; Otoritas Peneliti: {roleLabel}</span>
         </div>
         <p className="leading-relaxed">
           {currentUser.role === 'superadmin' ? (
             <>
-              Akun Anda memiliki <strong>akses penuh (Full Administrator)</strong>: dapat mendaftarkan titik EWS baru,
-              mengonfigurasi bot Telegram & nomor Telkomsel, mengubah ambang batas sensor, memicu/mereset sirine 110dB,
-              mengontrol perangkap hama, dan mengonfirmasi log alarm.
+              Akun Anda memiliki <strong>otoritas penuh (Peneliti Utama / Full Administrator)</strong>: dapat mendaftarkan titik EWS baru,
+              mengonfigurasi bot Telegram &amp; nomor Telkomsel, mengubah ambang batas sensor, memicu/mereset sirine 110dB,
+              mengontrol perangkap hama fototaksis, dan memverifikasi seluruh log insiden bencana.
             </>
           ) : (
             <>

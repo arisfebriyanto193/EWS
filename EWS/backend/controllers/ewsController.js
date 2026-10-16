@@ -38,13 +38,21 @@ function formatEwsNode(node, telegram, telkomsel) {
       lastUpdated: node.last_seen_at ? new Date(node.last_seen_at).toLocaleString('id-ID') : 'Aktif',
     },
     thresholds: {
-      tiltWarning: parseFloat(node.tilt_warning),
-      tiltDanger: parseFloat(node.tilt_danger),
-      rainWarning: parseFloat(node.rain_warning),
-      rainDanger: parseFloat(node.rain_danger),
-      soilMoistureWarning: parseFloat(node.soil_moisture_warning),
-      vibrationDanger: parseFloat(node.vibration_danger),
-      batteryLowVoltage: parseFloat(node.battery_low_voltage),
+      safeTiltPitch: parseFloat(node.safe_pitch ?? 0.0),
+      safeTiltRoll: parseFloat(node.safe_roll ?? 0.0),
+      tiltTolerance: parseFloat(node.tilt_tolerance ?? 2.0),
+      tiltWarning: parseFloat(node.tilt_warning ?? 1.5),
+      tiltDanger: parseFloat(node.tilt_danger ?? 3.0),
+      rainWarning: parseFloat(node.rain_warning ?? 20.0),
+      rainDanger: parseFloat(node.rain_danger ?? 50.0),
+      rainCalibPerTip: parseFloat(node.rain_calib_per_tip ?? 0.70),
+      safeSoilMoisture: parseFloat(node.safe_soil_moisture ?? 50.0),
+      soilMoistureTolerance: parseFloat(node.soil_moisture_tolerance ?? 15.0),
+      soilMoistureWarning: parseFloat(node.soil_moisture_warning ?? 75.0),
+      soilAdcDry: parseInt(node.soil_adc_dry ?? 3300, 10),
+      soilAdcWet: parseInt(node.soil_adc_wet ?? 1200, 10),
+      vibrationDanger: parseFloat(node.vibration_danger ?? 0.25),
+      batteryLowVoltage: parseFloat(node.battery_low_voltage ?? 11.8),
     },
     telegramConfig: telegram
       ? {
@@ -159,46 +167,100 @@ exports.updateThresholds = async (req, res) => {
   try {
     const { id } = req.params;
     const {
+      safeTiltPitch,
+      safeTiltRoll,
+      tiltTolerance,
       tiltWarning,
       tiltDanger,
       rainWarning,
       rainDanger,
+      rainCalibPerTip,
+      safeSoilMoisture,
+      soilMoistureTolerance,
       soilMoistureWarning,
+      soilAdcDry,
+      soilAdcWet,
       vibrationDanger,
       batteryLowVoltage,
     } = req.body;
 
     const pool = db.getPool();
-    await pool.query(
-      `UPDATE ews_nodes SET
-        tilt_warning = COALESCE(?, tilt_warning),
-        tilt_danger = COALESCE(?, tilt_danger),
-        rain_warning = COALESCE(?, rain_warning),
-        rain_danger = COALESCE(?, rain_danger),
-        soil_moisture_warning = COALESCE(?, soil_moisture_warning),
-        vibration_danger = COALESCE(?, vibration_danger),
-        battery_low_voltage = COALESCE(?, battery_low_voltage)
-      WHERE id = ?`,
-      [
-        tiltWarning,
-        tiltDanger,
-        rainWarning,
-        rainDanger,
-        soilMoistureWarning,
-        vibrationDanger,
-        batteryLowVoltage,
-        id,
-      ]
-    );
+    const isDbConnected = db.getIsConnected();
 
-    // Broadcast update ambang batas ke ESP32 dan Web
+    if (isDbConnected && pool) {
+      try {
+        await pool.query(
+          `UPDATE ews_nodes SET
+            safe_pitch = COALESCE(?, safe_pitch),
+            safe_roll = COALESCE(?, safe_roll),
+            tilt_tolerance = COALESCE(?, tilt_tolerance),
+            tilt_warning = COALESCE(?, tilt_warning),
+            tilt_danger = COALESCE(?, tilt_danger),
+            rain_warning = COALESCE(?, rain_warning),
+            rain_danger = COALESCE(?, rain_danger),
+            rain_calib_per_tip = COALESCE(?, rain_calib_per_tip),
+            safe_soil_moisture = COALESCE(?, safe_soil_moisture),
+            soil_moisture_tolerance = COALESCE(?, soil_moisture_tolerance),
+            soil_moisture_warning = COALESCE(?, soil_moisture_warning),
+            soil_adc_dry = COALESCE(?, soil_adc_dry),
+            soil_adc_wet = COALESCE(?, soil_adc_wet),
+            vibration_danger = COALESCE(?, vibration_danger),
+            battery_low_voltage = COALESCE(?, battery_low_voltage)
+          WHERE id = ?`,
+          [
+            safeTiltPitch ?? req.body.safePitch,
+            safeTiltRoll ?? req.body.safeRoll,
+            tiltTolerance ?? req.body.tiltTol,
+            tiltWarning ?? req.body.tiltWarn,
+            tiltDanger ?? req.body.tiltDang,
+            rainWarning ?? req.body.rainWarn,
+            rainDanger ?? req.body.rainDang,
+            rainCalibPerTip ?? req.body.rainCalib,
+            safeSoilMoisture ?? req.body.safeSoil,
+            soilMoistureTolerance ?? req.body.soilTol,
+            soilMoistureWarning ?? req.body.soilWarn,
+            soilAdcDry ?? req.body.soilDry,
+            soilAdcWet ?? req.body.soilWet,
+            vibrationDanger ?? req.body.vibDang,
+            batteryLowVoltage ?? req.body.battLow,
+            id,
+          ]
+        );
+      } catch (sqlErr) {
+        // Fallback update jika kolom baru belum dimigrasi di tabel
+        await pool.query(
+          `UPDATE ews_nodes SET
+            tilt_warning = COALESCE(?, tilt_warning),
+            tilt_danger = COALESCE(?, tilt_danger),
+            rain_warning = COALESCE(?, rain_warning),
+            rain_danger = COALESCE(?, rain_danger),
+            soil_moisture_warning = COALESCE(?, soil_moisture_warning),
+            vibration_danger = COALESCE(?, vibration_danger),
+            battery_low_voltage = COALESCE(?, battery_low_voltage)
+          WHERE id = ?`,
+          [
+            tiltWarning,
+            tiltDanger,
+            rainWarning,
+            rainDanger,
+            soilMoistureWarning,
+            vibrationDanger,
+            batteryLowVoltage,
+            id,
+          ]
+        );
+      }
+    }
+
+    // Broadcast update kalibrasi & ambang batas ke ESP32 dan Web Dashboard via WebSocket
     wsService.publish(`ews/${id}/command`, {
       command: 'SET_THRESHOLDS',
+      ewsId: id,
       thresholds: req.body,
       timestamp: new Date().toISOString(),
     });
 
-    return res.json({ success: true, message: `Ambang batas ${id} berhasil diperbarui` });
+    return res.json({ success: true, message: `Kalibrasi & ambang batas ${id} berhasil diperbarui` });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

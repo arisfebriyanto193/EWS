@@ -67,19 +67,19 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs transition-colors">
+    <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-4 shadow-xs transition-colors">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center justify-center shrink-0">
             <Sliders className="w-4 h-4" />
           </div>
           <div>
             <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <span>Simulator Pengujian Lapangan &amp; Uji Penerimaan Sistem</span>
-              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 font-normal">(Dokumen Teknis Hal. 6 &amp; 12)</span>
+              <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 font-normal">(Dokumen Riset Hal. 6 &amp; 12)</span>
             </h4>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Uji respons sirine lokal, perubahan nilai sensor, dan pengiriman notifikasi otomatis Telegram Bot mandiri.
+            <p className="text-[11px] text-slate-500 dark:text-purple-300/70">
+              Uji respons sirine lokal, parameter sensor lereng, dan pengiriman notifikasi otomatis Telegram Bot mandiri.
             </p>
           </div>
         </div>
@@ -89,7 +89,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
           <select
             value={selectedEwsId}
             onChange={(e) => setSelectedEwsId(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className="bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-purple-200 font-mono focus:outline-none focus:ring-1 focus:ring-purple-600 cursor-pointer"
           >
             {ewsNodes.map((e) => (
               <option key={e.id} value={e.id}>
@@ -159,7 +159,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
               : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
           }`}
         >
-          <Send className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+          <Send className="w-4 h-4 shrink-0 mt-0.5 text-purple-600 dark:text-purple-400" />
           <div className="flex-1">
             <span className="font-bold block">{simToast.title}</span>
             <span className="text-[11px] opacity-90">{simToast.desc}</span>

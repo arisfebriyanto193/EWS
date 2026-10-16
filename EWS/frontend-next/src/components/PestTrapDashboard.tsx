@@ -420,10 +420,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               <button
                 key={t.id}
                 onClick={() => setSelectedTrapId(t.id)}
-                className={`px-3.5 py-2 rounded-lg border text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer ${
+                className={`px-3.5 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-2 ${
                   isSelected
-                    ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'bg-purple-700 border-purple-700 text-white shadow-xs'
+                    : 'bg-white dark:bg-[#141122] border-slate-200 dark:border-purple-900/30 text-slate-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40'
                 }`}
               >
                 <Bug className="w-3.5 h-3.5" />
@@ -431,7 +431,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <span
                   className={`w-2.5 h-2.5 rounded-full border ${
                     t.isOnline
-                      ? 'bg-emerald-500 border-emerald-400 animate-pulse'
+                      ? 'bg-emerald-500 border-emerald-400'
                       : 'bg-slate-400 border-slate-300'
                   }`}
                   title={t.isOnline ? 'Online' : 'Offline'}
@@ -443,7 +443,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+          className="px-3.5 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Tambah Perangkat Baru</span>
@@ -453,10 +453,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
       {activeTrap && (
         <>
           {/* Trap Header & Location Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-950 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800/60">
                   {activeTrap.id}
                 </span>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">{activeTrap.name}</h3>
@@ -469,7 +469,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                       : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-900'
                   }`}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${activeTrap.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${activeTrap.isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
                   {activeTrap.isOnline ? 'Online' : 'Offline'}
                 </span>
 
@@ -483,7 +483,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   {activeTrap.containerCapacityPercent > 80 ? 'Wadah Penuh' : 'Operasi Normal'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 dark:text-purple-300/70 mt-1">
                 Lokasi: {activeTrap.location}
                 {activeTrap.lastSeenAt
                   ? ` • Terakhir terlihat: ${new Date(activeTrap.lastSeenAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
@@ -503,14 +503,14 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
           </div>
 
           {/* Mode Operasi Selector (2 Mode Saja) */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
+          <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-purple-900/30 gap-2">
               <div className="flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <Sliders className="w-4 h-4 text-purple-700 dark:text-purple-400" />
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">Pilih Mode Kerja Sistem</h4>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                Mode Aktif: <strong className="text-blue-600 dark:text-blue-400 uppercase">{activeTrap.mode === 'manual' ? 'MANUAL' : 'OTOMATIS'}</strong>
+              <span className="text-xs text-slate-500 dark:text-purple-300/70 font-mono">
+                Mode Aktif: <strong className="text-purple-700 dark:text-purple-300 uppercase">{activeTrap.mode === 'manual' ? 'MANUAL' : 'OTOMATIS'}</strong>
               </span>
             </div>
 
@@ -521,18 +521,18 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 onClick={() => handleModeChange(activeTrap, 'manual')}
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative ${
                   activeTrap.mode === 'manual'
-                    ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/20'
+                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
                     <span className="text-sm font-bold text-slate-900 dark:text-white">1. Mode Manual</span>
                   </div>
-                  {activeTrap.mode === 'manual' && <Check className="w-4 h-4 text-blue-600" />}
+                  {activeTrap.mode === 'manual' && <Check className="w-4 h-4 text-purple-700 dark:text-purple-300" />}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-500 dark:text-purple-300/70 leading-relaxed">
                   Lampu penarik hama aktif menyala terus (24 jam non-stop). Blower dan rotasi lampu bekerja mengikuti parameter yang dikonfigurasi di bawah.
                 </p>
               </button>
@@ -543,18 +543,18 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 onClick={() => handleModeChange(activeTrap, 'otomatis')}
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative ${
                   activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led'
-                    ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/20'
+                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
                     <span className="text-sm font-bold text-slate-900 dark:text-white">2. Mode Otomatis (Jadwal RTC DS3231)</span>
                   </div>
-                  {(activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led') && <Check className="w-4 h-4 text-blue-600" />}
+                  {(activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led') && <Check className="w-4 h-4 text-purple-700 dark:text-purple-300" />}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-500 dark:text-purple-300/70 leading-relaxed">
                   Bekerja otomatis sesuai jam operasional ({activeTrap.startTime || '18:00'} - {activeTrap.endTime || '06:00'}). Di luar jadwal, sistem masuk mode standby hemat daya.
                 </p>
               </button>
@@ -682,7 +682,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               {/* Jam Mulai */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <Calendar className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   Jam Mulai Aktif
                 </label>
                 <input
@@ -856,15 +856,15 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
           {/* Actuators & Sensors Monitoring Section */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Actuators Control & Sensor Overview */}
-            <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-xs space-y-6 transition-colors">
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white pb-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-blue-600" />
+            <div className="lg:col-span-2 bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 sm:p-6 shadow-xs space-y-6 transition-colors">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white pb-3 border-b border-slate-200 dark:border-purple-900/30 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-purple-700 dark:text-purple-400" />
                 <span>Kendali Aktuator &amp; Telemetri Sensor Real-Time</span>
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Actuator 1: LED Lampu */}
-                <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="bg-slate-50 dark:bg-[#1a162b] p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className="w-10 h-10 rounded-lg flex items-center justify-center border text-white"
@@ -878,7 +878,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white">Lampu Pemikat Spektrum</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <p className="text-[11px] text-slate-500 dark:text-purple-300/70">
                         {currentActivePreset.name}
                       </p>
                     </div>
@@ -886,10 +886,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
                   <button
                     onClick={() => handleToggleUV(activeTrap)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-[0.98] ${
                       activeTrap.uvLedStatus
-                        ? 'bg-purple-600 text-white hover:bg-purple-700'
-                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+                        ? 'bg-purple-700 text-white hover:bg-purple-800'
+                        : 'bg-slate-200 dark:bg-[#251e3d] text-slate-700 dark:text-purple-300 hover:bg-slate-300 dark:hover:bg-purple-950/60'
                     }`}
                   >
                     {activeTrap.uvLedStatus ? 'ON' : 'OFF'}
@@ -897,20 +897,20 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 </div>
 
                 {/* Actuator 2: Blower (Status dari sensor, bisa test manual) */}
-                <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="bg-slate-50 dark:bg-[#1a162b] p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-10 h-10 rounded-lg flex items-center justify-center border ${
                         activeTrap.blowerStatus
-                          ? 'bg-blue-100 dark:bg-blue-950/80 border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 animate-pulse'
-                          : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400'
+                          ? 'bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300'
+                          : 'bg-slate-200 dark:bg-[#251e3d] border-slate-300 dark:border-purple-900/40 text-slate-400'
                       }`}
                     >
                       <Wind className="w-5 h-5" />
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white">Centrifugal Blower Hisap</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <p className="text-[11px] text-slate-500 dark:text-purple-300/70">
                         {activeTrap.blowerStatus
                           ? `Aktif (otomatis mati setelah ${activeTrap.manualDurationSec || 3} dtk)`
                           : 'Standby — Otomatis nyala saat sensor VL53 deteksi hama'}
@@ -920,10 +920,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
                   <button
                     onClick={() => handleToggleBlower(activeTrap)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-[0.98] ${
                       activeTrap.blowerStatus
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+                        ? 'bg-purple-700 text-white hover:bg-purple-800'
+                        : 'bg-slate-200 dark:bg-[#251e3d] text-slate-700 dark:text-purple-300 hover:bg-slate-300 dark:hover:bg-purple-950/60'
                     }`}
                   >
                     {activeTrap.blowerStatus ? 'AKTIF' : 'TEST'}
@@ -931,7 +931,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 </div>
 
                 {/* Sensor 1: Fotoelektrik */}
-                <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="bg-slate-50 dark:bg-[#1a162b] p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold">
                     Sensor Fotoelektrik E3F-DS30C4
                   </span>

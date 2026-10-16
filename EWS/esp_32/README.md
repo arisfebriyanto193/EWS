@@ -8,17 +8,23 @@ Firmware ini dirancang khusus untuk mikrokontroler **ESP32-S3** (ESP32S3N16R8) s
 
 | Komponen / Sensor | Pin Skema | GPIO ESP32-S3 | Mode I/O | Keterangan |
 | :--- | :--- | :--- | :--- | :--- |
-| **Relay 1 (Sirine 12V)** | `IN1` | **GPIO 3** | OUTPUT | Sirine darurat 110-120dB (Active-LOW / Active-HIGH) |
-| **Relay 2 (Lampu Strobo)** | `IN2` | **GPIO 46** | OUTPUT | Lampu strobo peringatan darurat |
-| **Sensor Hujan (H2)** | `Dhujan` | **GPIO 5** | INPUT_PULLUP | Digital comparator LM393 (LOW saat basah/hujan) |
+| **Relay 1 (Sirine 12V)** | `IN1` | **GPIO 3** | OUTPUT | Sirine darurat 110-120dB (Header J4, Active-LOW) |
+| **Relay 2 (Lampu Strobo)** | `IN2` | **GPIO 46** | OUTPUT | Lampu strobo peringatan darurat (Header J4, Active-LOW) |
+| **Sensor Hujan (H2)** | `Dhujan` | **GPIO 10** | INPUT_PULLUP | Tipping bucket digital comparator LM393 |
 | **Sensor Getaran 801S** | `Dgetar` | **GPIO 7** | INPUT_PULLUP | Sensor getaran piezoelektrik dengan interrupt pulsa |
-| **Sensor Kelembapan Tanah** | `Ktanah` | **GPIO 17** | ANALOG (ADC2) | Pin A0 analog kelembapan tanah (kedalaman lereng) |
-| **Layar OLED 1.3" (SDA)** | `SDAoled` | **GPIO 8** | I2C (Bus 0) | Data I2C Layar OLED 128x64 |
-| **Layar OLED 1.3" (SCL)** | `SCLoled` | **GPIO 9** | I2C (Bus 0) | Clock I2C Layar OLED 128x64 |
-| **Inclinometer MPU-6050 (SDA)** | `SDAMpu` | **GPIO 11** | I2C (Bus 1) | Data I2C Inclinometer dua sumbu (Pitch & Roll) |
-| **Inclinometer MPU-6050 (SCL)** | `SCLMpu` | **GPIO 12** | I2C (Bus 1) | Clock I2C Inclinometer dua sumbu |
-| **Monitor Daya INA226 (SDA)** | `SDA2` | **GPIO 13** | Soft-I2C | Data monitor aki 12V & panel surya 30Wp |
-| **Monitor Daya INA226 (SCL)** | `SCL2` | **GPIO 14** | Soft-I2C | Clock monitor aki 12V & panel surya 30Wp |
+| **Sensor Kelembapan Tanah** | `Ktanah` | **GPIO 17** | ANALOG (ADC2) | Pin A0 analog kelembapan tanah (Header J1.1) |
+| **Layar OLED 1.3" (SDA)** | `SDAoled` | **GPIO 8** | I2C (Bus 0) | Data I2C Layar OLED 128x64 (Header J5) |
+| **Layar OLED 1.3" (SCL)** | `SCLoled` | **GPIO 9** | I2C (Bus 0) | Clock I2C Layar OLED 128x64 (Header J5) |
+| **Inclinometer MPU-6050 (SDA)** | `SDAMpu` | **GPIO 11** | I2C (Bus 1) | Data I2C Inclinometer dua sumbu (U4, Addr 0x68) |
+| **Inclinometer MPU-6050 (SCL)** | `SCLMpu` | **GPIO 12** | I2C (Bus 1) | Clock I2C Inclinometer dua sumbu (U4) |
+| **Monitor Daya INA226 (SDA)** | `SCL2` | **GPIO 13** | Soft-I2C | Pin 3 (SDA) INA226 (U3, Addr 0x40 via Net SCL2) |
+| **Monitor Daya INA226 (SCL)** | `SDA2` | **GPIO 14** | Soft-I2C | Pin 4 (SCL) INA226 (U3, Addr 0x40 via Net SDA2) |
+| **MicroSD Module (MOSI)** | `mosi` | **GPIO 4** | SPI | Modul MicroSD Card (U5) |
+| **MicroSD Module (SCK)** | `sck` | **GPIO 5** | SPI | Modul MicroSD Card (U5) |
+| **MicroSD Module (CS)** | `cs` | **GPIO 6** | SPI | Modul MicroSD Card (U5) Chip Select |
+| **MicroSD Module (MISO)** | `miso` | **GPIO 2** | SPI | Modul MicroSD Card (U5) |
+| **RTC DS3231 (SDA)** | `SDAds` | **GPIO 15** | I2C | Real-Time Clock DS3231 (Addr 0x68, Bus terisolasi) |
+| **RTC DS3231 (SCL)** | `SCLds` | **GPIO 16** | I2C | Real-Time Clock DS3231 (Addr 0x68, Bus terisolasi) |
 
 ---
 

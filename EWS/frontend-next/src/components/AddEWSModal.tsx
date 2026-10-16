@@ -112,11 +112,19 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
       location: location.trim(),
       coordinates: { lat: latNum, lng: lngNum },
       thresholds: {
+        safeTiltPitch: 0.0,
+        safeTiltRoll: 0.0,
+        tiltTolerance: 2.0,
         tiltWarning: parseFloat(tiltWarning) || 1.5,
         tiltDanger: parseFloat(tiltDanger) || 3.0,
         rainWarning: parseFloat(rainWarning) || 20.0,
         rainDanger: parseFloat(rainDanger) || 50.0,
+        rainCalibPerTip: 0.70,
+        safeSoilMoisture: 50.0,
+        soilMoistureTolerance: 15.0,
         soilMoistureWarning: parseFloat(soilMoistureWarning) || 75.0,
+        soilAdcDry: 3300,
+        soilAdcWet: 1200,
         vibrationDanger: parseFloat(vibrationDanger) || 0.25,
         batteryLowVoltage: 11.8,
       },
@@ -151,26 +159,26 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-8 transition-colors">
+      <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-8 transition-colors">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-purple-900/30 bg-slate-50/80 dark:bg-[#0c0a15]">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-purple-700 text-white flex items-center justify-center font-bold shadow-xs">
               <Radio className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Tambah Stasiun EWS Baru
+                Registrasi Stasiun EWS Baru
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Daftarkan titik sensor telemetri tanah longsor ke backend sistem
+              <p className="text-xs text-slate-500 dark:text-purple-300/70">
+                Daftarkan titik sensor telemetri lereng mitigasi bencana ke sistem gateway
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-purple-50 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -188,7 +196,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
           {/* Quick Preset Selector */}
           <div>
             <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <Sparkles className="w-3.5 h-3.5 text-purple-700 dark:text-purple-400" />
               <span>Pilihan Cepat / Preset Template Lapangan:</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -203,21 +211,21 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     onClick={() => handleSelectPreset(preset.id)}
                     className={`p-2.5 rounded-xl border text-left transition-all text-xs cursor-pointer ${
                       isAlreadyAdded
-                        ? 'opacity-40 bg-slate-100 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                        ? 'opacity-40 bg-slate-100 dark:bg-[#1a162b]/40 border-slate-200 dark:border-purple-900/30 cursor-not-allowed'
                         : isSelected
-                        ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-700 dark:text-blue-300 font-semibold shadow-xs'
-                        : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-800 dark:text-slate-200'
+                        ? 'bg-purple-50 dark:bg-purple-950/70 border-purple-500 text-purple-800 dark:text-purple-200 font-semibold shadow-xs'
+                        : 'bg-white dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700 text-slate-800 dark:text-slate-200'
                     }`}
                   >
                     <div className="font-bold flex items-center justify-between">
                       <span>{preset.id}</span>
                       {isAlreadyAdded && (
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-purple-950 text-slate-600 dark:text-purple-300">
                           Sudah ada
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    <div className="text-[10px] text-slate-500 dark:text-purple-300/70 truncate mt-0.5">
                       {preset.name.replace(/^EWS \d+ - /, '')}
                     </div>
                   </button>
@@ -226,7 +234,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
             </div>
           </div>
 
-          <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-4">
+          <div className="border-t border-slate-200 dark:border-purple-900/30 pt-4 space-y-4">
             {/* Primary Identifiers */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
@@ -239,7 +247,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                   placeholder="EWS-01"
                   value={id}
                   onChange={(e) => setId(e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-bold"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-purple-600 font-bold"
                 />
               </div>
 
@@ -253,7 +261,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                   placeholder="EWS 01 - Lereng Pasir Madu"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 text-slate-900 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-600"
                 />
               </div>
             </div>
@@ -262,7 +270,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-1">
                 <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
-                  <MapPin className="w-3 h-3 text-slate-400" />
+                  <MapPin className="w-3 h-3 text-purple-500" />
                   <span>Lokasi Sektor</span>
                 </label>
                 <input
@@ -270,33 +278,33 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                   placeholder="Sektor Lereng Utara (KM 14.2)"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 text-slate-900 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-purple-600"
                 />
               </div>
 
               <div>
                 <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Latitude
+                  Latitude (WGS84)
                 </label>
                 <input
                   type="text"
                   placeholder="-6.8924"
                   value={latitude}
                   onChange={(e) => setLatitude(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-purple-600"
                 />
               </div>
 
               <div>
                 <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Longitude
+                  Longitude (WGS84)
                 </label>
                 <input
                   type="text"
                   placeholder="107.6183"
                   value={longitude}
                   onChange={(e) => setLongitude(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-purple-600"
                 />
               </div>
             </div>
@@ -304,12 +312,12 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
             {/* Thresholds Settings */}
             <div>
               <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-2">
-                <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <Sliders className="w-3.5 h-3.5 text-purple-700 dark:text-purple-400" />
                 <span>Pengaturan Ambang Batas Alarm (Thresholds):</span>
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 dark:bg-[#1a162b] p-3 rounded-xl border border-slate-200/80 dark:border-purple-900/30">
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Kemiringan Waspada (°)
                   </span>
                   <input
@@ -317,12 +325,12 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     step="0.1"
                     value={tiltWarning}
                     onChange={(e) => setTiltWarning(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Kemiringan Bahaya (°)
                   </span>
                   <input
@@ -330,12 +338,12 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     step="0.1"
                     value={tiltDanger}
                     onChange={(e) => setTiltDanger(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Curah Hujan Waspada (mm)
                   </span>
                   <input
@@ -343,12 +351,12 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     step="1"
                     value={rainWarning}
                     onChange={(e) => setRainWarning(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Curah Hujan Bahaya (mm)
                   </span>
                   <input
@@ -356,12 +364,12 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     step="1"
                     value={rainDanger}
                     onChange={(e) => setRainDanger(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Kel. Tanah Waspada (%)
                   </span>
                   <input
@@ -369,12 +377,12 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     step="1"
                     value={soilMoistureWarning}
                     onChange={(e) => setSoilMoistureWarning(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Getaran Bahaya (g)
                   </span>
                   <input
@@ -382,7 +390,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                     step="0.05"
                     value={vibrationDanger}
                     onChange={(e) => setVibrationDanger(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -391,24 +399,24 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
             {/* Telegram Channel Info */}
             <div>
               <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-2">
-                <Bot className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>Konfigurasi Bot Telegram Otomatis:</span>
+                <Bot className="w-3.5 h-3.5 text-purple-700 dark:text-purple-400" />
+                <span>Konfigurasi Bot Telegram Mandiri:</span>
               </label>
-              <div className="space-y-2 bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="space-y-2 bg-slate-50 dark:bg-[#1a162b] p-3 rounded-xl border border-slate-200/80 dark:border-purple-900/30">
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                  <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                     Nama Saluran / Grup Telegram
                   </span>
                   <input
                     type="text"
                     value={channelName}
                     onChange={(e) => setChannelName(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs text-slate-900 dark:text-white"
                   />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                    <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                       Telegram Bot Token
                     </span>
                     <input
@@ -416,11 +424,11 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                       value={botToken}
                       onChange={(e) => setBotToken(e.target.value)}
                       placeholder="123456:ABC-DEF1234..."
-                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                     />
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
+                    <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block mb-1">
                       Chat ID / Target Channel
                     </span>
                     <input
@@ -428,7 +436,7 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
                       value={chatId}
                       onChange={(e) => setChatId(e.target.value)}
                       placeholder="-100123456789"
-                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-xs font-mono text-slate-900 dark:text-white"
                     />
                   </div>
                 </div>
@@ -437,19 +445,19 @@ export const AddEWSModal: React.FC<AddEWSModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200 dark:border-purple-900/30">
             <button
               type="button"
               onClick={onClose}
               disabled={isLoading}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-purple-300/70 hover:bg-purple-50 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
             >
               <Plus className="w-4 h-4" />
               <span>{isLoading ? 'Mendaftarkan...' : 'Tambah & Pasang EWS'}</span>

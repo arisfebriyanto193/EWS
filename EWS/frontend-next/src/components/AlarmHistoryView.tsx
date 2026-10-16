@@ -72,45 +72,45 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
+      <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-amber-500" />
-            <span>Riwayat Alarm &amp; Log Konfirmasi Operator</span>
+            <ShieldAlert className="w-5 h-5 text-purple-700 dark:text-purple-400" />
+            <span>Riwayat Kejadian, Peringatan &amp; Log Tindak Lanjut</span>
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Merekam riwayat pemicu sensor, notifikasi Telegram, konfirmasi operator lapangan, dan durasi kejadian mitigasi.
+          <p className="text-xs text-slate-500 dark:text-purple-300/70 mt-1">
+            Merekam pemicu telemetri sensor lereng, transmisi peringatan Telegram, dan verifikasi lapangan petugas.
           </p>
         </div>
 
         <button
           onClick={handleExportCSV}
-          className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+          className="px-3.5 py-2 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800/80 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
         >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <FileSpreadsheet className="w-4 h-4 text-purple-700 dark:text-purple-400" />
           <span>Ekspor Riwayat CSV</span>
         </button>
       </div>
 
       {/* Filter and Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-[#141122] p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-purple-900/30 transition-colors">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Cari titik, kode pemicu, atau log..."
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Cari titik pantau, kode pemicu, atau log..."
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-600"
           />
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="w-4 h-4 text-slate-400" />
+          <Filter className="w-4 h-4 text-purple-600 dark:text-purple-400" />
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className="bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 rounded-lg px-3 py-1.5 text-xs text-slate-700 dark:text-purple-200 focus:outline-none focus:ring-1 focus:ring-purple-600 cursor-pointer"
           >
             <option value="all">Semua Jenis Status</option>
             <option value="siaga">Status Siaga</option>
@@ -122,10 +122,10 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
       </div>
 
       {/* Table of Logs */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs transition-colors">
+      <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl overflow-hidden shadow-xs transition-colors">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+            <thead className="bg-slate-50 dark:bg-[#0c0a15] border-b border-slate-200 dark:border-purple-900/30 text-purple-900/70 dark:text-purple-300/80 font-semibold uppercase tracking-wider text-[11px]">
               <tr>
                 <th className="py-3 px-4">ID &amp; Waktu</th>
                 <th className="py-3 px-4">Titik EWS</th>
@@ -136,7 +136,7 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
                 <th className="py-3 px-4 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+            <tbody className="divide-y divide-slate-100 dark:divide-purple-900/20 text-slate-700 dark:text-slate-300">
               {filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400">
@@ -145,25 +145,25 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
                 </tr>
               ) : (
                 filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={log.id} className="hover:bg-purple-50/40 dark:hover:bg-purple-950/20 transition-colors">
                     <td className="py-3 px-4 font-mono">
                       <span className="font-bold text-slate-900 dark:text-slate-100 block">{log.id}</span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400">{log.timestamp}</span>
+                      <span className="text-[11px] text-slate-500 dark:text-purple-300/60">{log.timestamp}</span>
                     </td>
 
                     <td className="py-3 px-4">
                       <span className="font-semibold text-slate-900 dark:text-white block">{log.ewsName}</span>
-                      <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">{log.ewsId}</span>
+                      <span className="text-[11px] font-mono text-purple-700 dark:text-purple-300">{log.ewsId}</span>
                     </td>
 
                     <td className="py-3 px-4">
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           log.type === 'bahaya'
-                            ? 'bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900'
+                            ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/70 dark:text-red-300 dark:border-red-900'
                             : log.type === 'siaga'
-                            ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900'
-                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900'
+                            : 'bg-slate-100 text-slate-700 dark:bg-[#1a162b] dark:text-slate-300'
                         }`}
                       >
                         {log.type}
@@ -172,7 +172,7 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
 
                     <td className="py-3 px-4">
                       <span className="font-medium text-slate-800 dark:text-slate-200 block">{log.triggerCause}</span>
-                      <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400">{log.triggerValue}</span>
+                      <span className="text-[11px] font-mono text-purple-700 dark:text-purple-300">{log.triggerValue}</span>
                     </td>
 
                     <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-400">
@@ -207,7 +207,7 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
                       {!log.acknowledged ? (
                         <button
                           onClick={() => setSelectedLogForAck(log)}
-                          className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-medium transition-colors cursor-pointer shadow-xs"
+                          className="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-[11px] font-medium transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                         >
                           Konfirmasi
                         </button>
@@ -226,21 +226,21 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
       {/* Acknowledge Modal */}
       {selectedLogForAck && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-full max-w-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-xl p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-purple-900/30">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <UserCheck className="w-5 h-5 text-purple-700 dark:text-purple-400" />
                 <span>Konfirmasi Tindak Lanjut Kejadian</span>
               </h3>
               <button
                 onClick={() => setSelectedLogForAck(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+            <div className="space-y-2 text-xs text-slate-600 dark:text-purple-200/90 bg-slate-50 dark:bg-[#1a162b] p-3 rounded-lg border border-slate-200 dark:border-purple-900/30">
               <p><strong>Titik:</strong> {selectedLogForAck.ewsName} ({selectedLogForAck.ewsId})</p>
               <p><strong>Pemicu:</strong> {selectedLogForAck.triggerCause}</p>
               <p><strong>Nilai:</strong> {selectedLogForAck.triggerValue}</p>
@@ -256,21 +256,21 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
                 onChange={(e) => setAckNoteInput(e.target.value)}
                 placeholder="Contoh: Sudah diperiksa visual ke lereng, retakan minor telah dipasang patok pantau..."
                 rows={3}
-                className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2.5 bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-600"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-purple-900/30">
               <button
                 onClick={() => setSelectedLogForAck(null)}
-                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-300 font-medium rounded-lg cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 dark:bg-[#1a162b] hover:bg-slate-200 dark:hover:bg-purple-950/60 text-xs text-slate-700 dark:text-slate-300 font-medium rounded-lg cursor-pointer"
               >
                 Batal
               </button>
               <button
                 onClick={handleConfirmAck}
                 disabled={!ackNoteInput.trim()}
-                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-xs text-white font-medium rounded-lg shadow-xs cursor-pointer"
+                className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-xs text-white font-medium rounded-lg shadow-xs cursor-pointer transition-colors"
               >
                 Simpan Konfirmasi
               </button>

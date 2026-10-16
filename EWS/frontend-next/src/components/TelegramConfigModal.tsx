@@ -131,13 +131,13 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs animate-in fade-in">
-      <div className="w-full max-w-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] transition-colors">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-3xl bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] transition-colors">
         
         {/* Header */}
-        <div className="p-5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50 dark:bg-[#0c0a15] border-b border-slate-200 dark:border-purple-900/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-lg bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 flex items-center justify-center">
               <Bot className="w-5 h-5" />
             </div>
             <div>
@@ -145,7 +145,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                   Konfigurasi Bot Telegram Mandiri - {ews.id}
                 </h3>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 font-semibold">
                   {ews.name}
                 </span>
               </div>
@@ -156,7 +156,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -166,10 +166,10 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-sm">
           
           {/* Main Credentials */}
-          <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/70 dark:bg-[#0c0a15]/80 p-4 rounded-xl border border-slate-200 dark:border-purple-900/30 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-purple-900/30">
               <div className="flex items-center gap-2 text-slate-800 dark:text-white font-semibold text-xs uppercase tracking-wider">
-                <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <Shield className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 <span>Kredensial &amp; Saluran Bot</span>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
@@ -180,8 +180,8 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                   onChange={() => handleToggle('enabled')}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 relative"></div>
-                <span className={`text-xs font-semibold ${config.enabled ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`}>
+                <div className="w-9 h-5 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-700 relative"></div>
+                <span className={`text-xs font-semibold ${config.enabled ? 'text-purple-700 dark:text-purple-400' : 'text-slate-400'}`}>
                   {config.enabled ? 'AKTIF' : 'NONAKTIF'}
                 </span>
               </label>
@@ -197,7 +197,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                   value={config.botToken}
                   onChange={(e) => setConfig({ ...config, botToken: e.target.value })}
                   placeholder="Contoh: 123456789:ABCdefGhIJKlmnoPQRstuv..."
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-white dark:bg-[#18142a] border border-slate-300 dark:border-purple-900/40 rounded-lg text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-colors"
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Dibuat via @BotFather khusus titik ini</p>
               </div>
@@ -211,7 +211,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                   value={config.chatId}
                   onChange={(e) => setConfig({ ...config, chatId: e.target.value })}
                   placeholder="Contoh: -1001928374650 atau @GrupWargaEWS"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-white dark:bg-[#18142a] border border-slate-300 dark:border-purple-900/40 rounded-lg text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-colors"
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">ID grup relawan posko atau saluran broadcast</p>
               </div>
@@ -226,20 +226,20 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 value={config.channelName}
                 onChange={(e) => setConfig({ ...config, channelName: e.target.value })}
                 placeholder="Contoh: Saluran Warga Rawan Longsor Zona Pasir Madu"
-                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 bg-white dark:bg-[#18142a] border border-slate-300 dark:border-purple-900/40 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-colors"
               />
             </div>
           </div>
 
           {/* Trigger Alert Checkboxes */}
-          <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center gap-2 text-slate-800 dark:text-white font-semibold text-xs uppercase tracking-wider pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/70 dark:bg-[#0c0a15]/80 p-4 rounded-xl border border-slate-200 dark:border-purple-900/30 space-y-3">
+            <div className="flex items-center gap-2 text-slate-800 dark:text-white font-semibold text-xs uppercase tracking-wider pb-2 border-b border-slate-200 dark:border-purple-900/30">
               <Bell className="w-4 h-4 text-amber-500" />
               <span>Parameter Notifikasi Otomatis</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors cursor-pointer">
                 <input
                   type="checkbox"
                   checked={config.notifySiaga}
@@ -252,7 +252,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 </div>
               </label>
 
-              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors cursor-pointer">
                 <input
                   type="checkbox"
                   checked={config.notifyBahaya}
@@ -265,7 +265,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 </div>
               </label>
 
-              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors cursor-pointer">
                 <input
                   type="checkbox"
                   checked={config.notifyOffline}
@@ -278,7 +278,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 </div>
               </label>
 
-              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors cursor-pointer">
                 <input
                   type="checkbox"
                   checked={config.notifyBateraiLemah}
@@ -291,7 +291,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 </div>
               </label>
 
-              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors cursor-pointer">
                 <input
                   type="checkbox"
                   checked={config.notifySensorGagal}
@@ -304,7 +304,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 </div>
               </label>
 
-              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 transition-colors cursor-pointer">
                 <input
                   type="checkbox"
                   checked={config.dailyReport}
@@ -320,10 +320,10 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
           </div>
 
           {/* Test Notification Section */}
-          <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+          <div className="bg-slate-50/70 dark:bg-[#0c0a15]/80 p-4 rounded-xl border border-slate-200 dark:border-purple-900/30 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 <span className="font-semibold text-xs text-slate-800 dark:text-white uppercase tracking-wider">
                   Pengujian Integrasi Bot
                 </span>
@@ -332,7 +332,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
                 type="button"
                 onClick={handleTestNotification}
                 disabled={isTesting || !config.enabled}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
                 {isTesting ? (
                   <>
@@ -377,7 +377,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="px-6 py-4 bg-slate-50 dark:bg-[#0c0a15] border-t border-slate-200 dark:border-purple-900/30 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
             <span>Uji terakhir:</span>
             <span className="font-semibold text-slate-700 dark:text-slate-300">{config.lastTestTime || 'Belum pernah'}</span>
@@ -394,14 +394,14 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
             <button
               onClick={onClose}
               disabled={isSaving}
-              className="px-3.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-1.5 bg-white dark:bg-[#18142a] border border-slate-200 dark:border-purple-900/40 hover:bg-slate-100 dark:hover:bg-purple-900/30 text-xs font-medium text-slate-700 dark:text-slate-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
               Batal
             </button>
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-xs font-medium text-white rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:bg-purple-400/50 text-xs font-medium text-white rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
             >
               {isSaving ? (
                 <>

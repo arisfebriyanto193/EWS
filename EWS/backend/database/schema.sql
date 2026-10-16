@@ -41,12 +41,20 @@ CREATE TABLE IF NOT EXISTS `ews_nodes` (
   `strobo_active` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Status Lampu Strobo Darurat',
   `muted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Status Mute Sirine Lokal oleh Operator',
 
-  -- Parameter Ambang Batas (Thresholds)
+  -- Parameter Ambang Batas & Kalibrasi Nilai Aman (Thresholds & Calibration)
+  `safe_pitch` DECIMAL(5, 2) NOT NULL DEFAULT 0.00 COMMENT 'Titik Acuan Aman Pitch (derajat)',
+  `safe_roll` DECIMAL(5, 2) NOT NULL DEFAULT 0.00 COMMENT 'Titik Acuan Aman Roll (derajat)',
+  `tilt_tolerance` DECIMAL(5, 2) NOT NULL DEFAULT 2.00 COMMENT 'Toleransi Aman Sudut (± derajat)',
   `tilt_warning` DECIMAL(5, 2) NOT NULL DEFAULT 1.50 COMMENT 'Batas Sudut Siaga (derajat)',
   `tilt_danger` DECIMAL(5, 2) NOT NULL DEFAULT 3.00 COMMENT 'Batas Sudut Bahaya (derajat)',
   `rain_warning` DECIMAL(5, 2) NOT NULL DEFAULT 20.00 COMMENT 'Batas Curah Hujan Siaga (mm/jam)',
   `rain_danger` DECIMAL(5, 2) NOT NULL DEFAULT 50.00 COMMENT 'Batas Curah Hujan Bahaya (mm/jam)',
+  `rain_calib_per_tip` DECIMAL(4, 2) NOT NULL DEFAULT 0.70 COMMENT 'Kalibrasi Curah Hujan (mm/tip)',
+  `safe_soil_moisture` DECIMAL(5, 2) NOT NULL DEFAULT 50.00 COMMENT 'Titik Acuan Aman Kelembapan Tanah (%)',
+  `soil_moisture_tolerance` DECIMAL(5, 2) NOT NULL DEFAULT 15.00 COMMENT 'Toleransi Aman Kelembapan Tanah (± %)',
   `soil_moisture_warning` DECIMAL(5, 2) NOT NULL DEFAULT 75.00 COMMENT 'Batas Kelembapan Tanah Siaga (%)',
+  `soil_adc_dry` INT NOT NULL DEFAULT 3300 COMMENT 'Nilai ADC Tanah Saat Kering (0%)',
+  `soil_adc_wet` INT NOT NULL DEFAULT 1200 COMMENT 'Nilai ADC Tanah Saat Basah (100%)',
   `vibration_danger` DECIMAL(5, 2) NOT NULL DEFAULT 0.25 COMMENT 'Batas Getaran ADXL345 Bahaya (g)',
   `battery_low_voltage` DECIMAL(5, 2) NOT NULL DEFAULT 11.80 COMMENT 'Batas Baterai Lemah (V)',
 
