@@ -49,6 +49,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <math.h>
+#include <time.h>
 #include <Preferences.h>
 // Catatan: Library MPU6050, INA219, dan DS3231 kini menggunakan driver bus independen
 // (Hardware TwoWire 1 untuk MPU-6050 & Dedicated SoftI2C untuk RTC/INA)
@@ -65,6 +66,7 @@ void loadThresholdsFromEEPROM();
 void saveDeviceConfigToNVS(const String &newId, const String &newSsid, const String &newPass,
                            const String &newHost, int newPort, const String &newPath, bool newSsl);
 void loadDeviceConfigFromNVS();
+void syncRTCWithNTP();
 
 // FreeRTOS Headers
 #include "freertos/FreeRTOS.h"
@@ -613,6 +615,54 @@ bool setRTC(int year, int month, int day, int hour, int minute, int second) {
   Wire.write(dec2bcd(month));
   Wire.write(dec2bcd(year % 100));
   return (Wire.endTransmission() == 0);
+}
+
+// -----------------------------------------------------------------------------
+// SINKRONISASI WAKTU RTC DS3231 DENGAN NTP (HANYA SEKALI SAAT TERSAMBUNG JARINGAN)
+// -----------------------------------------------------------------------------
+const long  gmtOffset_sec     = 7 * 3600; // GMT+7 (WIB / Waktu Indonesia Barat)
+const int   daylightOffset_sec = 0;       // Tidak ada DST di Indonesia
+const char* ntpServer1        = "pool.ntp.org";
+const char* ntpServer2        = "id.pool.ntp.org";
+const char* ntpServer3        = "time.google.com";
+
+volatile bool rtcSyncedWithNTP = false;
+
+void syncRTCWithNTP() {
+  // Hanya jalankan sekali saja di awal saat tersambung jaringan
+  if (rtcSyncedWithNTP) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (!rtcAvailable) {
+    rtcSyncedWithNTP = true; // Tandai selesai agar tidak polling jika modul fisik tidak ada
+    return;
+  }
+
+  Serial.println("⏱️ [NTP-RTC] Jaringan WiFi tersambung! Sinkronisasi waktu NTP ke DS3231 (1x di awal)...");
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
+
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo, 5000)) { // Tunggu hingga 5 detik agar paket NTP diterima
+    int yr  = timeinfo.tm_year + 1900;
+    int mon = timeinfo.tm_mon + 1;
+    int day = timeinfo.tm_mday;
+    int hr  = timeinfo.tm_hour;
+    int min = timeinfo.tm_min;
+    int sec = timeinfo.tm_sec;
+
+    if (yr >= 2024) {
+      if (setRTC(yr, mon, day, hr, min, sec)) {
+        readDS3231Time();
+        rtcSyncedWithNTP = true;
+        Serial.printf("✅ [NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB (Sinkronisasi awal selesai)\n", rtcTimeString.c_str());
+      } else {
+        Serial.println("❌ [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
+      }
+    } else {
+      Serial.printf("⚠️ [NTP-RTC] Tahun NTP belum valid (%d), akan dicoba lagi saat jaringan siap.\n", yr);
+    }
+  } else {
+    Serial.println("⚠️ [NTP-RTC] Timeout mengambil waktu dari server NTP!");
+  }
 }
 
 // =============================================================================
@@ -1283,6 +1333,24 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             serializeJson(ackDoc, ackStr);
             safeSendTXT(ackStr);
           }
+          else if (strcmp(cmd, "SYNC_RTC") == 0) {
+            Serial.println("⏱️ [KONTROL] Permintaan sinkronisasi manual RTC ke NTP diterima!");
+            rtcSyncedWithNTP = false; // Reset flag agar diizinkan sinkronisasi ulang
+            syncRTCWithNTP();
+
+            DynamicJsonDocument ackDoc(256);
+            ackDoc["action"] = "publish";
+            ackDoc["topic"]  = TOPIC_STATUS;
+            JsonObject ackPayload = ackDoc.createNestedObject("payload");
+            ackPayload["event"]   = "RTC_SYNCED";
+            ackPayload["status"]  = rtcSyncedWithNTP ? "OK" : "FAILED";
+            ackPayload["ewsId"]   = ewsId;
+            ackPayload["rtcTime"] = rtcTimeString;
+            ackPayload["message"] = rtcSyncedWithNTP ? "Waktu DS3231 berhasil disinkronkan ke NTP (WIB)" : "Gagal sinkronisasi waktu ke NTP";
+            String ackStr;
+            serializeJson(ackDoc, ackStr);
+            safeSendTXT(ackStr);
+          }
         }
 
         // B. Perintah Direct Payload Relay ({"topic":..., "payload": 1/0})
@@ -1367,6 +1435,11 @@ void sensorTask(void *pvParameters) {
     int solar = 0, battMa = 0;
     readPowerMonitor(batt, solar, battMa);
     readDS3231Time();
+
+    // Sinkronisasi waktu RTC DS3231 dengan NTP (hanya sekali saja di awal saat tersambung jaringan)
+    if (!rtcSyncedWithNTP && WiFi.status() == WL_CONNECTED) {
+      syncRTCWithNTP();
+    }
 
     // Ambil ambang batas dari memori yang sinkron
     SensorThresholds thresh;
@@ -1796,6 +1869,9 @@ void setup() {
     Serial.printf("   SSID       : %s\n", WiFi.SSID().c_str());
     Serial.printf("   IP Address : %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("   Signal RSSI: %d dBm\n", WiFi.RSSI());
+
+    // Sinkronisasi RTC DS3231 via NTP (hanya sekali di awal saat tersambung jaringan)
+    syncRTCWithNTP();
 
 #if ENABLE_OLED
     if (oledAvailable) {
