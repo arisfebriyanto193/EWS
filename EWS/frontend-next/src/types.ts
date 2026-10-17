@@ -171,6 +171,8 @@ export interface PestTrapNode {
   presets?: ColorPresetItem[];
   lastSeenAt?: string | null;
   isOnline?: boolean; // true jika data terakhir masuk < 10 menit lalu
+  isFastTelemetry?: boolean; // True jika ESP32 sedang dalam mode telemetri cepat
+  telemetryIntervalSec?: number; // Interval pengiriman detik (3 atau 300)
 }
 
 export interface AlarmLog {

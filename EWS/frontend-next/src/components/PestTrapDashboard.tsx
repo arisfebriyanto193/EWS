@@ -21,6 +21,10 @@ import {
   Layers,
   Timer,
   Zap,
+  Save,
+  Undo2,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface PestTrapDashboardProps {
@@ -28,6 +32,7 @@ interface PestTrapDashboardProps {
   onUpdateTrap: (updated: PestTrapNode) => void;
   onAddTrap?: (newTrap: Partial<PestTrapNode>) => Promise<any>;
   onDeleteTrap?: (id: string) => Promise<any>;
+  onRequestFastTelemetry?: (trapId: string) => Promise<any> | void;
 }
 
 const DEFAULT_PRESETS: ColorPresetItem[] = [
@@ -198,6 +203,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   onUpdateTrap,
   onAddTrap,
   onDeleteTrap,
+  onRequestFastTelemetry,
 }) => {
   const [selectedTrapId, setSelectedTrapId] = useState<string>(traps[0]?.id || 'TRAP-01');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -205,7 +211,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   const [newTrapName, setNewTrapName] = useState('');
   const [newTrapLocation, setNewTrapLocation] = useState('');
 
-  // Editing preset state
+  // Editing preset state (modal)
   const [editingPresetIdx, setEditingPresetIdx] = useState<number | null>(null);
   const [customR, setCustomR] = useState(100);
   const [customG, setCustomG] = useState(0);
@@ -214,13 +220,153 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
   const activeTrap = traps.find((t) => t.id === selectedTrapId) || traps[0];
 
-  const presets: ColorPresetItem[] = activeTrap?.presets && activeTrap.presets.length > 0
-    ? activeTrap.presets
+  // Draft configuration form state (isolated from instant publish)
+  const [draftConfig, setDraftConfig] = useState(() => ({
+    mode: activeTrap?.mode || 'otomatis',
+    blowerMode: (activeTrap?.blowerMode || 'sensor') as 'sensor' | 'time',
+    ledRunning: activeTrap?.ledRunning ?? false,
+    startTime: activeTrap?.startTime || '18:00',
+    endTime: activeTrap?.endTime || '06:00',
+    ledRotationInterval: activeTrap?.ledRotationInterval || 15,
+    manualIntervalMin: activeTrap?.manualIntervalMin || 15,
+    manualDurationSec: activeTrap?.manualDurationSec || 3,
+    activePreset: activeTrap?.activePreset !== undefined ? activeTrap.activePreset : 0,
+    presets: activeTrap?.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
+  }));
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Fast telemetry countdown / state
+  const [fastTelemetrySecondsLeft, setFastTelemetrySecondsLeft] = useState<number>(0);
+  const [isRequestingFast, setIsRequestingFast] = useState(false);
+
+  // Sync draft when switching selected trap
+  useEffect(() => {
+    if (activeTrap) {
+      setDraftConfig({
+        mode: activeTrap.mode || 'otomatis',
+        blowerMode: (activeTrap.blowerMode || 'sensor') as 'sensor' | 'time',
+        ledRunning: activeTrap.ledRunning ?? false,
+        startTime: activeTrap.startTime || '18:00',
+        endTime: activeTrap.endTime || '06:00',
+        ledRotationInterval: activeTrap.ledRotationInterval || 15,
+        manualIntervalMin: activeTrap.manualIntervalMin || 15,
+        manualDurationSec: activeTrap.manualDurationSec || 3,
+        activePreset: activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0,
+        presets: activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
+      });
+      setSaveSuccess(false);
+    }
+  }, [activeTrap?.id]);
+
+  // Fast telemetry countdown ticker
+  useEffect(() => {
+    if (fastTelemetrySecondsLeft <= 0) return;
+    const interval = setInterval(() => {
+      setFastTelemetrySecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [fastTelemetrySecondsLeft]);
+
+  const isFastModeActive = fastTelemetrySecondsLeft > 0 || Boolean(activeTrap?.isFastTelemetry);
+
+  const presets: ColorPresetItem[] = draftConfig.presets && draftConfig.presets.length > 0
+    ? draftConfig.presets
     : DEFAULT_PRESETS;
 
-  const currentPresetIdx = activeTrap?.activePreset !== undefined ? activeTrap.activePreset : 0;
+  const currentPresetIdx = draftConfig.activePreset !== undefined ? draftConfig.activePreset : 0;
   const currentActivePreset = presets[currentPresetIdx] || presets[0] || DEFAULT_PRESETS[0];
 
+  const handleDraftChange = (field: string, value: any) => {
+    setDraftConfig((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setSaveSuccess(false);
+  };
+
+  const handleResetDraft = () => {
+    if (!activeTrap) return;
+    setDraftConfig({
+      mode: activeTrap.mode || 'otomatis',
+      blowerMode: (activeTrap.blowerMode || 'sensor') as 'sensor' | 'time',
+      ledRunning: activeTrap.ledRunning ?? false,
+      startTime: activeTrap.startTime || '18:00',
+      endTime: activeTrap.endTime || '06:00',
+      ledRotationInterval: activeTrap.ledRotationInterval || 15,
+      manualIntervalMin: activeTrap.manualIntervalMin || 15,
+      manualDurationSec: activeTrap.manualDurationSec || 3,
+      activePreset: activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0,
+      presets: activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
+    });
+    setSaveSuccess(false);
+  };
+
+  const hasChanges = Boolean(
+    activeTrap && (
+      draftConfig.mode !== activeTrap.mode ||
+      draftConfig.blowerMode !== (activeTrap.blowerMode || 'sensor') ||
+      draftConfig.ledRunning !== (activeTrap.ledRunning ?? false) ||
+      draftConfig.startTime !== (activeTrap.startTime || '18:00') ||
+      draftConfig.endTime !== (activeTrap.endTime || '06:00') ||
+      draftConfig.ledRotationInterval !== (activeTrap.ledRotationInterval || 15) ||
+      draftConfig.manualIntervalMin !== (activeTrap.manualIntervalMin || 15) ||
+      draftConfig.manualDurationSec !== (activeTrap.manualDurationSec || 3) ||
+      draftConfig.activePreset !== (activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0) ||
+      JSON.stringify(draftConfig.presets) !== JSON.stringify(activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS)
+    )
+  );
+
+  const handleSaveConfig = async () => {
+    if (!activeTrap) return;
+    setIsSaving(true);
+    try {
+      const selectedPreset = draftConfig.presets[draftConfig.activePreset] || DEFAULT_PRESETS[0];
+      const updatedTrap: PestTrapNode = {
+        ...activeTrap,
+        mode: draftConfig.mode,
+        blowerMode: draftConfig.blowerMode,
+        ledRunning: draftConfig.ledRunning,
+        startTime: draftConfig.startTime,
+        endTime: draftConfig.endTime,
+        ledRotationInterval: draftConfig.ledRotationInterval,
+        manualIntervalMin: draftConfig.manualIntervalMin,
+        manualDurationSec: draftConfig.manualDurationSec,
+        activePreset: draftConfig.activePreset,
+        ledColor: selectedPreset?.name || activeTrap.ledColor,
+        presets: draftConfig.presets,
+      };
+
+      await onUpdateTrap(updatedTrap);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3500);
+    } catch (err: any) {
+      console.error('Gagal menyimpan konfigurasi perangkap:', err);
+      alert('Gagal menyimpan konfigurasi: ' + (err?.message || err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTriggerFastTelemetry = async () => {
+    if (!activeTrap) return;
+    setIsRequestingFast(true);
+    setFastTelemetrySecondsLeft(30);
+    try {
+      if (onRequestFastTelemetry) {
+        await onRequestFastTelemetry(activeTrap.id);
+      } else {
+        await api.controlTrap(activeTrap.id, { command: 'FAST_TELEMETRY' });
+      }
+    } catch (err: any) {
+      console.warn('Gagal meminta telemetri cepat:', err);
+    } finally {
+      setIsRequestingFast(false);
+    }
+  };
+
+  // Immediate actuator toggles (for physical tests/maintenance)
   const handleToggleUV = (trap: PestTrapNode) => {
     onUpdateTrap({
       ...trap,
@@ -244,64 +390,6 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     });
   };
 
-  const handleModeChange = (trap: PestTrapNode, mode: PestTrapNode['mode']) => {
-    onUpdateTrap({
-      ...trap,
-      mode,
-    });
-  };
-
-  const handlePresetSelect = (trap: PestTrapNode, presetId: number) => {
-    const selected = presets[presetId];
-    onUpdateTrap({
-      ...trap,
-      activePreset: presetId,
-      ledColor: selected ? selected.name : trap.ledColor,
-    });
-  };
-
-  const handleScheduleChange = (trap: PestTrapNode, field: 'startTime' | 'endTime', value: string) => {
-    onUpdateTrap({
-      ...trap,
-      [field]: value,
-    });
-  };
-
-  const handleIntervalChange = (trap: PestTrapNode, interval: number) => {
-    onUpdateTrap({
-      ...trap,
-      ledRotationInterval: Math.max(1, interval),
-    });
-  };
-
-  const handleManualIntervalChange = (trap: PestTrapNode, interval: number) => {
-    onUpdateTrap({
-      ...trap,
-      manualIntervalMin: Math.max(1, interval),
-    });
-  };
-
-  const handleManualDurationChange = (trap: PestTrapNode, duration: number) => {
-    onUpdateTrap({
-      ...trap,
-      manualDurationSec: Math.max(1, duration),
-    });
-  };
-
-  const handleBlowerModeChange = (trap: PestTrapNode, blowerMode: 'sensor' | 'time') => {
-    onUpdateTrap({
-      ...trap,
-      blowerMode,
-    });
-  };
-
-  const handleLedRunningChange = (trap: PestTrapNode, ledRunning: boolean) => {
-    onUpdateTrap({
-      ...trap,
-      ledRunning,
-    });
-  };
-
   const openEditPresetModal = (idx: number) => {
     const p = presets[idx];
     if (!p) return;
@@ -312,7 +400,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     setCustomB(p.b);
   };
 
-  const handleSavePreset = (trap: PestTrapNode) => {
+  const handleSavePresetModal = () => {
     if (editingPresetIdx === null) return;
     const updatedPresets = [...presets];
     updatedPresets[editingPresetIdx] = {
@@ -323,10 +411,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
       b: customB,
     };
 
-    onUpdateTrap({
-      ...trap,
-      presets: updatedPresets,
-    });
+    handleDraftChange('presets', updatedPresets);
     setEditingPresetIdx(null);
   };
 
@@ -491,13 +576,104 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Telemetry Status & Rate Indicator */}
+              <div className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 ${
+                isFastModeActive
+                  ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 font-bold'
+                  : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${isFastModeActive ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                <span>
+                  {isFastModeActive
+                    ? `Mode Cepat: 3 dtk ${fastTelemetrySecondsLeft > 0 ? `(${fastTelemetrySecondsLeft}d)` : ''}`
+                    : 'Mode Hemat: 5 menit'}
+                </span>
+              </div>
+
+              {/* Tombol Percepat Data (Live Telemetri) */}
+              <button
+                type="button"
+                onClick={handleTriggerFastTelemetry}
+                disabled={isRequestingFast}
+                title="Kirim perintah ke mikrokontroler ESP32 untuk mempercepat telemetri ke mode real-time 3 detik"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.98] ${
+                  isFastModeActive
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-purple-700 hover:bg-purple-800 text-white'
+                }`}
+              >
+                <Zap className={`w-3.5 h-3.5 ${isFastModeActive ? 'animate-bounce' : ''}`} />
+                <span>{isFastModeActive ? 'Perpanjang Realtime' : '⚡ Percepat Data'}</span>
+              </button>
+
               <button
                 onClick={handleDeleteActiveTrap}
                 className="px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Hapus Node</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Action Bar: Simpan Pengaturan & Status Sinkronisasi */}
+          <div className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${
+            hasChanges
+              ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 ring-2 ring-amber-400/20'
+              : 'bg-white dark:bg-[#141122] border-slate-200 dark:border-purple-900/30'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                hasChanges
+                  ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300'
+                  : 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
+              }`}>
+                {hasChanges ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                    {hasChanges ? 'Perubahan Belum Disimpan' : 'Pengaturan Perangkap Tersinkron'}
+                  </h4>
+                  {saveSuccess && (
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Berhasil Disimpan &amp; Dikirim ke ESP32!
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                  {hasChanges
+                    ? 'Pengaturan mode, jadwal, blower, atau preset telah diubah. Klik tombol Simpan untuk menerapkan ke ESP32.'
+                    : 'Seluruh konfigurasi waktu, mode kerja, dan warna lampu tersimpan di ESP32 & server.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              {hasChanges && (
+                <button
+                  type="button"
+                  onClick={handleResetDraft}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  <span>Batal</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSaveConfig}
+                disabled={isSaving || !hasChanges}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-[0.98] ${
+                  hasChanges
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-500/30'
+                    : 'bg-slate-100 dark:bg-[#1f1a35] text-slate-400 dark:text-purple-400/40 border border-slate-200 dark:border-purple-900/30 cursor-not-allowed'
+                }`}
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSaving ? 'Menyimpan...' : 'Simpan Pengaturan'}</span>
               </button>
             </div>
           </div>
@@ -510,7 +686,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">Pilih Mode Kerja Sistem</h4>
               </div>
               <span className="text-xs text-slate-500 dark:text-purple-300/70 font-mono">
-                Mode Aktif: <strong className="text-purple-700 dark:text-purple-300 uppercase">{activeTrap.mode === 'manual' ? 'MANUAL' : 'OTOMATIS'}</strong>
+                Mode Aktif (Draft): <strong className="text-purple-700 dark:text-purple-300 uppercase">{draftConfig.mode === 'manual' ? 'MANUAL' : 'OTOMATIS'}</strong>
               </span>
             </div>
 
@@ -518,9 +694,9 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               {/* Mode 1: Manual */}
               <button
                 type="button"
-                onClick={() => handleModeChange(activeTrap, 'manual')}
+                onClick={() => handleDraftChange('mode', 'manual')}
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative ${
-                  activeTrap.mode === 'manual'
+                  draftConfig.mode === 'manual'
                     ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/20'
                     : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700'
                 }`}
@@ -530,7 +706,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
                     <span className="text-sm font-bold text-slate-900 dark:text-white">1. Mode Manual</span>
                   </div>
-                  {activeTrap.mode === 'manual' && <Check className="w-4 h-4 text-purple-700 dark:text-purple-300" />}
+                  {draftConfig.mode === 'manual' && <Check className="w-4 h-4 text-purple-700 dark:text-purple-300" />}
                 </div>
                 <p className="text-xs text-slate-500 dark:text-purple-300/70 leading-relaxed">
                   Lampu penarik hama aktif menyala terus (24 jam non-stop). Blower dan rotasi lampu bekerja mengikuti parameter yang dikonfigurasi di bawah.
@@ -540,9 +716,9 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               {/* Mode 2: Otomatis */}
               <button
                 type="button"
-                onClick={() => handleModeChange(activeTrap, 'otomatis')}
+                onClick={() => handleDraftChange('mode', 'otomatis')}
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer relative ${
-                  activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led'
+                  draftConfig.mode === 'otomatis' || draftConfig.mode === 'otomatis_led'
                     ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/20'
                     : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-700'
                 }`}
@@ -552,10 +728,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
                     <span className="text-sm font-bold text-slate-900 dark:text-white">2. Mode Otomatis (Jadwal RTC DS3231)</span>
                   </div>
-                  {(activeTrap.mode === 'otomatis' || activeTrap.mode === 'otomatis_led') && <Check className="w-4 h-4 text-purple-700 dark:text-purple-300" />}
+                  {(draftConfig.mode === 'otomatis' || draftConfig.mode === 'otomatis_led') && <Check className="w-4 h-4 text-purple-700 dark:text-purple-300" />}
                 </div>
                 <p className="text-xs text-slate-500 dark:text-purple-300/70 leading-relaxed">
-                  Bekerja otomatis sesuai jam operasional ({activeTrap.startTime || '18:00'} - {activeTrap.endTime || '06:00'}). Di luar jadwal, sistem masuk mode standby hemat daya.
+                  Bekerja otomatis sesuai jam operasional ({draftConfig.startTime || '18:00'} - {draftConfig.endTime || '06:00'}). Di luar jadwal, sistem masuk mode standby hemat daya.
                 </p>
               </button>
             </div>
@@ -568,7 +744,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <Sliders className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">Pengaturan Parameter Blower &amp; Lampu LED</h4>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Tersinkronisasi otomatis dengan ESP32</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Klik "Simpan Pengaturan" untuk memperbarui ESP32</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -580,15 +756,15 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     Pilihan Pemicu Blower
                   </label>
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-cyan-100 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 font-semibold">
-                    {activeTrap.blowerMode === 'time' ? 'Siklus Waktu' : 'Sensor VL53L0X'}
+                    {draftConfig.blowerMode === 'time' ? 'Siklus Waktu' : 'Sensor VL53L0X'}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => handleBlowerModeChange(activeTrap, 'sensor')}
+                    onClick={() => handleDraftChange('blowerMode', 'sensor')}
                     className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
-                      activeTrap.blowerMode !== 'time'
+                      draftConfig.blowerMode !== 'time'
                         ? 'bg-white dark:bg-slate-900 border-cyan-500 text-cyan-700 dark:text-cyan-300 ring-2 ring-cyan-500/20 shadow-xs'
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
@@ -599,9 +775,9 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleBlowerModeChange(activeTrap, 'time')}
+                    onClick={() => handleDraftChange('blowerMode', 'time')}
                     className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
-                      activeTrap.blowerMode === 'time'
+                      draftConfig.blowerMode === 'time'
                         ? 'bg-white dark:bg-slate-900 border-cyan-500 text-cyan-700 dark:text-cyan-300 ring-2 ring-cyan-500/20 shadow-xs'
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
@@ -611,9 +787,9 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {activeTrap.blowerMode === 'time'
-                    ? `Blower akan otomatis menyala selama ${activeTrap.manualDurationSec || 3} detik setiap ${activeTrap.manualIntervalMin || 15} menit sekali.`
-                    : `Blower akan menyala selama ${activeTrap.manualDurationSec || 3} detik saat sensor jarak mendeteksi objek hama (dengan jeda cooldown ${activeTrap.manualIntervalMin || 15} menit).`}
+                  {draftConfig.blowerMode === 'time'
+                    ? `Blower akan otomatis menyala selama ${draftConfig.manualDurationSec || 3} detik setiap ${draftConfig.manualIntervalMin || 15} menit sekali.`
+                    : `Blower akan menyala selama ${draftConfig.manualDurationSec || 3} detik saat sensor jarak mendeteksi objek hama (dengan jeda cooldown ${draftConfig.manualIntervalMin || 15} menit).`}
                 </p>
               </div>
 
@@ -625,19 +801,19 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     Mode Rotasi Warna Lampu (LED Running)
                   </label>
                   <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-semibold ${
-                    activeTrap.ledRunning
+                    draftConfig.ledRunning
                       ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300'
                       : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                   }`}>
-                    {activeTrap.ledRunning ? 'ON (Berganti Warna)' : 'OFF (1 Warna)'}
+                    {draftConfig.ledRunning ? 'ON (Berganti Warna)' : 'OFF (1 Warna)'}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => handleLedRunningChange(activeTrap, true)}
+                    onClick={() => handleDraftChange('ledRunning', true)}
                     className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
-                      activeTrap.ledRunning
+                      draftConfig.ledRunning
                         ? 'bg-white dark:bg-slate-900 border-purple-500 text-purple-700 dark:text-purple-300 ring-2 ring-purple-500/20 shadow-xs'
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
@@ -648,9 +824,9 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleLedRunningChange(activeTrap, false)}
+                    onClick={() => handleDraftChange('ledRunning', false)}
                     className={`px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer flex flex-col gap-1 ${
-                      !activeTrap.ledRunning
+                      !draftConfig.ledRunning
                         ? 'bg-white dark:bg-slate-900 border-purple-500 text-purple-700 dark:text-purple-300 ring-2 ring-purple-500/20 shadow-xs'
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
@@ -660,8 +836,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {activeTrap.ledRunning
-                    ? `Lampu LED NeoPixel akan berganti warna secara otomatis antar preset setiap ${activeTrap.ledRotationInterval || 15} menit.`
+                  {draftConfig.ledRunning
+                    ? `Lampu LED NeoPixel akan berganti warna secara otomatis antar preset setiap ${draftConfig.ledRotationInterval || 15} menit.`
                     : `Lampu LED NeoPixel akan terus menyala pada 1 warna preset yang dipilih di palet warna di bawah.`}
                 </p>
               </div>
@@ -687,8 +863,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 </label>
                 <input
                   type="time"
-                  value={activeTrap.startTime || '18:00'}
-                  onChange={(e) => handleScheduleChange(activeTrap, 'startTime', e.target.value)}
+                  value={draftConfig.startTime || '18:00'}
+                  onChange={(e) => handleDraftChange('startTime', e.target.value)}
                   className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Waktu perangkap mulai menyala (Sore/Malam)</span>
@@ -702,8 +878,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 </label>
                 <input
                   type="time"
-                  value={activeTrap.endTime || '06:00'}
-                  onChange={(e) => handleScheduleChange(activeTrap, 'endTime', e.target.value)}
+                  value={draftConfig.endTime || '06:00'}
+                  onChange={(e) => handleDraftChange('endTime', e.target.value)}
                   className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
                 />
                 <span className="text-[10px] text-slate-500 mt-1 block">Waktu perangkap otomatis mati (Pagi hari)</span>
@@ -720,8 +896,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     type="number"
                     min={1}
                     max={180}
-                    value={activeTrap.ledRotationInterval || 15}
-                    onChange={(e) => handleIntervalChange(activeTrap, parseInt(e.target.value, 10) || 1)}
+                    value={draftConfig.ledRotationInterval || 15}
+                    onChange={(e) => handleDraftChange('ledRotationInterval', Math.max(1, parseInt(e.target.value, 10) || 1))}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
@@ -733,21 +909,21 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <Timer className="w-3.5 h-3.5 text-emerald-600" />
-                  {activeTrap.blowerMode === 'time' ? 'Interval Siklus Blower' : 'Jeda Cooldown Blower'}
+                  {draftConfig.blowerMode === 'time' ? 'Interval Siklus Blower' : 'Jeda Cooldown Blower'}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     min={1}
                     max={180}
-                    value={activeTrap.manualIntervalMin || 15}
-                    onChange={(e) => handleManualIntervalChange(activeTrap, parseInt(e.target.value, 10) || 1)}
+                    value={draftConfig.manualIntervalMin || 15}
+                    onChange={(e) => handleDraftChange('manualIntervalMin', Math.max(1, parseInt(e.target.value, 10) || 1))}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  {activeTrap.blowerMode === 'time' ? 'Blower nyala berkala tiap menit ini' : 'Jeda minimum antar deteksi sensor'}
+                  {draftConfig.blowerMode === 'time' ? 'Blower nyala berkala tiap menit ini' : 'Jeda minimum antar deteksi sensor'}
                 </span>
               </div>
 
@@ -762,8 +938,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     type="number"
                     min={1}
                     max={3600}
-                    value={activeTrap.manualDurationSec || 3}
-                    onChange={(e) => handleManualDurationChange(activeTrap, parseInt(e.target.value, 10) || 1)}
+                    value={draftConfig.manualDurationSec || 3}
+                    onChange={(e) => handleDraftChange('manualDurationSec', Math.max(1, parseInt(e.target.value, 10) || 1))}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
                   />
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Detik</span>
@@ -781,7 +957,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">Preset Spektrum Warna Lampu (RGB / UV)</h4>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500">Preset Aktif Saat Ini:</span>
+                <span className="text-slate-500">Preset Aktif:</span>
                 <span
                   className="px-2.5 py-1 rounded font-bold text-white shadow-xs"
                   style={{
@@ -830,7 +1006,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
                     <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-800">
                       <button
-                        onClick={() => handlePresetSelect(activeTrap, idx)}
+                        onClick={() => handleDraftChange('activePreset', idx)}
                         className={`flex-1 py-1 px-2 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
                           isCurrent
                             ? 'bg-purple-600 text-white'
@@ -1213,7 +1389,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSavePreset(activeTrap)}
+                  onClick={handleSavePresetModal}
                   className="px-4 py-2 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
                 >
                   Terapkan Perubahan

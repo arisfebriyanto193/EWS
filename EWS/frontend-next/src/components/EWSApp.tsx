@@ -386,17 +386,26 @@ export default function App() {
     return () => clearInterval(heartbeatTimer);
   }, [wsStatus, ewsNodes.length]);
 
-  // Request telemetri instan saat pengguna membuka atau berpindah ke titik EWS tertentu
+  // Request telemetri instan saat pengguna membuka atau berpindah ke titik EWS tertentu atau tab perangkap hama
   useEffect(() => {
     if (wsStatus === 'connected') {
-      const targetId = activeTab.startsWith('EWS-') ? activeTab : (ewsNodes[0]?.id || 'EWS-01');
-      wsClient.publish(`ews/${targetId}/command`, {
-        command: 'REQUEST_DATA',
-        ewsId: targetId,
-        timestamp: Date.now(),
-      });
+      if (activeTab === 'pest-traps') {
+        const targetTrapId = pestTraps[0]?.id || 'TRAP-01';
+        wsClient.publish(`traps/${targetTrapId}/command`, {
+          command: 'REQUEST_DATA',
+          trapId: targetTrapId,
+          timestamp: Date.now(),
+        });
+      } else {
+        const targetId = activeTab.startsWith('EWS-') ? activeTab : (ewsNodes[0]?.id || 'EWS-01');
+        wsClient.publish(`ews/${targetId}/command`, {
+          command: 'REQUEST_DATA',
+          ewsId: targetId,
+          timestamp: Date.now(),
+        });
+      }
     }
-  }, [activeTab, wsStatus, ewsNodes.length]);
+  }, [activeTab, wsStatus, ewsNodes.length, pestTraps.length]);
 
   // 4. Deteksi Otomatis Perangkat Offline di Sisi Web (Toleransi 6 menit untuk mode hemat daya 5 menit)
   useEffect(() => {
@@ -738,6 +747,15 @@ export default function App() {
     }
   };
 
+  const handleRequestFastTelemetry = (trapId: string) => {
+    wsClient.publish(`traps/${trapId}/command`, {
+      command: 'FAST_TELEMETRY',
+      trapId,
+      timestamp: Date.now(),
+    });
+    api.controlTrap(trapId, { command: 'FAST_TELEMETRY' }).catch(() => {});
+  };
+
   // Check if any siren is currently blaring
   const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute);
   const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive);
@@ -871,6 +889,7 @@ export default function App() {
               onUpdateTrap={handleUpdateTrap}
               onAddTrap={handleAddTrap}
               onDeleteTrap={handleDeleteTrap}
+              onRequestFastTelemetry={handleRequestFastTelemetry}
             />
           )}
 

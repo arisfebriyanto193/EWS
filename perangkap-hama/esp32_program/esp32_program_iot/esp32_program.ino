@@ -35,6 +35,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <Preferences.h>
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_GFX.h>
@@ -99,10 +100,15 @@ ColorPreset presets[5] = {
 // ==============================================================================
 // 3. VARIABEL SISTEM & STATE
 // ==============================================================================
-String trapId = "TRAP-01";
+String trapId   = "TRAP-01";
 String trapName = "Perangkap Hama 01 - Kebun Kopi";
 TrapMode currentMode = MODE_OTOMATIS;
 uint8_t activePreset = 0;
+
+// Konfigurasi Mode Cerdas
+bool ledRunning = false;             // Jika true: LED berganti warna bergiliran sesuai interval. Jika false: 1 warna statis.
+String blowerMode = "sensor";        // "sensor" (VL53L0X) atau "time" (interval berkala)
+unsigned long lastBlowerTimeCycle = 0; // Waktu siklus terakhir untuk blowerMode == "time"
 
 // Jadwal Operasi (Format 24 Jam)
 uint8_t startHour = 18;
@@ -110,12 +116,12 @@ uint8_t startMin  = 0;
 uint8_t endHour   = 6;
 uint8_t endMin    = 0;
 
-// Interval Ganti Warna (Menit) untuk Mode OTOMATIS_LED
+// Interval Ganti Warna (Menit) untuk Mode LED Running
 uint16_t ledRotationInterval = 15;
 
-// Pengaturan Blower: Durasi nyala & cooldown antar trigger
-uint16_t manualIntervalMin   = 15; // Cooldown minimal antar trigger blower (menit)
-uint16_t manualDurationSec   = 3;  // Durasi blower menyala saat deteksi hama (detik)
+// Pengaturan Blower: Durasi nyala & cooldown / interval berkala
+uint16_t manualIntervalMin   = 15; // Cooldown minimal antar trigger sensor atau interval siklus blower (menit)
+uint16_t manualDurationSec   = 3;  // Durasi blower menyala saat deteksi hama / siklus waktu (detik)
 
 // Parameter Deteksi Hama
 uint16_t distThreshold_mm = 150;   // Ambang batas deteksi hama (mm)
@@ -143,16 +149,27 @@ uint8_t rtcHour = 0, rtcMinute = 0, rtcSecond = 0;
 uint16_t rtcYear = 2026;
 uint8_t rtcMonth = 10, rtcDay = 12;
 
-// Kredensial WiFi & IoT Server EWS
-char wifiSsid[32]     = "TALAS 1";
-char wifiPass[32]     = "kitahebat";
-char wsHost[64]       = "be-ews.qbyte.web.id";
-int  wsPort           = 443;
-char wsPath[32]       = "/ws";
-bool wsUseSsl         = true;
+// Kredensial WiFi & IoT Server EWS (Dapat diatur dinamis via Web Server, disimpan di NVS tanpa hardcode)
+String wifiSsid       = "TALAS 1";
+String wifiPass       = "kitahebat";
+String wsHost         = "be-ews.qbyte.web.id";
+int    wsPort         = 443;
+String wsPath         = "/ws";
+bool   wsUseSsl       = true;
+
+// Variabel Kontrol Reboot Tertunda (non-blocking agar respons HTTP terkirim ke klien)
+volatile bool shouldRestart = false;
+unsigned long restartTriggerTime = 0;
+
+// Konfigurasi Interval Telemetri Cerdas & Hemat Daya
+const unsigned long REALTIME_TELEMETRY_INTERVAL   = 3000;    // 3 detik saat Web dibuka / mode cepat on-demand
+const unsigned long LOW_POWER_TELEMETRY_INTERVAL  = 300000;  // 5 menit (300.000 ms) mode normal / hemat daya
+const unsigned long CLIENT_ACTIVITY_TIMEOUT       = 30000;   // 30 detik: durasi mode cepat sebelum kembali ke 5 menit
+
+volatile unsigned long lastClientActivityTime      = 0;
+volatile bool forceTelemetryPublish               = false;
 
 // Timing Non-blocking
-const unsigned long TELEMETRY_INTERVAL_MS = 300000UL; // Kirim data IoT ke EWS setiap 5 menit (300.000 ms)
 unsigned long lastSensorRead       = 0;
 unsigned long lastOledUpdate       = 0;
 unsigned long lastTelemetryPub     = 0;
@@ -176,6 +193,8 @@ RTC_DS3231 rtc;
 INA226_WE ina226(INA226_I2C_ADDR);
 Adafruit_NeoPixel strip(NUM_WS2812B, PIN_WS2812B, NEO_GRB + NEO_KHZ800);
 WebServer server(80);
+DNSServer dnsServer;
+bool dnsRunning = false;
 WebSocketsClient webSocket;
 Preferences prefs;
 
@@ -253,10 +272,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   bool wifiConnected = false;
 
-  if (strlen(wifiSsid) > 0) {
+  if (wifiSsid.length() > 0) {
     Serial.print("🌐 Menghubungkan ke WiFi: ");
     Serial.println(wifiSsid);
-    WiFi.begin(wifiSsid, wifiPass);
+    WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
     unsigned long startAttemptTime = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - startAttemptTime < 10000)) {
@@ -283,6 +302,12 @@ void setup() {
     Serial.print(apName);
     Serial.print(" | IP AP: ");
     Serial.println(WiFi.softAPIP());
+
+    // Aktifkan Captive Portal DNS
+    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer.start(53, "*", WiFi.softAPIP());
+    dnsRunning = true;
+    Serial.println("🌐 Captive Portal DNS Aktif di Port 53");
   }
 
   // Setup Web Server Lokal HTTP
@@ -304,7 +329,12 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // 1. Tangani Request Web Server Lokal
+  // 1. Tangani Request DNS untuk Captive Portal
+  if (dnsRunning) {
+    dnsServer.processNextRequest();
+  }
+
+  // 2. Tangani Request Web Server Lokal
   server.handleClient();
 
   // 2. Tangani Komunikasi WebSocket Real-time IoT
@@ -326,8 +356,21 @@ void loop() {
     updateOledDisplay();
   }
 
-  // 6. Kirim Telemetri IoT ke Server EWS setiap 5 menit (300.000 ms)
-  if (now - lastTelemetryPub >= TELEMETRY_INTERVAL_MS) {
+  // 6. Adaptive Telemetry: Kirim Telemetri IoT ke Server EWS
+  // Mode Cepat (3 detik) jika Web meminta data cepat / client aktif (30 detik terakhir),
+  // Mode Hemat Daya (5 menit) jika idle untuk menghemat daya baterai & kuota data.
+  bool isClientActive = (lastClientActivityTime > 0) && ((now - lastClientActivityTime) < CLIENT_ACTIVITY_TIMEOUT);
+  unsigned long targetInterval = isClientActive ? REALTIME_TELEMETRY_INTERVAL : LOW_POWER_TELEMETRY_INTERVAL;
+
+  bool shouldPublish = false;
+  if (forceTelemetryPublish) {
+    shouldPublish = true;
+    forceTelemetryPublish = false;
+  } else if (lastTelemetryPub == 0 || (now - lastTelemetryPub >= targetInterval)) {
+    shouldPublish = true;
+  }
+
+  if (shouldPublish) {
     lastTelemetryPub = now;
     sendTelemetryToEws();
   }
@@ -338,6 +381,12 @@ void loop() {
     blowerEnabled = false;
     zapperActive = false;
     Serial.println("🌀 [Blower] Durasi habis, blower MATI");
+  }
+
+  // 8. Eksekusi Restart ESP32 Tertunda (dipicu dari Web Dashboard)
+  if (shouldRestart && (now - restartTriggerTime >= 1000)) {
+    Serial.println("🔄 Merestart ESP32...");
+    ESP.restart();
   }
 }
 
@@ -418,36 +467,39 @@ void readSensors() {
     if (measure.RangeStatus != 4) { // Status 4 = out of range / error
       currentDistance = measure.RangeMilliMeter;
 
-      // Cek: Apakah LED sedang aktif (sistem sedang menarik hama)?
-      bool canTrigger = false;
-      if (currentMode == MODE_MANUAL && uvLedEnabled) {
-        canTrigger = true; // Manual mode: LED nyala terus, bisa trigger kapan saja
-      } else if ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()) {
-        canTrigger = true; // Otomatis: hanya trigger saat dalam jadwal
-      }
+      // Pemicu blower via sensor VL53L0X hanya berjalan jika blowerMode == "sensor"
+      if (blowerMode == "sensor") {
+        // Cek: Apakah LED sedang aktif (sistem sedang menarik hama)?
+        bool canTrigger = false;
+        if (currentMode == MODE_MANUAL && uvLedEnabled) {
+          canTrigger = true; // Manual mode: LED nyala terus, bisa trigger kapan saja
+        } else if ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()) {
+          canTrigger = true; // Otomatis: hanya trigger saat dalam jadwal
+        }
 
-      // Cooldown: cek apakah sudah lewat interval minimum antar trigger
-      unsigned long nowMs = millis();
-      unsigned long cooldownMs = (unsigned long)manualIntervalMin * 60000UL;
-      bool cooldownPassed = (nowMs - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
+        // Cooldown: cek apakah sudah lewat interval minimum antar trigger
+        unsigned long nowMs = millis();
+        unsigned long cooldownMs = (unsigned long)manualIntervalMin * 60000UL;
+        bool cooldownPassed = (nowMs - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
 
-      if (canTrigger && !blowerEnabled && cooldownPassed &&
-          currentDistance > 10 && currentDistance <= distThreshold_mm) {
-        // TRIGGER BLOWER! Hama terdeteksi mendekat!
-        digitalWrite(PIN_RELAY_1, HIGH);
-        blowerEnabled = true;
-        zapperActive = true;
-        blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
-        lastBlowerTrigger = nowMs;
-        pestCounter++;
-        Serial.print("⚡🌀 Hama Terdeteksi! Jarak: ");
-        Serial.print(currentDistance);
-        Serial.print(" mm | Blower ON selama ");
-        Serial.print(manualDurationSec);
-        Serial.print(" detik | Total Hama: ");
-        Serial.println(pestCounter);
-        savePreferences(); // Simpan counter
-        sendTelemetryToEws(); // Laporkan ke server
+        if (canTrigger && !blowerEnabled && cooldownPassed &&
+            currentDistance > 10 && currentDistance <= distThreshold_mm) {
+          // TRIGGER BLOWER! Hama terdeteksi mendekat!
+          digitalWrite(PIN_RELAY_1, HIGH);
+          blowerEnabled = true;
+          zapperActive = true;
+          blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
+          lastBlowerTrigger = nowMs;
+          pestCounter++;
+          Serial.print("⚡🌀 Hama Terdeteksi Sensor! Jarak: ");
+          Serial.print(currentDistance);
+          Serial.print(" mm | Blower ON selama ");
+          Serial.print(manualDurationSec);
+          Serial.print(" detik | Total Hama: ");
+          Serial.println(pestCounter);
+          savePreferences(); // Simpan counter
+          sendTelemetryToEws(); // Laporkan ke server
+        }
       }
     }
   }
@@ -475,58 +527,76 @@ void updateActuators() {
 
   // ============================================================
   // LOGIKA LED WS2812B (ATRAKTOR / PENARIK HAMA)
-  // LED nyala TERUS selama uvLedEnabled=true dan mode mengizinkan.
-  // Warna berganti otomatis setiap ledRotationInterval menit.
+  // - Jika uvLedEnabled == false -> LED MATI
+  // - Di MODE_MANUAL -> LED MENYALA TERUS
+  // - Di MODE_OTOMATIS -> LED MENYALA SESUAI JADWAL RTC
+  // - Jika ledRunning == true -> LED berganti warna tiap ledRotationInterval menit
+  // - Jika ledRunning == false -> LED menyala 1 warna statis (activePreset)
   // ============================================================
 
-  // Jika saklar LED UV dinonaktifkan (dari Web / Dashboard), matikan LED
   if (!uvLedEnabled) {
     turnOffLed();
     ledIsOn = false;
-    return;
-  }
+  } else {
+    bool shouldLedBeOn = false;
+    if (currentMode == MODE_MANUAL) {
+      shouldLedBeOn = true;
+    } else if (currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) {
+      shouldLedBeOn = isWithinSchedule();
+    } else if (currentMode == MODE_SLEEP) {
+      enterDeepSleep();
+      return;
+    }
 
-  // Rotasi warna otomatis (berlaku di semua mode selama LED aktif)
-  unsigned long rotIntervalMs = (unsigned long)ledRotationInterval * 60000UL;
-  if (rotIntervalMs > 0 && (now - lastLedRotate >= rotIntervalMs)) {
-    lastLedRotate = now;
-    activePreset = (activePreset + 1) % 5;
-    Serial.print("🎨 [Auto-Rotate LED] Beralih ke Preset ");
-    Serial.print(activePreset + 1);
-    Serial.print(": ");
-    Serial.println(presets[activePreset].name);
-  }
+    if (shouldLedBeOn) {
+      // Rotasi warna otomatis hanya jika fitur ledRunning aktif
+      if (ledRunning) {
+        unsigned long rotIntervalMs = (unsigned long)ledRotationInterval * 60000UL;
+        if (rotIntervalMs > 0 && (now - lastLedRotate >= rotIntervalMs)) {
+          lastLedRotate = now;
+          activePreset = (activePreset + 1) % 5;
+          Serial.print("🎨 [Auto-Rotate LED] Beralih ke Preset ");
+          Serial.print(activePreset + 1);
+          Serial.print(": ");
+          Serial.println(presets[activePreset].name);
+        }
+      }
 
-  switch (currentMode) {
-    case MODE_MANUAL:
-      // Manual: LED nyala TERUS (sebagai penarik hama)
       applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
       ledIsOn = true;
-      break;
-
-    case MODE_OTOMATIS:
-    case MODE_OTOMATIS_LED:
-      // Otomatis: LED nyala hanya saat berada dalam jadwal jam RTC
-      if (isWithinSchedule()) {
-        applyLedColor(presets[activePreset].r, presets[activePreset].g, presets[activePreset].b);
-        ledIsOn = true;
-      } else {
-        turnOffLed();
-        ledIsOn = false;
-      }
-      break;
-
-    case MODE_SLEEP:
-      enterDeepSleep();
-      break;
+    } else {
+      turnOffLed();
+      ledIsOn = false;
+    }
   }
 
   // ============================================================
-  // LOGIKA BLOWER (RELAY 1) - PENGHISAP HAMA
-  // Blower TIDAK dikendalikan di sini. Blower hanya nyala
-  // saat sensor VL53L0X mendeteksi hama (di readSensors()).
-  // Auto turn-off dilakukan di loop() berdasarkan blowerOffTime.
+  // LOGIKA BLOWER (RELAY 1) UNTUK MODE WAKTU (blowerMode == "time")
+  // Blower otomatis menyala berkala setiap manualIntervalMin menit
+  // selama manualDurationSec detik tanpa menunggu sensor VL53L0X.
   // ============================================================
+  if (blowerMode == "time") {
+    bool canBlowerRun = false;
+    if (currentMode == MODE_MANUAL && uvLedEnabled) {
+      canBlowerRun = true;
+    } else if ((currentMode == MODE_OTOMATIS || currentMode == MODE_OTOMATIS_LED) && isWithinSchedule()) {
+      canBlowerRun = true;
+    }
+
+    if (canBlowerRun && !blowerEnabled) {
+      unsigned long cycleIntervalMs = (unsigned long)manualIntervalMin * 60000UL;
+      if (cycleIntervalMs > 0 && (now - lastBlowerTimeCycle >= cycleIntervalMs || lastBlowerTimeCycle == 0)) {
+        digitalWrite(PIN_RELAY_1, HIGH);
+        blowerEnabled = true;
+        zapperActive = true;
+        blowerOffTime = now + ((unsigned long)manualDurationSec * 1000UL);
+        lastBlowerTimeCycle = now;
+        Serial.print("🌀 [Blower Siklus Waktu] Blower ON selama ");
+        Serial.print(manualDurationSec);
+        Serial.println(" detik (Interval Berkala)");
+      }
+    }
+  }
 }
 
 void applyLedColor(uint8_t r, uint8_t g, uint8_t b) {
@@ -733,98 +803,411 @@ void updateOledDisplay() {
 // ==============================================================================
 // 13. WEB SERVER HTTP LOKAL ESP32 (PORT 80)
 // ==============================================================================
+
+static const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Pest Trap</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 12px; line-height: 1.4; }
+    .wrap { max-width: 520px; margin: auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    h2 { margin: 0; font-size: 1.25rem; color: #38bdf8; }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: bold; background: #334155; }
+    .badge-ok { background: #065f46; color: #34d399; }
+    .badge-bad { background: #991b1b; color: #f87171; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .tab { flex: 1; padding: 8px 4px; border: none; border-radius: 8px; background: #1e293b; color: #94a3b8; font-weight: 600; font-size: 13px; cursor: pointer; text-align: center; border: 1px solid #334155; }
+    .tab.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
+    .card { background: #1e293b; border-radius: 10px; padding: 14px; border: 1px solid #334155; margin-bottom: 12px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .row { margin-bottom: 10px; }
+    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; font-weight: 500; }
+    input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 14px; }
+    input:focus, select:focus { outline: none; border-color: #38bdf8; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btn { display: block; width: 100%; padding: 10px; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; text-align: center; margin-top: 6px; box-sizing: border-box; }
+    .btn-blue { background: #0284c7; color: #fff; }
+    .btn-green { background: #059669; color: #fff; }
+    .btn-amber { background: #d97706; color: #fff; }
+    .btn-red { background: #dc2626; color: #fff; }
+    .btn-gray { background: #475569; color: #fff; }
+    .btn-sm { padding: 6px 10px; font-size: 12px; margin-top: 0; }
+    .stat-val { font-size: 17px; font-weight: bold; color: #f1f5f9; }
+    .stat-label { font-size: 11px; color: #94a3b8; }
+    .msg { font-size: 12px; text-align: center; margin-top: 8px; min-height: 18px; }
+    .preset-item { display: flex; align-items: center; gap: 8px; background: #0f172a; padding: 6px 10px; border-radius: 6px; margin-bottom: 5px; font-size: 13px; }
+    .dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #fff; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h2>🌾 Smart Pest Trap</h2>
+    <span id="txt_trap" class="badge">TRAP</span>
+  </div>
+
+  <!-- NAVIGASI TAB RINGAN -->
+  <div class="tabs">
+    <button class="tab active" onclick="goTab('wifi', this)">📶 WiFi</button>
+    <button class="tab" onclick="goTab('server', this)">⚙️ Server</button>
+    <button class="tab" onclick="goTab('ctrl', this)">📊 Kontrol</button>
+  </div>
+
+  <!-- TAB 1: WIFI MANAGER -->
+  <div id="p_wifi" class="panel active">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-weight:bold;font-size:14px;color:#38bdf8">📶 Pengaturan WiFi</span>
+        <span id="wifi_badge" class="badge">...</span>
+      </div>
+      <div class="row" style="font-size:12px;color:#cbd5e1;background:#0f172a;padding:8px;border-radius:6px">
+        IP: <b id="txt_ip">-</b> | SSID: <b id="txt_cur_ssid">-</b>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label style="margin:0">Daftar WiFi Terdekat:</label>
+          <button class="btn btn-blue btn-sm" id="btn_scan" onclick="scanWifi()">🔍 Scan Ulang</button>
+        </div>
+        <select id="sel_wifi" onchange="pickWifi(this.value)">
+          <option value="">-- Tekan Scan WiFi --</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>SSID WiFi:</label>
+        <input type="text" id="w_ssid" placeholder="Nama WiFi / Hotspot">
+      </div>
+      <div class="row">
+        <label>Password WiFi:</label>
+        <input type="password" id="w_pass" placeholder="Password WiFi">
+      </div>
+      <button class="btn btn-green" onclick="saveWifi()">💾 Simpan &amp; Hubungkan WiFi</button>
+      <div id="msg_wifi" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: SERVER & IDENTITAS -->
+  <div id="p_server" class="panel">
+    <div class="card">
+      <span style="font-weight:bold;font-size:14px;color:#38bdf8;display:block;margin-bottom:10px">⚙️ WebSocket &amp; Identitas</span>
+      
+      <div class="grid">
+        <div class="row">
+          <label>Trap ID (ID Unik):</label>
+          <input type="text" id="s_id" placeholder="TRAP-01">
+        </div>
+        <div class="row">
+          <label>Nama Perangkap:</label>
+          <input type="text" id="s_name" placeholder="Kebun Kopi">
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="row">
+          <label>Host WebSocket:</label>
+          <input type="text" id="s_host" placeholder="be-ews.qbyte.web.id">
+        </div>
+        <div class="row">
+          <label>Port:</label>
+          <input type="number" id="s_port" placeholder="443">
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="row">
+          <label>Path:</label>
+          <input type="text" id="s_path" placeholder="/ws">
+        </div>
+        <div class="row">
+          <label>SSL (WSS):</label>
+          <select id="s_ssl">
+            <option value="1">WSS (SSL Port 443)</option>
+            <option value="0">WS Biasa (Port 80)</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn btn-blue" onclick="saveServer()">💾 Simpan Konfigurasi Server</button>
+      <button class="btn btn-red" onclick="rebootEsp()">🔄 Restart ESP32</button>
+      <div id="msg_server" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- TAB 3: KONTROL & MONITORING -->
+  <div id="p_ctrl" class="panel">
+    <div class="card">
+      <div class="grid" style="text-align:center">
+        <div><div class="stat-label">Tegangan Aki</div><div class="stat-val" id="d_bat">-</div></div>
+        <div><div class="stat-label">Arus Beban</div><div class="stat-val" id="d_curr">-</div></div>
+        <div><div class="stat-label">Jarak Objek</div><div class="stat-val" id="d_dist">-</div></div>
+        <div><div class="stat-label">Total Hama</div><div class="stat-val" id="d_pest">-</div></div>
+        <div><div class="stat-label">Jam RTC</div><div class="stat-val" id="d_rtc" style="font-size:15px">-</div></div>
+        <div><div class="stat-label">IoT Cloud</div><div class="stat-val" id="d_ws" style="font-size:14px">-</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Mode Operasional:</label>
+      <div class="grid">
+        <button class="btn btn-green btn-sm" onclick="setMode('manual')">MANUAL</button>
+        <button class="btn btn-blue btn-sm" onclick="setMode('otomatis')">OTOMATIS</button>
+        <button class="btn btn-amber btn-sm" onclick="setMode('otomatis-led')">ROTASI LED</button>
+        <button class="btn btn-red btn-sm" onclick="setMode('sleep')">SLEEP</button>
+      </div>
+      <div class="grid" style="margin-top:6px">
+        <button class="btn btn-amber btn-sm" onclick="toggleUv()">💡 Saklar LED UV</button>
+        <button class="btn btn-gray btn-sm" onclick="toggleBlower()">🌀 Test Blower</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Preset Warna Atraktor:</label>
+      <div id="preset_boxes"></div>
+      <div class="grid" style="margin-top:8px">
+        <div><label>Mulai:</label><input type="time" id="c_start"></div>
+        <div><label>Selesai:</label><input type="time" id="c_end"></div>
+      </div>
+      <button class="btn btn-blue btn-sm" style="margin-top:8px" onclick="saveSched()">💾 Simpan Jadwal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let loaded = false;
+  function goTab(name, btn) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('p_' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  function refresh() {
+    fetch('/api/status').then(r => r.json()).then(d => {
+      document.getElementById('d_bat').innerText = d.batteryVoltage + ' V';
+      document.getElementById('d_curr').innerText = d.loadCurrent + ' mA';
+      document.getElementById('d_dist').innerText = d.currentDistance + ' mm';
+      document.getElementById('d_pest').innerText = d.photoelectricCount;
+      document.getElementById('d_rtc').innerText = d.currentTime;
+      
+      let ws = document.getElementById('d_ws');
+      ws.innerText = d.wsConnected ? 'CONNECT' : 'DISCONNECT';
+      ws.style.color = d.wsConnected ? '#34d399' : '#f87171';
+
+      let wb = document.getElementById('wifi_badge');
+      wb.innerText = d.wifiStatus;
+      wb.className = 'badge ' + (d.wifiStatus === 'TERKONEKSI' ? 'badge-ok' : 'badge-bad');
+
+      document.getElementById('txt_ip').innerText = d.wifiIp;
+      document.getElementById('txt_cur_ssid').innerText = d.wifiSsid || '-';
+      document.getElementById('txt_trap').innerText = d.trapId;
+
+      if (!loaded) {
+        document.getElementById('w_ssid').value = d.wifiSsid || '';
+        document.getElementById('s_id').value = d.trapId || '';
+        document.getElementById('s_name').value = d.trapName || '';
+        document.getElementById('s_host').value = d.wsHost || '';
+        document.getElementById('s_port').value = d.wsPort || 443;
+        document.getElementById('s_path').value = d.wsPath || '/ws';
+        document.getElementById('s_ssl').value = d.wsUseSsl ? '1' : '0';
+        document.getElementById('c_start').value = d.startTime || '18:00';
+        document.getElementById('c_end').value = d.endTime || '06:00';
+        loaded = true;
+      }
+
+      let phtml = '';
+      d.presets.forEach((p, i) => {
+        phtml += `<div class="preset-item">
+          <div class="dot" style="background:rgb(${p.r},${p.g},${p.b})"></div>
+          <span style="flex:1">${i+1}. ${p.name}</span>
+          <button class="btn ${d.activePreset===i?'btn-green':'btn-gray'} btn-sm" onclick="setPreset(${i})">${d.activePreset===i?'AKTIF':'PILIH'}</button>
+        </div>`;
+      });
+      document.getElementById('preset_boxes').innerHTML = phtml;
+    }).catch(e => {});
+  }
+
+  function scanWifi() {
+    let b = document.getElementById('btn_scan');
+    let sel = document.getElementById('sel_wifi');
+    b.innerText = 'Memindai...';
+    b.disabled = true;
+    sel.innerHTML = '<option value="">Sedang memindai jaringan...</option>';
+
+    fetch('/api/wifi-scan').then(r => r.json()).then(list => {
+      b.innerText = '🔍 Scan Ulang';
+      b.disabled = false;
+      if (!list || list.length === 0) {
+        sel.innerHTML = '<option value="">Tidak ada WiFi terdeteksi</option>';
+        return;
+      }
+      let opt = '<option value="">-- Pilih WiFi (' + list.length + ' ditemukan) --</option>';
+      list.forEach(w => {
+        let lock = w.sec ? '🔒' : '🔓';
+        opt += `<option value="${w.ssid}">${w.ssid} (${w.rssi} dBm ${lock})</option>`;
+      });
+      sel.innerHTML = opt;
+    }).catch(e => {
+      b.innerText = '🔍 Scan Ulang';
+      b.disabled = false;
+      sel.innerHTML = '<option value="">Gagal memindai</option>';
+    });
+  }
+
+  function pickWifi(val) {
+    if (val) document.getElementById('w_ssid').value = val;
+  }
+
+  function saveWifi() {
+    let ssid = document.getElementById('w_ssid').value.trim();
+    let pass = document.getElementById('w_pass').value;
+    let m = document.getElementById('msg_wifi');
+    if (!ssid) { alert('SSID WiFi tidak boleh kosong'); return; }
+
+    m.style.color = '#38bdf8';
+    m.innerText = 'Menyimpan & menghubungkan ke WiFi...';
+    fetch('/api/wifi-save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: `ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`
+    }).then(r => r.json()).then(d => {
+      m.style.color = '#34d399';
+      m.innerText = d.message || 'Tersimpan! ESP32 akan menyambung...';
+      setTimeout(() => location.reload(), 8000);
+    }).catch(e => {
+      m.style.color = '#ef4444';
+      m.innerText = 'Error: ' + e;
+    });
+  }
+
+  function saveServer() {
+    let id   = document.getElementById('s_id').value.trim();
+    let name = document.getElementById('s_name').value.trim();
+    let host = document.getElementById('s_host').value.trim();
+    let port = document.getElementById('s_port').value.trim();
+    let path = document.getElementById('s_path').value.trim();
+    let ssl  = document.getElementById('s_ssl').value;
+    let m    = document.getElementById('msg_server');
+
+    if (!id || !host || !port) { alert('Trap ID, Host, dan Port wajib diisi'); return; }
+    m.style.color = '#38bdf8';
+    m.innerText = 'Menyimpan konfigurasi...';
+
+    let body = `trapId=${encodeURIComponent(id)}&trapName=${encodeURIComponent(name)}&wsHost=${encodeURIComponent(host)}&wsPort=${port}&wsPath=${encodeURIComponent(path)}&wsUseSsl=${ssl}`;
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body
+    }).then(r => r.json()).then(d => {
+      m.style.color = '#34d399';
+      m.innerText = d.message || 'Konfigurasi server tersimpan!';
+      setTimeout(() => { m.innerText = ''; }, 4000);
+    }).catch(e => {
+      m.style.color = '#ef4444';
+      m.innerText = 'Error: ' + e;
+    });
+  }
+
+  function rebootEsp() {
+    if (confirm('Restart ESP32 sekarang?')) {
+      fetch('/api/restart', {method:'POST'}).then(r => r.json()).then(d => {
+        alert(d.message || 'ESP32 sedang merestart...');
+        setTimeout(() => location.reload(), 8000);
+      });
+    }
+  }
+
+  function setMode(m) { fetch('/api/mode?val=' + m, {method:'POST'}).then(() => refresh()); }
+  function toggleUv() { fetch('/api/toggle-uv', {method:'POST'}).then(() => refresh()); }
+  function toggleBlower() { fetch('/api/toggle-blower', {method:'POST'}).then(() => refresh()); }
+  function setPreset(i) { fetch('/api/preset?val=' + i, {method:'POST'}).then(() => refresh()); }
+  function saveSched() {
+    let s = document.getElementById('c_start').value, e = document.getElementById('c_end').value;
+    fetch(`/api/schedule?start=${s}&end=${e}`, {method:'POST'}).then(() => alert('Jadwal tersimpan'));
+  }
+
+  setInterval(refresh, 2500);
+  refresh();
+</script>
+</body>
+</html>
+)rawliteral";
+
 void setupWebServer() {
   // Halaman Utama Web Dashboard Lokal
   server.on("/", HTTP_GET, []() {
-    String html = F("<!DOCTYPE html><html lang='id'><head><meta charset='UTF-8'>"
-      "<meta name='viewport' content='width=device-width,initial-scale=1.0'>"
-      "<title>Smart Pest Trap Controller</title>"
-      "<style>"
-      "body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#f8fafc;margin:0;padding:16px;line-height:1.5}"
-      ".container{max-width:650px;margin:auto}"
-      ".card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid #334155;box-shadow:0 4px 6px rgba(0,0,0,0.3)}"
-      "h2,h3{margin-top:0;color:#38bdf8}"
-      ".grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}"
-      ".val{font-size:18px;font-weight:bold;color:#f1f5f9}"
-      ".btn{background:#3b82f6;color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:bold;cursor:pointer;width:100%;margin-top:8px}"
-      ".btn:hover{background:#2563eb}"
-      ".btn-purple{background:#8b5cf6}.btn-purple:hover{background:#7c3aed}"
-      ".btn-red{background:#ef4444}.btn-red:hover{background:#dc2626}"
-      ".btn-green{background:#10b981}.btn-green:hover{background:#059669}"
-      "input,select{width:100%;box-sizing:border-box;padding:8px;background:#0f172a;border:1px solid #475569;border-radius:6px;color:#fff;margin-top:4px}"
-      ".preset-box{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;margin-bottom:6px;background:#0f172a}"
-      ".dot{width:24px;height:24px;border-radius:50%;border:2px solid #fff}"
-      "</style></head><body><div class='container'>"
-      "<h2>🌾 Smart Pest Trap & Atraktor Hama</h2>"
-      "<div class='card'>"
-      "<h3>📊 Monitoring Parameter</h3>"
-      "<div class='grid'>"
-      "<div><span>Tegangan Aki:</span><div class='val' id='v_bat'>-</div></div>"
-      "<div><span>Arus Beban:</span><div class='val' id='v_curr'>-</div></div>"
-      "<div><span>Jarak VL53L0X:</span><div class='val' id='v_dist'>-</div></div>"
-      "<div><span>Total Hama:</span><div class='val' id='v_pest'>-</div></div>"
-      "<div><span>Jam RTC:</span><div class='val' id='v_rtc'>-</div></div>"
-      "<div><span>Status Lampu:</span><div class='val' id='v_led'>-</div></div>"
-      "</div></div>"
-      "<div class='card'>"
-      "<h3>⚙️ Pengaturan Mode Operasional</h3>"
-      "<div class='grid'>"
-      "<button class='btn btn-green' onclick=\"setMode('manual')\">MANUAL (Nyala Terus)</button>"
-      "<button class='btn btn-purple' onclick=\"setMode('otomatis')\">OTOMATIS (Sesuai Jadwal)</button>"
-      "<button class='btn' onclick=\"setMode('otomatis-led')\">OTOMATIS-LED (Rotasi Warna)</button>"
-      "<button class='btn btn-red' onclick=\"setMode('sleep')\">MODE SLEEP (Mati Total)</button>"
-      "</div></div>"
-      "<div class='card'>"
-      "<h3>🎨 Pilihan Preset Warna Atraktor Hama</h3>"
-      "<div id='presets_list'></div>"
-      "<div style='margin-top:12px;border-top:1px solid #334155;padding-top:10px'>"
-      "<h4>Edit Preset Warna Custom (RGB)</h4>"
-      "<select id='p_idx'><option value='0'>P1: Wereng</option><option value='1'>P2: Kutu Kebul</option><option value='2'>P3: Penggerek</option><option value='3'>P4: Ulat Grayak</option><option value='4'>P5: Putih</option></select>"
-      "<div class='grid' style='margin-top:8px'>"
-      "<div><label>R (Merah):</label><input type='number' id='p_r' min='0' max='255' value='255'></div>"
-      "<div><label>G (Hijau):</label><input type='number' id='p_g' min='0' max='255' value='0'></div>"
-      "<div><label>B (Biru):</label><input type='number' id='p_b' min='0' max='255' value='255'></div>"
-      "<div><button class='btn btn-purple' style='margin-top:22px' onclick='saveCustomPreset()'>Simpan Warna</button></div>"
-      "</div></div></div>"
-      "<div class='card'>"
-      "<h3>⏰ Atur Jadwal & Interval Rotasi</h3>"
-      "<div class='grid'>"
-      "<div><label>Jam Mulai (HH:MM):</label><input type='time' id='cfg_start'></div>"
-      "<div><label>Jam Selesai (HH:MM):</label><input type='time' id='cfg_end'></div>"
-      "<div><label>Interval Ganti Warna (Menit):</label><input type='number' id='cfg_rot' min='1' max='180'></div>"
-      "<div><button class='btn' style='margin-top:22px' onclick='saveSchedule()'>Simpan Jadwal</button></div>"
-      "</div></div>"
-      "<script>"
-      "function refreshData(){fetch('/api/status').then(r=>r.json()).then(d=>{"
-      "document.getElementById('v_bat').innerText=d.batteryVoltage+' V';"
-      "document.getElementById('v_curr').innerText=d.loadCurrent+' mA';"
-      "document.getElementById('v_dist').innerText=d.currentDistance+' mm';"
-      "document.getElementById('v_pest').innerText=d.photoelectricCount+' ekor';"
-      "document.getElementById('v_rtc').innerText=d.currentTime;"
-      "document.getElementById('v_led').innerText=d.uvLedStatus?'MENYALA':'MATI';"
-      "let plist='';"
-      "d.presets.forEach((p,i)=>{"
-      "plist+=`<div class='preset-box'><div class='dot' style='background:rgb(${p.r},${p.g},${p.b})'></div><div style='flex:1'><b>${i+1}. ${p.name}</b><br><small>RGB(${p.r},${p.g},${p.b})</small></div><button class='btn' style='width:auto;margin:0' onclick='selectPreset(${i})'>${d.activePreset===i?'AKTIF':'PILIH'}</button></div>`;"
-      "});document.getElementById('presets_list').innerHTML=plist;"
-      "});}"
-      "function setMode(m){fetch('/api/mode?val='+m,{method:'POST'}).then(()=>refreshData());}"
-      "function selectPreset(i){fetch('/api/preset?val='+i,{method:'POST'}).then(()=>refreshData());}"
-      "function saveCustomPreset(){"
-      "let idx=document.getElementById('p_idx').value;"
-      "let r=document.getElementById('p_r').value,g=document.getElementById('p_g').value,b=document.getElementById('p_b').value;"
-      "fetch(`/api/preset/edit?idx=${idx}&r=${r}&g=${g}&b=${b}`,{method:'POST'}).then(()=>refreshData());}"
-      "function saveSchedule(){"
-      "let s=document.getElementById('cfg_start').value,e=document.getElementById('cfg_end').value,rot=document.getElementById('cfg_rot').value;"
-      "fetch(`/api/schedule?start=${s}&end=${e}&rot=${rot}`,{method:'POST'}).then(()=>alert('Jadwal tersimpan'));}"
-      "setInterval(refreshData,2000);refreshData();"
-      "</script></div></body></html>");
-    server.send(200, "text/html", html);
+    server.send_P(200, "text/html", INDEX_HTML);
+  });
+
+  // Captive Portal Redirects untuk Berbagai OS (Android, iOS, Windows)
+  auto captiveRedirect = []() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  };
+  server.on("/generate_204", captiveRedirect);
+  server.on("/gen_204", captiveRedirect);
+  server.on("/hotspot-detect.html", captiveRedirect);
+  server.on("/canonical.html", captiveRedirect);
+  server.on("/connecttest.txt", captiveRedirect);
+  server.on("/ncsi.txt", captiveRedirect);
+
+  // API Scan WiFi Sekitar (Fitur WiFiManager)
+  server.on("/api/wifi-scan", HTTP_GET, []() {
+    Serial.println("🔍 [WiFi Scan] Memindai jaringan WiFi di sekitar...");
+    int n = WiFi.scanNetworks(false, true);
+    StaticJsonDocument<1536> doc;
+    JsonArray arr = doc.to<JsonArray>();
+    if (n > 0) {
+      for (int i = 0; i < n && i < 20; ++i) {
+        String s = WiFi.SSID(i);
+        if (s.length() == 0) continue;
+        JsonObject item = arr.createNestedObject();
+        item["ssid"] = s;
+        item["rssi"] = WiFi.RSSI(i);
+        item["sec"]  = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+      }
+    }
+    WiFi.scanDelete();
+    String res;
+    serializeJson(doc, res);
+    server.send(200, "application/json", res);
+  });
+
+  // API Simpan & Sambungkan WiFi
+  server.on("/api/wifi-save", HTTP_POST, []() {
+    if (server.hasArg("ssid")) {
+      wifiSsid = server.arg("ssid");
+      wifiSsid.trim();
+    }
+    if (server.hasArg("pass")) {
+      wifiPass = server.arg("pass");
+    }
+    savePreferences();
+    Serial.printf("📶 [WiFi Save] SSID: %s tersimpan. ESP32 merestart...\n", wifiSsid.c_str());
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"WiFi tersimpan! ESP32 akan menyambung...\"}");
+    shouldRestart = true;
+    restartTriggerTime = millis();
   });
 
   // API Status JSON
   server.on("/api/status", HTTP_GET, []() {
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<1536> doc;
     doc["trapId"] = trapId;
+    doc["trapName"] = trapName;
+    doc["wsHost"] = wsHost;
+    doc["wsPort"] = wsPort;
+    doc["wsPath"] = wsPath;
+    doc["wsUseSsl"] = wsUseSsl;
+    doc["wifiSsid"] = wifiSsid;
+    doc["wifiStatus"] = (WiFi.status() == WL_CONNECTED ? "TERKONEKSI" : "HOTSPOT AP");
+    doc["wifiIp"] = (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString());
+    doc["wsConnected"] = webSocket.isConnected();
+
     doc["mode"] = (currentMode == MODE_MANUAL ? "manual" : (currentMode == MODE_OTOMATIS ? "otomatis" : "otomatis-led"));
     doc["activePreset"] = activePreset;
     doc["uvLedStatus"] = uvLedEnabled;
@@ -843,6 +1226,8 @@ void setupWebServer() {
     doc["manualIntervalMin"] = manualIntervalMin;
     doc["manualDurationSec"] = manualDurationSec;
     doc["ledColor"] = presets[activePreset].name;
+    doc["blowerMode"] = blowerMode;
+    doc["ledRunning"] = ledRunning;
 
     JsonArray pArr = doc.createNestedArray("presets");
     for (int i = 0; i < 5; i++) {
@@ -856,6 +1241,73 @@ void setupWebServer() {
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     server.send(200, "application/json", jsonResponse);
+  });
+
+  // API Konfigurasi JSON
+  server.on("/api/config", HTTP_GET, []() {
+    StaticJsonDocument<768> doc;
+    doc["trapId"] = trapId;
+    doc["trapName"] = trapName;
+    doc["wsHost"] = wsHost;
+    doc["wsPort"] = wsPort;
+    doc["wsPath"] = wsPath;
+    doc["wsUseSsl"] = wsUseSsl;
+    doc["wifiSsid"] = wifiSsid;
+    doc["startTime"] = String(startHour) + ":" + (startMin < 10 ? "0" : "") + String(startMin);
+    doc["endTime"] = String(endHour) + ":" + (endMin < 10 ? "0" : "") + String(endMin);
+    doc["ledRotationInterval"] = ledRotationInterval;
+    doc["manualIntervalMin"] = manualIntervalMin;
+    doc["manualDurationSec"] = manualDurationSec;
+    doc["blowerMode"] = blowerMode;
+    doc["ledRunning"] = ledRunning;
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    server.send(200, "application/json", jsonResponse);
+  });
+
+  // API Simpan Konfigurasi Perangkat & Server
+  server.on("/api/settings", HTTP_POST, []() {
+    bool updated = false;
+
+    if (server.hasArg("plain")) {
+      StaticJsonDocument<512> doc;
+      if (!deserializeJson(doc, server.arg("plain"))) {
+        if (doc.containsKey("trapId"))   { trapId   = doc["trapId"].as<String>(); trapId.trim(); updated = true; }
+        if (doc.containsKey("trapName")) { trapName = doc["trapName"].as<String>(); trapName.trim(); updated = true; }
+        if (doc.containsKey("wsHost"))   { wsHost   = doc["wsHost"].as<String>(); wsHost.trim(); updated = true; }
+        if (doc.containsKey("wsPort"))   { wsPort   = doc["wsPort"].as<int>(); updated = true; }
+        if (doc.containsKey("wsPath"))   { wsPath   = doc["wsPath"].as<String>(); wsPath.trim(); updated = true; }
+        if (doc.containsKey("wsUseSsl")) { wsUseSsl = doc["wsUseSsl"].as<bool>(); updated = true; }
+      }
+    }
+
+    if (server.hasArg("trapId"))   { trapId   = server.arg("trapId"); trapId.trim(); updated = true; }
+    if (server.hasArg("trapName")) { trapName = server.arg("trapName"); trapName.trim(); updated = true; }
+    if (server.hasArg("wsHost"))   { wsHost   = server.arg("wsHost"); wsHost.trim(); updated = true; }
+    if (server.hasArg("wsPort"))   { wsPort   = server.arg("wsPort").toInt(); updated = true; }
+    if (server.hasArg("wsPath"))   { wsPath   = server.arg("wsPath"); wsPath.trim(); updated = true; }
+    if (server.hasArg("wsUseSsl")) {
+      String s = server.arg("wsUseSsl");
+      wsUseSsl = (s == "1" || s == "true");
+      updated = true;
+    }
+
+    if (updated) {
+      savePreferences();
+      setupWebSocket();
+      Serial.println("⚙️ [Web Config] Konfigurasi trapId & WebSocket tersimpan!");
+      server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Pengaturan server berhasil disimpan!\"}");
+    } else {
+      server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Tidak ada parameter valid\"}");
+    }
+  });
+
+  // API Restart ESP32
+  server.on("/api/restart", HTTP_POST, []() {
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"ESP32 akan merestart dalam 1 detik...\"}");
+    shouldRestart = true;
+    restartTriggerTime = millis();
   });
 
   // API Ganti Mode
@@ -979,16 +1431,28 @@ void setupWebServer() {
     sendTelemetryToEws();
     server.send(200, "application/json", "{\"status\":\"ok\",\"blowerStatus\":" + String(blowerEnabled ? "true" : "false") + "}");
   });
+
+  // Catch-all 404 handler untuk redirect captive portal
+  server.onNotFound([]() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  });
 }
 
 // ==============================================================================
 // 14. INTEGRASI IOT KE SERVER EWS (WEBSOCKET CLIENT)
 // ==============================================================================
 void setupWebSocket() {
+  if (wsHost.length() == 0) {
+    Serial.println("⚠️ [WS] Host WebSocket belum disetting, lewati koneksi.");
+    return;
+  }
+
+  webSocket.disconnect();
   if (wsUseSsl) {
-    webSocket.beginSSL(wsHost, wsPort, wsPath);
+    webSocket.beginSSL(wsHost.c_str(), wsPort, wsPath.c_str());
   } else {
-    webSocket.begin(wsHost, wsPort, wsPath);
+    webSocket.begin(wsHost.c_str(), wsPort, wsPath.c_str());
   }
 
   webSocket.onEvent([](WStype_t type, uint8_t * payload, size_t length) {
@@ -1028,6 +1492,9 @@ void setupWebSocket() {
 }
 
 void handleWsMessage(uint8_t *payload, size_t length) {
+  // Catat waktu aktivitas client agar ESP32 masuk/memperpanjang mode telemetri cepat
+  lastClientActivityTime = millis();
+
   StaticJsonDocument<1024> doc;
   DeserializationError error = deserializeJson(doc, payload, length);
   if (error) {
@@ -1144,10 +1611,17 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     }
   }
 
-  // 9. Manual Zap / Reset Trigger
+  // 9. Manual Zap / Reset Trigger / Request Telemetri Cepat
   if (data.containsKey("command")) {
     String cmd = data["command"].as<String>();
-    if (cmd == "TRIGGER_ZAP") {
+    if (cmd == "FAST_TELEMETRY" || cmd == "REQUEST_DATA" || cmd == "REQUEST_TELEMETRY") {
+      lastClientActivityTime = millis();
+      forceTelemetryPublish = true;
+      Serial.println("📡 [WS] Perintah telemetri cepat on-demand diterima dari Web!");
+    } else if (cmd == "CLIENT_HEARTBEAT") {
+      lastClientActivityTime = millis();
+      Serial.println("💓 [HEARTBEAT] Sinyal client web aktif memantau perangkap.");
+    } else if (cmd == "TRIGGER_ZAP") {
       digitalWrite(PIN_RELAY_1, HIGH);
       blowerEnabled = true;
       zapperActive = true;
@@ -1155,6 +1629,19 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     } else if (cmd == "RESET_COUNTER") {
       pestCounter = 0;
     }
+  }
+
+  // 10. Konfigurasi Mode Blower (sensor / time) & LED Running (berganti warna / 1 warna)
+  if (data.containsKey("blowerMode")) {
+    blowerMode = data["blowerMode"].as<String>();
+  } else if (data.containsKey("blower_mode")) {
+    blowerMode = data["blower_mode"].as<String>();
+  }
+
+  if (data.containsKey("ledRunning")) {
+    ledRunning = data["ledRunning"].as<bool>();
+  } else if (data.containsKey("led_running")) {
+    ledRunning = data["led_running"].as<bool>();
   }
 
   updateActuators();
@@ -1185,6 +1672,13 @@ void sendTelemetryToEws() {
   p["ledColor"] = presets[activePreset].name;
   p["manualIntervalMin"] = manualIntervalMin;
   p["manualDurationSec"] = manualDurationSec;
+  p["blowerMode"] = blowerMode;
+  p["ledRunning"] = ledRunning;
+
+  // Sertakan status adaptive telemetry (hemat daya 5 menit vs cepat 3 detik)
+  bool isClientActive = (lastClientActivityTime > 0) && ((millis() - lastClientActivityTime) < CLIENT_ACTIVITY_TIMEOUT);
+  p["isFastTelemetry"] = isClientActive;
+  p["telemetryIntervalSec"] = isClientActive ? 3 : 300;
 
   char sTime[10], eTime[10];
   snprintf(sTime, sizeof(sTime), "%02d:%02d", startHour, startMin);
@@ -1203,6 +1697,15 @@ void sendTelemetryToEws() {
 // ==============================================================================
 void loadPreferences() {
   prefs.begin("pest_trap", true); // Read-only mode
+  trapId               = prefs.getString("trap_id", "TRAP-01");
+  trapName             = prefs.getString("trap_name", "Perangkap Hama 01 - Kebun Kopi");
+  wsHost               = prefs.getString("ws_host", "be-ews.qbyte.web.id");
+  wsPort               = prefs.getInt("ws_port", 443);
+  wsPath               = prefs.getString("ws_path", "/ws");
+  wsUseSsl             = prefs.getBool("ws_ssl", true);
+  wifiSsid             = prefs.getString("wf_ssid", "TALAS 1");
+  wifiPass             = prefs.getString("wf_pass", "kitahebat");
+
   currentMode          = (TrapMode)prefs.getUChar("mode", (uint8_t)MODE_OTOMATIS);
   activePreset         = prefs.getUChar("preset", 0);
   startHour            = prefs.getUChar("s_hr", 18);
@@ -1214,7 +1717,9 @@ void loadPreferences() {
   manualDurationSec    = prefs.getUShort("m_dur", 3);
   pestCounter          = prefs.getUInt("p_count", 0);
   uvLedEnabled         = prefs.getBool("uv_en", true);
-  // Blower SELALU mati saat boot (hanya aktif dari trigger sensor VL53)
+  ledRunning           = prefs.getBool("led_run", false);
+  blowerMode           = prefs.getString("bl_mode", "sensor");
+  // Blower SELALU mati saat boot (hanya aktif dari trigger sensor VL53 atau waktu)
   blowerEnabled = false;
   zapperActive = false;
 
@@ -1232,6 +1737,15 @@ void loadPreferences() {
 
 void savePreferences() {
   prefs.begin("pest_trap", false); // Read-write mode
+  prefs.putString("trap_id", trapId);
+  prefs.putString("trap_name", trapName);
+  prefs.putString("ws_host", wsHost);
+  prefs.putInt("ws_port", wsPort);
+  prefs.putString("ws_path", wsPath);
+  prefs.putBool("ws_ssl", wsUseSsl);
+  prefs.putString("wf_ssid", wifiSsid);
+  prefs.putString("wf_pass", wifiPass);
+
   prefs.putUChar("mode", (uint8_t)currentMode);
   prefs.putUChar("preset", activePreset);
   prefs.putUChar("s_hr", startHour);
@@ -1243,6 +1757,8 @@ void savePreferences() {
   prefs.putUShort("m_dur", manualDurationSec);
   prefs.putUInt("p_count", pestCounter);
   prefs.putBool("uv_en", uvLedEnabled);
+  prefs.putBool("led_run", ledRunning);
+  prefs.putString("bl_mode", blowerMode);
   // blowerEnabled tidak perlu disimpan karena selalu MATI saat boot
 
   for (int i = 0; i < 5; i++) {
