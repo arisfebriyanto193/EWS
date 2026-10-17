@@ -163,6 +163,9 @@ String TOPIC_RAIN_CUMU;
 String TOPIC_VIB;
 String TOPIC_BATT;
 String TOPIC_SOLAR;
+String TOPIC_IP;
+String TOPIC_WIFI_SSID;
+String TOPIC_WIFI_RSSI;
 const char* LEGACY_RELAY_TOPIC = "USR_687de6987184f/1defa9dd";
 
 void updateWebSocketTopics() {
@@ -177,6 +180,9 @@ void updateWebSocketTopics() {
   TOPIC_VIB       = "ews/" + ewsId + "/vibration";
   TOPIC_BATT      = "ews/" + ewsId + "/battery_voltage";
   TOPIC_SOLAR     = "ews/" + ewsId + "/solar_current";
+  TOPIC_IP        = "ews/" + ewsId + "/ip";
+  TOPIC_WIFI_SSID = "ews/" + ewsId + "/wifi_ssid";
+  TOPIC_WIFI_RSSI = "ews/" + ewsId + "/wifi_rssi";
 }
 
 // =============================================================================
@@ -204,6 +210,10 @@ struct SensorThresholds {
   int soilAdcDry;             // Default 3300
   int soilAdcWet;             // Default 1200
   float rainCalibPerTip;      // mm per tip, default: 0.70 mm
+
+  // Siklus Timer Alarm Otomatis (Detik / S)
+  uint32_t alarmDuration;     // Durasi sirine aktif saat anomali (detik, default: 60)
+  uint32_t alarmPause;        // Jeda waktu mati sebelum sirine menyala lagi jika masih anomali (detik, default: 30)
 };
 
 struct SensorRawValues {
@@ -253,7 +263,9 @@ SensorThresholds currentThresholds = {
   11.8f,  // batteryLowVoltage
   3300,   // soilAdcDry
   1200,   // soilAdcWet
-  0.70f   // rainCalibPerTip
+  0.70f,  // rainCalibPerTip
+  60,     // alarmDuration (detik, default 60s)
+  30      // alarmPause (detik, default 30s)
 };
 
 SensorRawValues sharedRawSensors;
@@ -365,6 +377,8 @@ void loadThresholdsFromEEPROM() {
     currentThresholds.soilAdcDry            = prefs.getInt("soilDry", 3300);
     currentThresholds.soilAdcWet            = prefs.getInt("soilWet", 1200);
     currentThresholds.rainCalibPerTip       = prefs.getFloat("rainCalib", 0.70f);
+    currentThresholds.alarmDuration         = prefs.getUInt("alarmDur", 60);
+    currentThresholds.alarmPause            = prefs.getUInt("alarmPause", 30);
     prefs.end();
 
     Serial.println("💾 [EEPROM/NVS] Berhasil memuat nilai acuan kalibrasi & ambang batas:");
@@ -378,6 +392,8 @@ void loadThresholdsFromEEPROM() {
                   currentThresholds.soilMoistureWarning, currentThresholds.soilAdcDry, currentThresholds.soilAdcWet);
     Serial.printf("   - Getaran / Baterai Min : Bahaya >= %.2f | Baterai < %.2f V\n", 
                   currentThresholds.vibrationDanger, currentThresholds.batteryLowVoltage);
+    Serial.printf("   - Siklus Alarm Otomatis : Aktif %u s | Jeda %u s\n", 
+                  currentThresholds.alarmDuration, currentThresholds.alarmPause);
   } else {
     Serial.println("ℹ️ [EEPROM/NVS] Belum ada konfigurasi di Flash. Menggunakan nilai bawaan.");
   }
@@ -400,6 +416,8 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
     prefs.putInt("soilDry", newT.soilAdcDry);
     prefs.putInt("soilWet", newT.soilAdcWet);
     prefs.putFloat("rainCalib", newT.rainCalibPerTip);
+    prefs.putUInt("alarmDur", newT.alarmDuration);
+    prefs.putUInt("alarmPause", newT.alarmPause);
     prefs.end();
 
     if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -410,6 +428,7 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
     }
 
     Serial.println("💾 [EEPROM/NVS] Nilai Kalibrasi & Ambang Batas BARU BERHASIL DISIMPAN!");
+    Serial.printf("   - Siklus Alarm Tersimpan: Aktif=%u s, Jeda=%u s\n", newT.alarmDuration, newT.alarmPause);
   } else {
     Serial.println("❌ [EEPROM/NVS] Gagal membuka partisi flash ews_thresh untuk penulisan!");
   }
@@ -421,6 +440,25 @@ volatile bool needSubscribe = false;
 bool sirenActive  = false;
 bool stroboActive = false;
 String currentStatus = "aman";
+
+// Manajemen Siklus Timer Alarm Otomatis
+enum AlarmCycleState {
+  ALARM_STATE_IDLE = 0,
+  ALARM_STATE_SOUNDING = 1,
+  ALARM_STATE_PAUSED = 2
+};
+
+AlarmCycleState alarmCycleState = ALARM_STATE_IDLE;
+unsigned long alarmSoundingStartTime = 0;
+unsigned long alarmPauseStartTime = 0;
+
+// Konfigurasi Interval Telemetri Cerdas & Hemat Daya
+const unsigned long REALTIME_TELEMETRY_INTERVAL   = 3000;    // 3 detik saat Web dibuka (Client Aktif)
+const unsigned long LOW_POWER_TELEMETRY_INTERVAL  = 300000;  // 5 menit (300 detik) saat tidak ada client membuka web
+const unsigned long CLIENT_ACTIVITY_TIMEOUT       = 25000;   // 25 detik tanpa pesan dari web = client telah menutup web
+
+volatile unsigned long lastClientActivityTime = 0;
+volatile bool forceTelemetryPublish = false;
 
 // Timer Buzzer Test
 unsigned long buzzerTestTimeout = 0;
@@ -451,9 +489,6 @@ String rtcTimeString = "--:--:--";
 
 bool sdAvailable = false;
 uint64_t sdCardSizeMB = 0;
-
-// Interval Pengiriman Data
-const unsigned long TELEMETRY_INTERVAL = 5000; // Kirim telemetri setiap 5 detik
 
 // =============================================================================
 // 5. HELPER PENGIRIMAN WEBSOCKET DENGAN MUTEX
@@ -1038,9 +1073,12 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       Serial.printf("✅ [WS] Berhasil terhubung ke %s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
       isWsConnected = true;
       needSubscribe = true; // Tandai agar subscribe dikirim di wsTask secara aman
+      forceTelemetryPublish = true; // Langsung kirim paket telemetri awal saat baru terhubung
       break;
 
     case WStype_TEXT: {
+      lastClientActivityTime = millis(); // Mencatat aktivitas client/backend
+
       String msg = "";
       for (size_t i = 0; i < length; i++) {
         msg += (char)payload[i];
@@ -1064,9 +1102,12 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             currentStatus = String(type);
 
             if (strcmp(type, "bahaya") == 0) {
+              alarmCycleState = ALARM_STATE_SOUNDING;
+              alarmSoundingStartTime = millis();
               setRelaySirine(true);
               setRelayStrobo(true);
             } else {
+              alarmCycleState = ALARM_STATE_IDLE;
               setRelaySirine(false);
               setRelayStrobo(true);
             }
@@ -1074,6 +1115,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
           else if (strcmp(cmd, "RESET_ALARM") == 0) {
             Serial.println("✅ Reset Alarm Diterima: Mematikan sirine & strobo");
             currentStatus = "aman";
+            alarmCycleState = ALARM_STATE_IDLE;
             setRelaySirine(false);
             setRelayStrobo(false);
             isBuzzerTesting = false;
@@ -1086,7 +1128,20 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
           }
           else if (strcmp(cmd, "TOGGLE_MUTE") == 0) {
             bool mute = doc["payload"]["mute"] | false;
-            if (mute) setRelaySirine(false);
+            if (mute) {
+              setRelaySirine(false);
+              alarmCycleState = ALARM_STATE_PAUSED;
+              alarmPauseStartTime = millis();
+            }
+          }
+          else if (strcmp(cmd, "CLIENT_HEARTBEAT") == 0) {
+            lastClientActivityTime = millis();
+            Serial.println("💓 [HEARTBEAT] Client web aktif membuka dashboard (Mode Realtime Live)");
+          }
+          else if (strcmp(cmd, "REQUEST_DATA") == 0 || strcmp(cmd, "REQUEST_TELEMETRY") == 0) {
+            lastClientActivityTime = millis();
+            forceTelemetryPublish = true;
+            Serial.println("📡 [REQUEST] Permintaan data sensor on-demand diterima dari Web");
           }
           else if (strcmp(cmd, "SET_THRESHOLDS") == 0) {
             Serial.println("⚙️ [KONTROL] Menerima konfigurasi ambang batas baru dari Web!");
@@ -1144,23 +1199,58 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
               if (tObj.containsKey("rainCalibPerTip")) newT.rainCalibPerTip = tObj["rainCalibPerTip"].as<float>();
               else if (tObj.containsKey("rainCalib")) newT.rainCalibPerTip = tObj["rainCalib"].as<float>();
 
+              if (tObj.containsKey("alarmDuration")) newT.alarmDuration = tObj["alarmDuration"].as<uint32_t>();
+              else if (tObj.containsKey("alarmDur")) newT.alarmDuration = tObj["alarmDur"].as<uint32_t>();
+
+              if (tObj.containsKey("alarmPause")) newT.alarmPause = tObj["alarmPause"].as<uint32_t>();
+              else if (tObj.containsKey("alarmPau")) newT.alarmPause = tObj["alarmPau"].as<uint32_t>();
+
               saveThresholdsToEEPROM(newT);
 
               // Balas respon status ke Web via WebSocket
-              DynamicJsonDocument ackDoc(256);
+              DynamicJsonDocument ackDoc(384);
               ackDoc["action"] = "publish";
               ackDoc["topic"]  = TOPIC_STATUS;
               JsonObject ackPayload = ackDoc.createNestedObject("payload");
-              ackPayload["event"]   = "THRESHOLDS_SAVED";
-              ackPayload["status"]  = "OK";
-              ackPayload["ewsId"]   = ewsId;
-              ackPayload["message"] = "Nilai kalibrasi & ambang batas berhasil disimpan permanen ke EEPROM ESP32";
+              ackPayload["event"]         = "THRESHOLDS_SAVED";
+              ackPayload["status"]        = "OK";
+              ackPayload["ewsId"]         = ewsId;
+              ackPayload["alarmDuration"] = newT.alarmDuration;
+              ackPayload["alarmPause"]    = newT.alarmPause;
+              ackPayload["message"]       = "Nilai kalibrasi & siklus alarm berhasil disimpan permanen ke EEPROM ESP32";
               String ackStr;
               serializeJson(ackDoc, ackStr);
               safeSendTXT(ackStr);
             } else {
               Serial.println("⚠️ [KONTROL] Format 'thresholds' tidak ditemukan dalam pesan WebSocket.");
             }
+          }
+          else if (strcmp(cmd, "SET_ALARM_CONFIG") == 0) {
+            Serial.println("⏰ [KONTROL] Menerima konfigurasi siklus alarm dari Web!");
+            SensorThresholds newT = currentThresholds;
+            if (doc.containsKey("alarmDuration")) newT.alarmDuration = doc["alarmDuration"].as<uint32_t>();
+            else if (doc["payload"].containsKey("alarmDuration")) newT.alarmDuration = doc["payload"]["alarmDuration"].as<uint32_t>();
+            else if (doc.containsKey("duration")) newT.alarmDuration = doc["duration"].as<uint32_t>();
+
+            if (doc.containsKey("alarmPause")) newT.alarmPause = doc["alarmPause"].as<uint32_t>();
+            else if (doc["payload"].containsKey("alarmPause")) newT.alarmPause = doc["payload"]["alarmPause"].as<uint32_t>();
+            else if (doc.containsKey("pause")) newT.alarmPause = doc["pause"].as<uint32_t>();
+
+            saveThresholdsToEEPROM(newT);
+
+            DynamicJsonDocument ackDoc(256);
+            ackDoc["action"] = "publish";
+            ackDoc["topic"]  = TOPIC_STATUS;
+            JsonObject ackPayload = ackDoc.createNestedObject("payload");
+            ackPayload["event"]         = "ALARM_CONFIG_SAVED";
+            ackPayload["status"]        = "OK";
+            ackPayload["ewsId"]         = ewsId;
+            ackPayload["alarmDuration"] = newT.alarmDuration;
+            ackPayload["alarmPause"]    = newT.alarmPause;
+            ackPayload["message"]       = "Siklus durasi dan jeda sirine berhasil disimpan ke EEPROM!";
+            String ackStr;
+            serializeJson(ackDoc, ackStr);
+            safeSendTXT(ackStr);
           }
           else if (strcmp(cmd, "CALIBRATE_BASELINE") == 0) {
             Serial.println("🎯 [KONTROL] Menerima perintah KALIBRASI TITIK AMAN SENSOR 1-KLIK!");
@@ -1318,23 +1408,65 @@ void sensorTask(void *pvParameters) {
       st = "baterai_lemah";
     }
 
-    // Kontrol relay otomatis berdasarkan status sensor (Autonomous Offline Protection)
+    // Kontrol relay otomatis berdasarkan status sensor & siklus timer sirine (Autonomous Offline Protection)
     if (st == "bahaya") {
-      if (!sirenActive) setRelaySirine(true);
-      if (!stroboActive) setRelayStrobo(true);
       if (currentStatus != "bahaya") {
         logEventToSD("BAHAYA", pitch, roll, rain, soil, batt);
       }
+
+      // Selalu aktifkan lampu strobo tanda bahaya
+      if (!stroboActive) setRelayStrobo(true);
+
+      // Mesin Status Siklus Sirine (Durasi Bunyi -> Jeda/Snooze -> Bunyi Kembali)
+      unsigned long curMs = millis();
+      unsigned long durationMs = (unsigned long)thresh.alarmDuration * 1000UL;
+      unsigned long pauseMs    = (unsigned long)thresh.alarmPause * 1000UL;
+
+      if (alarmCycleState == ALARM_STATE_IDLE) {
+        alarmCycleState = ALARM_STATE_SOUNDING;
+        alarmSoundingStartTime = curMs;
+        setRelaySirine(true);
+        Serial.printf("🚨 [ALARM] Anomali Bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s)\n",
+                      thresh.alarmDuration, thresh.alarmPause);
+      }
+      else if (alarmCycleState == ALARM_STATE_SOUNDING) {
+        if (durationMs > 0 && (curMs - alarmSoundingStartTime >= durationMs)) {
+          // Durasi bunyi telah habis -> Matikan sirine dan masuk periode jeda
+          alarmCycleState = ALARM_STATE_PAUSED;
+          alarmPauseStartTime = curMs;
+          setRelaySirine(false);
+          Serial.printf("⏳ [ALARM] Waktu bunyi habis (%u s). Mematikan sirine untuk jeda (%u s)...\n",
+                        thresh.alarmDuration, thresh.alarmPause);
+        } else {
+          if (!sirenActive) setRelaySirine(true);
+        }
+      }
+      else if (alarmCycleState == ALARM_STATE_PAUSED) {
+        if (curMs - alarmPauseStartTime >= pauseMs) {
+          // Jeda selesai dan status masih bahaya -> Nyalakan sirine kembali
+          alarmCycleState = ALARM_STATE_SOUNDING;
+          alarmSoundingStartTime = curMs;
+          setRelaySirine(true);
+          Serial.println("🚨 [ALARM] Jeda selesai dan kondisi masih bahaya! Sirine menyala kembali.");
+        } else {
+          if (sirenActive) setRelaySirine(false);
+        }
+      }
     } else if (st == "siaga") {
+      alarmCycleState = ALARM_STATE_IDLE;
       if (sirenActive) setRelaySirine(false);
       if (!stroboActive) setRelayStrobo(true);
       if (currentStatus != "siaga") {
         logEventToSD("SIAGA", pitch, roll, rain, soil, batt);
       }
-    } else if (st == "aman" && (currentStatus == "bahaya" || currentStatus == "siaga")) {
-      if (sirenActive) setRelaySirine(false);
-      if (stroboActive) setRelayStrobo(false);
-      logEventToSD("AMAN_KEMBALI", pitch, roll, rain, soil, batt);
+    } else if (st == "aman") {
+      if (currentStatus == "bahaya" || currentStatus == "siaga" || sirenActive || stroboActive) {
+        alarmCycleState = ALARM_STATE_IDLE;
+        if (sirenActive) setRelaySirine(false);
+        if (stroboActive) setRelayStrobo(false);
+        logEventToSD("AMAN_KEMBALI", pitch, roll, rain, soil, batt);
+        Serial.println("✅ [SENSOR] Kondisi kembali aman. Sirine & strobo dinonaktifkan.");
+      }
     }
 
     // Salin ke shared memory dengan Data Mutex
@@ -1377,93 +1509,141 @@ void sensorTask(void *pvParameters) {
   }
 }
 
-// TASK 3 (Core 1): Mengirimkan Telemetri ke WebSocket dengan Pacing & Mutex
+// TASK 3 (Core 1): Mengirimkan Telemetri ke WebSocket dengan Smart Pacing & Mutex
 void telemetryTask(void *pvParameters) {
   Serial.println("🚀 [FreeRTOS] telemetryTask berjalan pada Core 1 (Telemetry Sender)");
   // Jeda awal 5 detik agar handshake WebSocket benar-benar selesai
   vTaskDelay(pdMS_TO_TICKS(5000));
 
+  unsigned long lastTelemetryPublish = 0;
+
   for (;;) {
-    if (isWsConnected) {
-      SensorDataSnapshot data;
-      if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        data = sharedSensors;
-        xSemaphoreGive(dataMutex);
-      }
+    unsigned long now = millis();
+    // Deteksi apakah web client sedang aktif membuka dashboard
+    bool isClientActive = (lastClientActivityTime > 0) && ((now - lastClientActivityTime) < CLIENT_ACTIVITY_TIMEOUT);
+    // Interval: 3 detik saat web dibuka, 5 menit (300.000 ms) saat tidak ada web yang dibuka
+    unsigned long targetInterval = isClientActive ? REALTIME_TELEMETRY_INTERVAL : LOW_POWER_TELEMETRY_INTERVAL;
 
-      // 1. JSON Telemetri Bundle Lengkap
-      DynamicJsonDocument doc(768);
-      doc["action"] = "publish";
-      doc["topic"]  = TOPIC_TELEMETRY;
+    bool shouldPublish = false;
+    if (forceTelemetryPublish) {
+      shouldPublish = true;
+      forceTelemetryPublish = false;
+    } else if (lastTelemetryPublish == 0 || (now - lastTelemetryPublish >= targetInterval)) {
+      shouldPublish = true;
+    }
 
-      JsonObject p = doc.createNestedObject("payload");
-      p["pitchAngle"]         = round(data.pitch * 100.0) / 100.0;
-      p["rollAngle"]          = round(data.roll * 100.0) / 100.0;
-      p["soilMoisture"]       = round(data.soilMoisture * 10.0) / 10.0;
-      p["soilTemperature"]    = 25.2;
-      p["rainfallRate"]       = round(data.rainRate * 10.0) / 10.0;
-      p["rainfallCumulative"] = round(data.rainCumulative * 100.0) / 100.0;
-      p["rainfallTips"]       = data.rainTips;
-      p["vibrationLevel"]     = round(data.vibration * 1000.0) / 1000.0;
-      p["vibrationPulses"]    = data.vibrationPulses;
-      p["batteryVoltage"]     = round(data.batteryVoltage * 100.0) / 100.0;
-      p["batteryCurrent"]     = data.batteryCurrent;
-      p["solarCurrent"]       = data.solarCurrent;
-      p["gsmSignalDbm"]       = data.wifiRssi;
-      p["gsmStatus"]          = "online";
-      p["uptimeHours"]        = data.uptimeHours;
-      p["firmwareVersion"]    = FIRMWARE_VERSION;
-      p["inaType"]            = inaAvailable ? (isINA219 ? "INA219" : "INA226") : "NONE";
-      p["rtcTime"]            = rtcAvailable ? rtcTimeString : "N/A";
-      p["sdCard"]             = sdAvailable ? "OK" : "NONE";
+    if (shouldPublish) {
+      lastTelemetryPublish = now;
 
-      String jsonOutput;
-      serializeJson(doc, jsonOutput);
-
-      if (safeSendTXT(jsonOutput)) {
-        Serial.printf("📤 [TELEMETRI TERKIRIM] Pitch: %.2f°, Roll: %.2f°, Tanah: %.1f%%, Aki: %.2fV\n",
-                      data.pitch, data.roll, data.soilMoisture, data.batteryVoltage);
-      }
-
-      // Pacing 40ms antar frame agar buffer SSL TCP tidak meluap
-      vTaskDelay(pdMS_TO_TICKS(40));
-
-      // 2. Format RAW Per-Data Individual
-      safeSendTXT(TOPIC_PITCH + "|" + String(data.pitch, 2));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_ROLL + "|" + String(data.roll, 2));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_SOIL + "|" + String(data.soilMoisture, 1));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_RAIN + "|" + String(data.rainRate, 1));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_RAIN_CUMU + "|" + String(data.rainCumulative, 2));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_VIB + "|" + String(data.vibration, 3));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_BATT + "|" + String(data.batteryVoltage, 2));
-      vTaskDelay(pdMS_TO_TICKS(30));
-      safeSendTXT(TOPIC_SOLAR + "|" + String(data.solarCurrent));
-    } else {
-      // MODE OFFLINE: Simpan telemetri periodik ke MicroSD jika SD terpasang
-      if (sdAvailable) {
+      if (isWsConnected) {
         SensorDataSnapshot data;
         if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
           data = sharedSensors;
           xSemaphoreGive(dataMutex);
         }
-        File f = SD.open("/ews_telemetry_offline.csv", FILE_APPEND);
-        if (f) {
-          f.printf("%s,%.2f,%.2f,%.1f,%.1f,%.2f,%.3f,%.2f,%s\n",
-                   rtcAvailable ? rtcTimeString.c_str() : "NO_RTC",
-                   data.pitch, data.roll, data.soilMoisture, data.rainCumulative,
-                   data.batteryVoltage, data.vibration, currentStatus.c_str());
-          f.close();
+
+        SensorThresholds thresh;
+        if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+          thresh = currentThresholds;
+          xSemaphoreGive(dataMutex);
+        } else {
+          thresh = currentThresholds;
+        }
+
+        String ipStr = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "0.0.0.0";
+        String ssidStr = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : wifiSsidDefault;
+        int rssiVal = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -99;
+
+        // 1. JSON Telemetri Bundle Lengkap
+        DynamicJsonDocument doc(1024);
+        doc["action"] = "publish";
+        doc["topic"]  = TOPIC_TELEMETRY;
+
+        JsonObject p = doc.createNestedObject("payload");
+        p["pitchAngle"]         = round(data.pitch * 100.0) / 100.0;
+        p["rollAngle"]          = round(data.roll * 100.0) / 100.0;
+        p["soilMoisture"]       = round(data.soilMoisture * 10.0) / 10.0;
+        p["soilTemperature"]    = 25.2;
+        p["rainfallRate"]       = round(data.rainRate * 10.0) / 10.0;
+        p["rainfallCumulative"] = round(data.rainCumulative * 100.0) / 100.0;
+        p["rainfallTips"]       = data.rainTips;
+        p["vibrationLevel"]     = round(data.vibration * 1000.0) / 1000.0;
+        p["vibrationPulses"]    = data.vibrationPulses;
+        p["batteryVoltage"]     = round(data.batteryVoltage * 100.0) / 100.0;
+        p["batteryCurrent"]     = data.batteryCurrent;
+        p["solarCurrent"]       = data.solarCurrent;
+        p["gsmSignalDbm"]       = rssiVal;
+        p["gsmStatus"]          = "online";
+        p["uptimeHours"]        = data.uptimeHours;
+        p["firmwareVersion"]    = FIRMWARE_VERSION;
+        p["inaType"]            = inaAvailable ? (isINA219 ? "INA219" : "INA226") : "NONE";
+        p["rtcTime"]            = rtcAvailable ? rtcTimeString : "N/A";
+        p["sdCard"]             = sdAvailable ? "OK" : "NONE";
+
+        // Tambahan info jaringan & siklus alarm untuk website
+        p["ipAddress"]          = ipStr;
+        p["wifiSsid"]           = ssidStr;
+        p["wifiRssi"]           = rssiVal;
+        p["alarmDuration"]      = thresh.alarmDuration;
+        p["alarmPause"]         = thresh.alarmPause;
+        p["publishMode"]        = isClientActive ? "realtime" : "low_power";
+
+        String jsonOutput;
+        serializeJson(doc, jsonOutput);
+
+        if (safeSendTXT(jsonOutput)) {
+          Serial.printf("📤 [TELEMETRI %s] IP:%s, SSID:%s, Pitch:%.2f, Roll:%.2f, Tanah:%.1f, Aki:%.2fV\n",
+                        isClientActive ? "REALTIME" : "HEMAT DAYA 5 MENIT",
+                        ipStr.c_str(), ssidStr.c_str(), data.pitch, data.roll, data.soilMoisture, data.batteryVoltage);
+        }
+
+        // Pacing 40ms antar frame agar buffer SSL TCP tidak meluap
+        vTaskDelay(pdMS_TO_TICKS(40));
+
+        // 2. Format RAW Per-Data Individual
+        safeSendTXT(TOPIC_PITCH + "|" + String(data.pitch, 2));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_ROLL + "|" + String(data.roll, 2));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_SOIL + "|" + String(data.soilMoisture, 1));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_RAIN + "|" + String(data.rainRate, 1));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_RAIN_CUMU + "|" + String(data.rainCumulative, 2));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_VIB + "|" + String(data.vibration, 3));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_BATT + "|" + String(data.batteryVoltage, 2));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_SOLAR + "|" + String(data.solarCurrent));
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_IP + "|" + ipStr);
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_WIFI_SSID + "|" + ssidStr);
+        vTaskDelay(pdMS_TO_TICKS(30));
+        safeSendTXT(TOPIC_WIFI_RSSI + "|" + String(rssiVal));
+      } else {
+        // MODE OFFLINE: Simpan telemetri periodik ke MicroSD jika SD terpasang
+        if (sdAvailable) {
+          SensorDataSnapshot data;
+          if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            data = sharedSensors;
+            xSemaphoreGive(dataMutex);
+          }
+          File f = SD.open("/ews_telemetry_offline.csv", FILE_APPEND);
+          if (f) {
+            f.printf("%s,%.2f,%.2f,%.1f,%.1f,%.2f,%.3f,%.2f,%s\n",
+                     rtcAvailable ? rtcTimeString.c_str() : "NO_RTC",
+                     data.pitch, data.roll, data.soilMoisture, data.rainCumulative,
+                     data.batteryVoltage, data.vibration, currentStatus.c_str());
+            f.close();
+          }
         }
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL));
+    // Delay 500ms agar responsif terhadap on-demand request dan heartbeat
+    vTaskDelay(pdMS_TO_TICKS(500));
   }
 }
 
@@ -2055,6 +2235,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           <input type="number" step="0.1" class="form-control" id="inpBattLow" required>
         </div>
 
+        <div class="form-row">
+          <div class="form-group">
+            <label>Durasi Sirine Aktif (Detik)</label>
+            <input type="number" class="form-control" id="inpAlarmDur" min="1" required>
+            <p class="helper-text">Lama sirine berbunyi saat anomali bahaya (cth: 60s, 5000s)</p>
+          </div>
+          <div class="form-group">
+            <label>Jeda Waktu Sirine (Detik)</label>
+            <input type="number" class="form-control" id="inpAlarmPau" min="0" required>
+            <p class="helper-text">Jeda mati sebelum sirine menyala lagi jika anomali berlanjut (cth: 30s, 1000s)</p>
+          </div>
+        </div>
+
         <button type="submit" class="btn btn-primary">💾 Simpan Kalibrasi ke EEPROM</button>
       </form>
     </div>
@@ -2189,6 +2382,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('inpSoilDry').value   = d.soilDry;
         document.getElementById('inpSoilWet').value   = d.soilWet;
         document.getElementById('inpBattLow').value   = d.battLow;
+        document.getElementById('inpAlarmDur').value  = d.alarmDur || 60;
+        document.getElementById('inpAlarmPau').value  = d.alarmPau || 30;
       });
   }
 
@@ -2218,7 +2413,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       vibDang:   parseFloat(document.getElementById('inpVibDang').value),
       soilDry:   parseInt(document.getElementById('inpSoilDry').value),
       soilWet:   parseInt(document.getElementById('inpSoilWet').value),
-      battLow:   parseFloat(document.getElementById('inpBattLow').value)
+      battLow:   parseFloat(document.getElementById('inpBattLow').value),
+      alarmDur:  parseInt(document.getElementById('inpAlarmDur').value),
+      alarmPau:  parseInt(document.getElementById('inpAlarmPau').value)
     };
 
     fetch('/api/save_calibration', {
@@ -2353,6 +2550,8 @@ void handleApiConfig() {
   doc["soilDry"]   = thresh.soilAdcDry;
   doc["soilWet"]   = thresh.soilAdcWet;
   doc["battLow"]   = thresh.batteryLowVoltage;
+  doc["alarmDur"]  = thresh.alarmDuration;
+  doc["alarmPau"]  = thresh.alarmPause;
 
   String res;
   serializeJson(doc, res);
@@ -2388,6 +2587,8 @@ void handleApiSaveCalibration() {
   if (doc.containsKey("soilDry"))   newT.soilAdcDry            = doc["soilDry"].as<int>();
   if (doc.containsKey("soilWet"))   newT.soilAdcWet            = doc["soilWet"].as<int>();
   if (doc.containsKey("battLow"))   newT.batteryLowVoltage     = doc["battLow"].as<float>();
+  if (doc.containsKey("alarmDur"))  newT.alarmDuration         = doc["alarmDur"].as<uint32_t>();
+  if (doc.containsKey("alarmPau"))  newT.alarmPause            = doc["alarmPau"].as<uint32_t>();
 
   saveThresholdsToEEPROM(newT);
   localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Kalibrasi & Ambang Batas Berhasil Disimpan ke EEPROM!\"}");

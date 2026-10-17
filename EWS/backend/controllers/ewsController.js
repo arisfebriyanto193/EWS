@@ -30,6 +30,9 @@ function formatEwsNode(node, telegram, telkomsel) {
       solarCurrent: parseInt(node.last_solar_current || 1800, 10),
       gsmSignalDbm: parseInt(node.last_gsm_signal || -70, 10),
       gsmStatus: node.last_gsm_status || 'online',
+      ipAddress: node.ip_address || '192.168.1.1',
+      wifiSsid: node.wifi_ssid || 'WiFi EWS',
+      wifiRssi: parseInt(node.wifi_rssi || -65, 10),
       microSdStorageUsedMb: parseInt(node.microsd_used_mb || 1000, 10),
       microSdStorageTotalMb: parseInt(node.microsd_total_mb || 30400, 10),
       firmwareVersion: node.firmware_version || 'v2.4.1-ESP32-A7670C',
@@ -53,6 +56,8 @@ function formatEwsNode(node, telegram, telkomsel) {
       soilAdcWet: parseInt(node.soil_adc_wet ?? 1200, 10),
       vibrationDanger: parseFloat(node.vibration_danger ?? 0.25),
       batteryLowVoltage: parseFloat(node.battery_low_voltage ?? 11.8),
+      alarmDuration: parseInt(node.alarm_duration ?? 60, 10),
+      alarmPause: parseInt(node.alarm_pause ?? 30, 10),
     },
     telegramConfig: telegram
       ? {
@@ -182,6 +187,8 @@ exports.updateThresholds = async (req, res) => {
       soilAdcWet,
       vibrationDanger,
       batteryLowVoltage,
+      alarmDuration,
+      alarmPause,
     } = req.body;
 
     const pool = db.getPool();
@@ -205,7 +212,9 @@ exports.updateThresholds = async (req, res) => {
             soil_adc_dry = COALESCE(?, soil_adc_dry),
             soil_adc_wet = COALESCE(?, soil_adc_wet),
             vibration_danger = COALESCE(?, vibration_danger),
-            battery_low_voltage = COALESCE(?, battery_low_voltage)
+            battery_low_voltage = COALESCE(?, battery_low_voltage),
+            alarm_duration = COALESCE(?, alarm_duration),
+            alarm_pause = COALESCE(?, alarm_pause)
           WHERE id = ?`,
           [
             safeTiltPitch ?? req.body.safePitch,
@@ -223,6 +232,8 @@ exports.updateThresholds = async (req, res) => {
             soilAdcWet ?? req.body.soilWet,
             vibrationDanger ?? req.body.vibDang,
             batteryLowVoltage ?? req.body.battLow,
+            alarmDuration ?? req.body.alarmDur,
+            alarmPause ?? req.body.alarmPau,
             id,
           ]
         );
@@ -236,7 +247,9 @@ exports.updateThresholds = async (req, res) => {
             rain_danger = COALESCE(?, rain_danger),
             soil_moisture_warning = COALESCE(?, soil_moisture_warning),
             vibration_danger = COALESCE(?, vibration_danger),
-            battery_low_voltage = COALESCE(?, battery_low_voltage)
+            battery_low_voltage = COALESCE(?, battery_low_voltage),
+            alarm_duration = COALESCE(?, alarm_duration),
+            alarm_pause = COALESCE(?, alarm_pause)
           WHERE id = ?`,
           [
             tiltWarning,
@@ -246,6 +259,8 @@ exports.updateThresholds = async (req, res) => {
             soilMoistureWarning,
             vibrationDanger,
             batteryLowVoltage,
+            alarmDuration ?? req.body.alarmDur,
+            alarmPause ?? req.body.alarmPau,
             id,
           ]
         );

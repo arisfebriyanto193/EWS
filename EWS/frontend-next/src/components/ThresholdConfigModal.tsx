@@ -45,6 +45,8 @@ const DEFAULT_THRESHOLDS: EWSNode['thresholds'] = {
   soilAdcWet: 1200,
   vibrationDanger: 0.25,
   batteryLowVoltage: 11.8,
+  alarmDuration: 60,
+  alarmPause: 30,
 };
 
 export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
@@ -130,6 +132,8 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
         soilAdcWet: targetThresholds.soilAdcWet,
         vibrationDanger: targetThresholds.vibrationDanger,
         batteryLowVoltage: targetThresholds.batteryLowVoltage,
+        alarmDuration: targetThresholds.alarmDuration ?? 60,
+        alarmPause: targetThresholds.alarmPause ?? 30,
 
         // Format Web Server ESP32 (/api/save_calibration)
         safePitch: targetThresholds.safeTiltPitch,
@@ -147,6 +151,8 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
         soilWet: targetThresholds.soilAdcWet,
         vibDang: targetThresholds.vibrationDanger,
         battLow: targetThresholds.batteryLowVoltage,
+        alarmDur: targetThresholds.alarmDuration ?? 60,
+        alarmPau: targetThresholds.alarmPause ?? 30,
       };
 
       // 1. Siarkan perintah SET_THRESHOLDS via WebSocket langsung ke ESP32
@@ -740,6 +746,71 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">V</span>
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">Default: 11.8 V (Cut-off VRLA 12V)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Konfigurasi Siklus & Timer Alarm Otomatis */}
+          <div className="p-4 rounded-xl border border-red-200/80 dark:border-red-900/40 bg-red-50/30 dark:bg-red-950/20 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-950/80 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 flex items-center justify-center">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200">
+                  5. Siklus Otomatis &amp; Timer Alarm (Sirine)
+                </h4>
+                <p className="text-[10px] text-slate-500 dark:text-purple-300/70">
+                  Alarm tidak berbunyi tanpa henti. Atur durasi aktif sirine dan jeda istirahat jika anomali masih berlanjut.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Alarm Duration */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Durasi Alarm Aktif (Detik / S)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="1"
+                    min="5"
+                    max="86400"
+                    value={thresholds.alarmDuration ?? 60}
+                    onChange={(e) => handleChange('alarmDuration', e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
+                  />
+                  <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">Detik (s)</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Lama waktu sirine berbunyi saat anomali terdeteksi (misal: 60s atau 5000s)
+                </span>
+              </div>
+
+              {/* Alarm Pause */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Jeda / Snooze Alarm (Detik / S)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="1"
+                    min="5"
+                    max="86400"
+                    value={thresholds.alarmPause ?? 30}
+                    onChange={(e) => handleChange('alarmPause', e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
+                  />
+                  <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">Detik (s)</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Waktu mati sebelum sirine menyala lagi jika anomali masih terdeteksi (misal: 30s atau 1000s)
+                </span>
               </div>
             </div>
           </div>

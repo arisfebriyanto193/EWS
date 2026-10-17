@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Trash2,
   Filter,
+  Wifi,
 } from 'lucide-react';
 
 interface OverviewAllEWSProps {
@@ -364,6 +365,22 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                           {ews.sensorData.batteryVoltage} <span className="text-[10px] font-normal text-slate-500">V</span>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Network WiFi & IP Address strip */}
+                    <div className="p-2.5 bg-slate-50 dark:bg-[#1a162b] rounded-lg border border-slate-200/80 dark:border-purple-900/30 flex items-center justify-between text-xs mb-2">
+                      <div className="flex items-center gap-2 text-slate-700 dark:text-purple-200">
+                        <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[130px]">
+                          {ews.sensorData?.wifiSsid || 'WiFi EWS'}
+                        </span>
+                        <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800/50">
+                          {ews.sensorData?.ipAddress || '192.168.1.1'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        {ews.sensorData?.wifiRssi ?? ews.sensorData?.gsmSignalDbm ?? -65} dBm
+                      </span>
                     </div>
 
                     {/* Telegram channel info */}

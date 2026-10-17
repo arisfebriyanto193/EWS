@@ -27,6 +27,12 @@ class TelemetryService {
       solarCurrent: parseInt(sensorData.solarCurrent || 1800, 10),
       gsmSignalDbm: parseInt(sensorData.gsmSignalDbm || -70, 10),
       gsmStatus: sensorData.gsmStatus || 'online',
+      ipAddress: sensorData.ipAddress || sensorData.ip || null,
+      wifiSsid: sensorData.wifiSsid || sensorData.ssid || null,
+      wifiRssi: sensorData.wifiRssi !== undefined ? parseInt(sensorData.wifiRssi, 10) : (sensorData.gsmSignalDbm ? parseInt(sensorData.gsmSignalDbm, 10) : -65),
+      alarmDuration: sensorData.alarmDuration ? parseInt(sensorData.alarmDuration, 10) : undefined,
+      alarmPause: sensorData.alarmPause ? parseInt(sensorData.alarmPause, 10) : undefined,
+      publishMode: sensorData.publishMode || (sensorData.isClientActive ? 'realtime' : 'low_power_5m'),
       microsdUsedMb: parseInt(sensorData.microsdUsedMb || 1000, 10),
       microsdTotalMb: parseInt(sensorData.microsdTotalMb || 30400, 10),
       firmwareVersion: sensorData.firmwareVersion || 'v2.4.1-ESP32-A7670C',
@@ -156,6 +162,9 @@ class TelemetryService {
             last_solar_current = ?,
             last_gsm_signal = ?,
             last_gsm_status = ?,
+            ip_address = COALESCE(?, ip_address),
+            wifi_ssid = COALESCE(?, wifi_ssid),
+            wifi_rssi = COALESCE(?, wifi_rssi),
             uptime_hours = ?,
             last_seen_at = NOW()
           WHERE id = ?`,
@@ -175,6 +184,9 @@ class TelemetryService {
             data.solarCurrent,
             data.gsmSignalDbm,
             data.gsmStatus,
+            data.ipAddress,
+            data.wifiSsid,
+            data.wifiRssi,
             data.uptimeHours,
             ewsId,
           ]
@@ -288,6 +300,9 @@ class TelemetryService {
       solar_current: { col: 'last_solar_current', prop: 'solarCurrent' },
       gsm: { col: 'last_gsm_signal', prop: 'gsmSignalDbm' },
       gsm_signal: { col: 'last_gsm_signal', prop: 'gsmSignalDbm' },
+      ip: { col: 'ip_address', prop: 'ipAddress', isString: true },
+      wifi_ssid: { col: 'wifi_ssid', prop: 'wifiSsid', isString: true },
+      wifi_rssi: { col: 'wifi_rssi', prop: 'wifiRssi' },
       uptime: { col: 'uptime_hours', prop: 'uptimeHours' },
     };
 
@@ -296,6 +311,10 @@ class TelemetryService {
       console.warn(`[Telemetry] Sensor key '${sensorKey}' tidak dikenali`);
       return null;
     }
+
+    const valToSave = target.isString
+      ? (typeof rawValue === 'object' && rawValue !== null && 'value' in rawValue ? String(rawValue.value) : String(rawValue))
+      : numVal;
 
     let currentNode = null;
     if (isDbConnected && pool) {
@@ -306,10 +325,10 @@ class TelemetryService {
 
           await pool.query(
             `UPDATE ews_nodes SET ${target.col} = ?, last_seen_at = NOW() WHERE id = ?`,
-            [numVal, ewsId]
+            [valToSave, ewsId]
           );
 
-          currentNode[target.col] = numVal;
+          currentNode[target.col] = valToSave;
 
           const tiltDanger = parseFloat(currentNode.tilt_danger || 3.0);
           const tiltWarning = parseFloat(currentNode.tilt_warning || 1.5);

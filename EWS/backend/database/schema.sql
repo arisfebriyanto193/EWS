@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS `ews_nodes` (
   `soil_adc_wet` INT NOT NULL DEFAULT 1200 COMMENT 'Nilai ADC Tanah Saat Basah (100%)',
   `vibration_danger` DECIMAL(5, 2) NOT NULL DEFAULT 0.25 COMMENT 'Batas Getaran ADXL345 Bahaya (g)',
   `battery_low_voltage` DECIMAL(5, 2) NOT NULL DEFAULT 11.80 COMMENT 'Batas Baterai Lemah (V)',
+  `alarm_duration` INT NOT NULL DEFAULT 60 COMMENT 'Durasi Alarm Aktif Saat Anomali (detik)',
+  `alarm_pause` INT NOT NULL DEFAULT 30 COMMENT 'Jeda/Snooze Alarm Sebelum Menyala Kembali Jika Masih Anomali (detik)',
 
   -- Cache Telemetri Terakhir (untuk respon super cepat saat dashboard dibuka)
   `last_pitch` DECIMAL(6, 2) DEFAULT 0.00,
@@ -71,6 +73,9 @@ CREATE TABLE IF NOT EXISTS `ews_nodes` (
   `last_solar_current` INT DEFAULT 1800,
   `last_gsm_signal` INT DEFAULT -70,
   `last_gsm_status` ENUM('online', 'weak', 'offline') DEFAULT 'online',
+  `ip_address` VARCHAR(45) DEFAULT '192.168.1.1' COMMENT 'Alamat IP ESP32 pada Jaringan WiFi Lokal',
+  `wifi_ssid` VARCHAR(100) DEFAULT 'WiFi EWS' COMMENT 'Nama SSID WiFi Terhubung',
+  `wifi_rssi` INT DEFAULT -65 COMMENT 'Kekuatan Sinyal WiFi RSSI (dBm)',
   `microsd_used_mb` INT DEFAULT 1000,
   `microsd_total_mb` INT DEFAULT 30400,
   `firmware_version` VARCHAR(50) DEFAULT 'v2.4.1-ESP32-A7670C',

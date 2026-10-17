@@ -195,6 +195,9 @@ export default function App() {
         solar_current: 'solarCurrent',
         gsm: 'gsmSignalDbm',
         gsm_signal: 'gsmSignalDbm',
+        ip: 'ipAddress',
+        wifi_ssid: 'wifiSsid',
+        wifi_rssi: 'wifiRssi',
         uptime: 'uptimeHours',
       };
 
@@ -214,10 +217,15 @@ export default function App() {
                 (updated as any)[targetProp] = payload.rawValue;
               }
             } else {
-              // Jika payload langsung angka/string raw
-              const numVal = parseFloat(payload);
-              if (targetProp && !isNaN(numVal)) {
-                (updated as any)[targetProp] = numVal;
+              // Jika target bertipe string (misal IP address atau SSID)
+              if (targetProp === 'ipAddress' || targetProp === 'wifiSsid') {
+                (updated as any)[targetProp] = String(payload);
+              } else {
+                // Jika payload langsung angka/string raw
+                const numVal = parseFloat(payload);
+                if (targetProp && !isNaN(numVal)) {
+                  (updated as any)[targetProp] = numVal;
+                }
               }
             }
             updated.gsmStatus = 'online';
@@ -353,9 +361,46 @@ export default function App() {
     };
   }, []);
 
-  // 4. Deteksi Otomatis Perangkat Offline di Sisi Web (Jika tidak ada data masuk > 25 detik)
+  // 3b. Sinyal Heartbeat & On-Demand Telemetri saat Web Dibuka
+  // Memberitahu ESP32 bahwa web aktif dibuka sehingga ESP32 mempublikasikan telemetri secara Realtime.
+  // Jika tab web ditutup, ESP32 otomatis beralih ke mode hemat daya (publish per 5 menit).
   useEffect(() => {
-    const OFFLINE_THRESHOLD_MS = 25000; // 25 detik (ESP32 mengirim setiap 5 detik)
+    if (wsStatus !== 'connected') return;
+
+    const pingActiveNodes = () => {
+      const activeIds = ewsNodes.length > 0 ? ewsNodes.map((n) => n.id) : ['EWS-01'];
+      activeIds.forEach((nodeId) => {
+        wsClient.publish(`ews/${nodeId}/command`, {
+          command: 'CLIENT_HEARTBEAT',
+          ewsId: nodeId,
+          timestamp: Date.now(),
+        });
+      });
+    };
+
+    // Kirim sinyal heartbeat pertama segera setelah WebSocket terhubung
+    pingActiveNodes();
+
+    // Kirim berkala setiap 10 detik selama web masih dibuka
+    const heartbeatTimer = setInterval(pingActiveNodes, 10000);
+    return () => clearInterval(heartbeatTimer);
+  }, [wsStatus, ewsNodes.length]);
+
+  // Request telemetri instan saat pengguna membuka atau berpindah ke titik EWS tertentu
+  useEffect(() => {
+    if (wsStatus === 'connected') {
+      const targetId = activeTab.startsWith('EWS-') ? activeTab : (ewsNodes[0]?.id || 'EWS-01');
+      wsClient.publish(`ews/${targetId}/command`, {
+        command: 'REQUEST_DATA',
+        ewsId: targetId,
+        timestamp: Date.now(),
+      });
+    }
+  }, [activeTab, wsStatus, ewsNodes.length]);
+
+  // 4. Deteksi Otomatis Perangkat Offline di Sisi Web (Toleransi 6 menit untuk mode hemat daya 5 menit)
+  useEffect(() => {
+    const OFFLINE_THRESHOLD_MS = 360000; // 360 detik (6 menit, aman terhadap interval 5 menit mode hemat daya ESP32)
 
     const timer = setInterval(() => {
       const now = Date.now();
@@ -388,7 +433,7 @@ export default function App() {
 
         return hasChanges ? updated : prev;
       });
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(timer);
   }, []);

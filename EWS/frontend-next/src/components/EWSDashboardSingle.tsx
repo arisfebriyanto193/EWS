@@ -25,6 +25,7 @@ import {
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { ThresholdConfigModal } from './ThresholdConfigModal';
+import { wsClient } from '../services/websocket';
 
 interface TelemetryPoint {
   time: string;
@@ -55,6 +56,22 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   const [activeChartMetric, setActiveChartMetric] = useState<'tilt' | 'rain' | 'moisture' | 'power'>('tilt');
   const [isSirenTesting, setIsSirenTesting] = useState(false);
   const [chartHistory, setChartHistory] = useState<TelemetryPoint[]>([]);
+  const [isRequestingData, setIsRequestingData] = useState(false);
+  const [requestSuccessToast, setRequestSuccessToast] = useState<string | null>(null);
+
+  const handleRequestDataNow = () => {
+    setIsRequestingData(true);
+    wsClient.publish(`ews/${ews.id}/command`, {
+      command: 'REQUEST_DATA',
+      ewsId: ews.id,
+      timestamp: Date.now(),
+    });
+    setRequestSuccessToast('Permintaan sensor realtime dikirim ke ESP32!');
+    setTimeout(() => {
+      setIsRequestingData(false);
+      setRequestSuccessToast(null);
+    }, 2500);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -308,6 +325,16 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             >
               <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               <span>Atur Ambang Batas</span>
+            </button>
+
+            <button
+              onClick={handleRequestDataNow}
+              disabled={isRequestingData}
+              className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              title="Minta ESP32 langsung mempublikasikan telemetri data sensor terkini ke web (On-Demand Realtime)"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${isRequestingData ? 'animate-spin' : ''}`} />
+              <span>{isRequestingData ? 'Meminta Data...' : 'Minta Data Realtime'}</span>
             </button>
 
             {canControl && (
@@ -640,26 +667,67 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                 <Wifi className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200">Kontrol &amp; Seluler 4G</h4>
-                <p className="text-[10px] text-slate-500 dark:text-purple-300/70 font-mono">ESP32 + SIMCom A7670C</p>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200">Koneksi WiFi &amp; Kontrol ESP32</h4>
+                <p className="text-[10px] text-slate-500 dark:text-purple-300/70 font-mono">ESP32-S3 + SIMCom A7670C</p>
               </div>
             </div>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              4G Cat-1
+            <span className={`text-[11px] font-mono px-2 py-0.5 rounded border font-semibold ${
+              ews.sensorData.publishMode === 'low_power_5m'
+                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+            }`}>
+              {ews.sensorData.publishMode === 'low_power_5m' ? 'Hemat Daya (5 Menit)' : 'Realtime (Web Dibuka)'}
             </span>
           </div>
 
-          <div className="space-y-2 my-3 text-xs">
-            <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
-              <span className="text-slate-500 dark:text-purple-300/70">Sinyal Seluler (RSSI):</span>
-              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{ews.sensorData.gsmSignalDbm} dBm</span>
+          {requestSuccessToast && (
+            <div className="mb-2 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px] flex items-center justify-between">
+              <span>{requestSuccessToast}</span>
             </div>
+          )}
+
+          <div className="space-y-2 my-3 text-xs">
+            {/* IP Address */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
+              <span className="text-slate-500 dark:text-purple-300/70">Alamat IP ESP32:</span>
+              <span className="font-mono text-purple-700 dark:text-purple-300 font-bold bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800/60">
+                {ews.sensorData.ipAddress || '192.168.1.1'}
+              </span>
+            </div>
+
+            {/* SSID WiFi */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
+              <span className="text-slate-500 dark:text-purple-300/70">SSID WiFi:</span>
+              <span className="font-mono text-slate-800 dark:text-slate-200 font-semibold truncate max-w-[180px]">
+                {ews.sensorData.wifiSsid || 'WiFi EWS'}
+              </span>
+            </div>
+
+            {/* Sinyal WiFi RSSI */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
+              <span className="text-slate-500 dark:text-purple-300/70">Sinyal WiFi (RSSI):</span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                {ews.sensorData.wifiRssi ?? ews.sensorData.gsmSignalDbm ?? -65} dBm
+              </span>
+            </div>
+
+            {/* Siklus Timer Alarm Otomatis */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200/60 dark:border-red-900/30">
+              <span className="text-red-700 dark:text-red-300 font-medium">Siklus Alarm Otomatis:</span>
+              <span className="font-mono text-red-600 dark:text-red-400 font-bold">
+                Aktif {ews.thresholds.alarmDuration ?? 60}s | Jeda {ews.thresholds.alarmPause ?? 30}s
+              </span>
+            </div>
+
+            {/* MicroSD Backup */}
             <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
               <span className="text-slate-500 dark:text-purple-300/70">MicroSD Backup:</span>
               <span className="font-mono text-slate-700 dark:text-slate-300">
                 {(ews.sensorData.microSdStorageUsedMb / 1024).toFixed(1)} GB / 32 GB
               </span>
             </div>
+
+            {/* Uptime Kontrol */}
             <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
               <span className="text-slate-500 dark:text-purple-300/70">Uptime Kontrol:</span>
               <span className="font-mono text-slate-700 dark:text-slate-300">{ews.sensorData.uptimeHours} Jam</span>

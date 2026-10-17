@@ -79,6 +79,11 @@ export interface EWSSensorData {
   solarCurrent: number; // Arus pengisian panel surya 30Wp (mA)
   gsmSignalDbm: number; // SIMCom A7670C RSSI (dBm)
   gsmStatus: 'online' | 'weak' | 'offline';
+  ipAddress?: string; // Alamat IP ESP32 (misal: "192.168.1.100")
+  wifiSsid?: string; // SSID Jaringan WiFi terhubung (misal: "EWS-Network")
+  wifiRssi?: number; // Kekuatan sinyal WiFi (dBm)
+  wifiConnected?: boolean;
+  publishMode?: 'realtime' | 'low_power_5m';
   microSdStorageUsedMb: number; // MicroSD 32GB
   microSdStorageTotalMb: number;
   firmwareVersion: string;
@@ -125,6 +130,10 @@ export interface EWSNode {
     // 4. Getaran & Proteksi Baterai Aki
     vibrationDanger: number;   // Ambang Getaran Bahaya (g / pulsa)
     batteryLowVoltage: number; // Batas Baterai Lemah Cut-Off (Volt)
+
+    // 5. Konfigurasi Siklus & Timer Alarm Otomatis
+    alarmDuration?: number; // Durasi alarm sirine aktif saat anomali (detik)
+    alarmPause?: number;    // Jeda istirahat sirine saat anomali berlanjut sebelum menyala kembali (detik)
   };
 }
 

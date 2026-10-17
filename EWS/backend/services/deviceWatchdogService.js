@@ -11,9 +11,9 @@ const TelegramService = require('./telegramService');
 class DeviceWatchdogService {
   constructor() {
     this.intervalHandle = null;
-    this.checkIntervalMs = 10000; // Jalankan pengecekan setiap 10 detik
-    this.ewsOfflineTimeoutSec = 30; // 30 detik tanpa data = OFFLINE
-    this.trapOfflineTimeoutSec = 60; // 60 detik untuk perangkat perangkap hama
+    this.checkIntervalMs = 15000; // Jalankan pengecekan setiap 15 detik
+    this.ewsOfflineTimeoutSec = 360; // 360 detik (6 menit, toleransi aman interval 5 menit mode hemat daya ESP32)
+    this.trapOfflineTimeoutSec = 120; // 120 detik untuk perangkat perangkap hama
     this.isRunning = false;
   }
 

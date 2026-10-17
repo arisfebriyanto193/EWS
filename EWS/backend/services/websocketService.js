@@ -198,7 +198,7 @@ class WebSocketService {
     // B. Deteksi Topic Parameter Sensor Individual: ews/{ewsId}/{sensorKey}
     // Contoh topik: ews/EWS-01/pitch, ews/EWS-01/rainfall_rate, ews/EWS-01/soil_moisture, ews/EWS-01/vibration
     const singleSensorMatch = topic.match(
-      /^ews\/([^/]+)\/(pitch|pitch_angle|roll|roll_angle|soil_moisture|soil_temp|soil_temperature|rainfall_rate|rain|rain_rate|rainfall_cumulative|vibration|vibration_level|battery|battery_voltage|battery_current|solar|solar_current|gsm|gsm_signal|uptime)$/i
+      /^ews\/([^/]+)\/(pitch|pitch_angle|roll|roll_angle|soil_moisture|soil_temp|soil_temperature|rainfall_rate|rain|rain_rate|rainfall_cumulative|vibration|vibration_level|battery|battery_voltage|battery_current|solar|solar_current|gsm|gsm_signal|uptime|ip|wifi_ssid|wifi_rssi)$/i
     );
     if (singleSensorMatch) {
       const ewsId = singleSensorMatch[1];
