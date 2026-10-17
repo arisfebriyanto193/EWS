@@ -268,8 +268,10 @@ void setup() {
     display.display();
   }
 
-  // Konfigurasi Mode WiFi: Hubungkan ke WiFi STA terlebih dahulu (maks 10 detik)
+  // Konfigurasi Mode WiFi: Hubungkan ke WiFi STA terlebih dahulu (maks 8 detik)
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Matikan WiFi Modem Sleep agar WebServer merespons instan (<10ms)
+  esp_wifi_set_ps(WIFI_PS_NONE);
   bool wifiConnected = false;
 
   if (wifiSsid.length() > 0) {
@@ -278,8 +280,8 @@ void setup() {
     WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
     unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - startAttemptTime < 10000)) {
-      delay(500);
+    while (WiFi.status() != WL_CONNECTED && (millis() - startAttemptTime < 8000)) {
+      delay(250);
       Serial.print(".");
     }
     Serial.println();
@@ -289,15 +291,19 @@ void setup() {
       Serial.print("✅ Terhubung ke WiFi! IP: ");
       Serial.println(WiFi.localIP());
     } else {
-      Serial.println("❌ Gagal terhubung ke WiFi dalam 10 detik.");
+      Serial.println("❌ Gagal terhubung ke WiFi dalam 8 detik.");
     }
   }
 
-  // Jika gagal terhubung ke WiFi selama 10 detik, aktifkan SoftAP
+  // Jika gagal terhubung ke WiFi, aktifkan SoftAP
   if (!wifiConnected) {
-    WiFi.mode(WIFI_AP_STA);
+    // Putuskan pending connection STA agar radio tidak hopping mencari router
+    WiFi.disconnect(false, true);
+    WiFi.mode(WIFI_AP_STA); // Mode AP_STA agar scanning WiFi tetap berfungsi
     String apName = "Trap-" + trapId;
     WiFi.softAP(apName.c_str(), "12345678");
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
     Serial.print("📶 Mengaktifkan SoftAP Cadangan: ");
     Serial.print(apName);
     Serial.print(" | IP AP: ");
@@ -315,64 +321,80 @@ void setup() {
   server.begin();
   Serial.println("🌐 Web Server HTTP lokal siap di port 80");
 
-  // Setup WebSocket Client ke Server Backend EWS
-  setupWebSocket();
+  // Inisialisasi WebSocket hanya jika sudah terhubung ke WiFi STA dengan akses internet
+  if (wifiConnected) {
+    setupWebSocket();
+  }
 
   // Pastikan blower MATI saat pertama kali boot, lalu terapkan warna LED
   blowerEnabled = false;
   zapperActive = false;
   digitalWrite(PIN_RELAY_1, LOW);
   updateActuators();
-  sendTelemetryToEws(); // Publish status awal (blower OFF) ke server
+  if (wifiConnected) {
+    sendTelemetryToEws(); // Publish status awal ke server jika terhubung
+  }
 }
 
 void loop() {
   unsigned long now = millis();
 
-  // 1. Tangani Request DNS untuk Captive Portal
+  // 1. Tangani Request DNS untuk Captive Portal (proses beberapa paket agar antrean tidak macet)
   if (dnsRunning) {
-    dnsServer.processNextRequest();
+    for (int i = 0; i < 3; i++) {
+      dnsServer.processNextRequest();
+    }
   }
 
   // 2. Tangani Request Web Server Lokal
   server.handleClient();
 
-  // 2. Tangani Komunikasi WebSocket Real-time IoT
-  webSocket.loop();
+  // 3. Tangani Komunikasi WebSocket Real-time IoT HANYA jika terhubung ke WiFi STA!
+  // Mencegah DNS gethostbyname timeout 5 detik yang membuat WebServer freeze saat di SoftAP
+  static bool wsInitDone = false;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wsInitDone) {
+      setupWebSocket();
+      wsInitDone = true;
+    }
+    webSocket.loop();
+  } else {
+    wsInitDone = false;
+  }
 
-  // 3. Baca Input Tombol Fisik (Ganti Preset, Ganti Mode, Reset)
+  // 4. Baca Input Tombol Fisik (Ganti Preset, Ganti Mode, Reset)
   handlePhysicalButtons();
 
-  // 4. Pembacaan Rutin Sensor I2C (INA226, DS3231, VL53L0X) setiap 100ms
-  if (now - lastSensorRead >= 100) {
+  // 5. Pembacaan Rutin Sensor I2C (INA226, DS3231, VL53L0X) setiap 200ms
+  if (now - lastSensorRead >= 200) {
     lastSensorRead = now;
     readSensors();
     updateActuators();
   }
 
-  // 5. Perbarui Layar OLED SSD1306 setiap 250ms
-  if (now - lastOledUpdate >= 250) {
+  // 6. Perbarui Layar OLED SSD1306 setiap 500ms
+  if (now - lastOledUpdate >= 500) {
     lastOledUpdate = now;
     updateOledDisplay();
   }
 
-  // 6. Adaptive Telemetry: Kirim Telemetri IoT ke Server EWS
-  // Mode Cepat (3 detik) jika Web meminta data cepat / client aktif (30 detik terakhir),
-  // Mode Hemat Daya (5 menit) jika idle untuk menghemat daya baterai & kuota data.
-  bool isClientActive = (lastClientActivityTime > 0) && ((now - lastClientActivityTime) < CLIENT_ACTIVITY_TIMEOUT);
-  unsigned long targetInterval = isClientActive ? REALTIME_TELEMETRY_INTERVAL : LOW_POWER_TELEMETRY_INTERVAL;
+  // 7. Adaptive Telemetry: Kirim Telemetri IoT ke Server EWS (hanya jika WiFi terhubung)
+  if (WiFi.status() == WL_CONNECTED) {
+    bool isClientActive = (lastClientActivityTime > 0) && ((now - lastClientActivityTime) < CLIENT_ACTIVITY_TIMEOUT);
+    unsigned long targetInterval = isClientActive ? REALTIME_TELEMETRY_INTERVAL : LOW_POWER_TELEMETRY_INTERVAL;
 
-  bool shouldPublish = false;
-  if (forceTelemetryPublish) {
-    shouldPublish = true;
-    forceTelemetryPublish = false;
-  } else if (lastTelemetryPub == 0 || (now - lastTelemetryPub >= targetInterval)) {
-    shouldPublish = true;
-  }
+    bool shouldPublish = false;
+    if (forceTelemetryPublish) {
+      shouldPublish = true;
+      forceTelemetryPublish = false;
+    } else if (lastTelemetryPub == 0 || (now - lastTelemetryPub >= targetInterval)) {
+      shouldPublish = true;
+    }
 
-  if (shouldPublish) {
-    lastTelemetryPub = now;
-    sendTelemetryToEws();
+    if (shouldPublish) {
+      lastTelemetryPub = now;
+      sendTelemetryToEws();
+    }
   }
 
   // 7. Auto Turn-off Blower setelah durasi habis
@@ -810,6 +832,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>Smart Pest Trap</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 12px; line-height: 1.4; }
@@ -980,11 +1003,26 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
 <script>
   let loaded = false;
+  let activeTabName = 'wifi';
+  let refreshTimer = null;
+
   function goTab(name, btn) {
+    activeTabName = name;
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById('p_' + name).classList.add('active');
     btn.classList.add('active');
+
+    // Hanya aktifkan auto-polling live saat membuka tab Kontrol
+    if (name === 'ctrl') {
+      refresh();
+      if (!refreshTimer) refreshTimer = setInterval(refresh, 3000);
+    } else {
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    }
   }
 
   function refresh() {
@@ -1021,14 +1059,16 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
 
       let phtml = '';
-      d.presets.forEach((p, i) => {
-        phtml += `<div class="preset-item">
-          <div class="dot" style="background:rgb(${p.r},${p.g},${p.b})"></div>
-          <span style="flex:1">${i+1}. ${p.name}</span>
-          <button class="btn ${d.activePreset===i?'btn-green':'btn-gray'} btn-sm" onclick="setPreset(${i})">${d.activePreset===i?'AKTIF':'PILIH'}</button>
-        </div>`;
-      });
-      document.getElementById('preset_boxes').innerHTML = phtml;
+      if (d.presets) {
+        d.presets.forEach((p, i) => {
+          phtml += `<div class="preset-item">
+            <div class="dot" style="background:rgb(${p.r},${p.g},${p.b})"></div>
+            <span style="flex:1">${i+1}. ${p.name}</span>
+            <button class="btn ${d.activePreset===i?'btn-green':'btn-gray'} btn-sm" onclick="setPreset(${i})">${d.activePreset===i?'AKTIF':'PILIH'}</button>
+          </div>`;
+        });
+        document.getElementById('preset_boxes').innerHTML = phtml;
+      }
     }).catch(e => {});
   }
 
@@ -1037,26 +1077,35 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let sel = document.getElementById('sel_wifi');
     b.innerText = 'Memindai...';
     b.disabled = true;
-    sel.innerHTML = '<option value="">Sedang memindai jaringan...</option>';
+    sel.innerHTML = '<option value="">Sedang memindai jaringan WiFi...</option>';
 
-    fetch('/api/wifi-scan').then(r => r.json()).then(list => {
-      b.innerText = '🔍 Scan Ulang';
-      b.disabled = false;
-      if (!list || list.length === 0) {
-        sel.innerHTML = '<option value="">Tidak ada WiFi terdeteksi</option>';
-        return;
-      }
-      let opt = '<option value="">-- Pilih WiFi (' + list.length + ' ditemukan) --</option>';
-      list.forEach(w => {
-        let lock = w.sec ? '🔒' : '🔓';
-        opt += `<option value="${w.ssid}">${w.ssid} (${w.rssi} dBm ${lock})</option>`;
+    function pollScan() {
+      fetch('/api/wifi-scan').then(r => r.json()).then(res => {
+        if (res.status === 'scanning') {
+          setTimeout(pollScan, 600);
+          return;
+        }
+        b.innerText = '🔍 Scan Ulang';
+        b.disabled = false;
+        let list = res.list || [];
+        if (list.length === 0) {
+          sel.innerHTML = '<option value="">Tidak ada WiFi terdeteksi</option>';
+          return;
+        }
+        let opt = '<option value="">-- Pilih WiFi (' + list.length + ' ditemukan) --</option>';
+        list.forEach(w => {
+          let lock = w.sec ? '🔒' : '🔓';
+          opt += `<option value="${w.ssid}">${w.ssid} (${w.rssi} dBm ${lock})</option>`;
+        });
+        sel.innerHTML = opt;
+      }).catch(e => {
+        b.innerText = '🔍 Scan Ulang';
+        b.disabled = false;
+        sel.innerHTML = '<option value="">Gagal memindai</option>';
       });
-      sel.innerHTML = opt;
-    }).catch(e => {
-      b.innerText = '🔍 Scan Ulang';
-      b.disabled = false;
-      sel.innerHTML = '<option value="">Gagal memindai</option>';
-    });
+    }
+
+    pollScan();
   }
 
   function pickWifi(val) {
@@ -1131,7 +1180,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     fetch(`/api/schedule?start=${s}&end=${e}`, {method:'POST'}).then(() => alert('Jadwal tersimpan'));
   }
 
-  setInterval(refresh, 2500);
+  // Muat data awal sekali saat halaman pertama kali dibuka
   refresh();
 </script>
 </body>
@@ -1141,7 +1190,13 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 void setupWebServer() {
   // Halaman Utama Web Dashboard Lokal
   server.on("/", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.send_P(200, "text/html", INDEX_HTML);
+  });
+
+  // Favicon handler agar browser tidak 404 / 302 redirect loop
+  server.on("/favicon.ico", HTTP_GET, []() {
+    server.send(204);
   });
 
   // Captive Portal Redirects untuk Berbagai OS (Android, iOS, Windows)
@@ -1156,21 +1211,31 @@ void setupWebServer() {
   server.on("/connecttest.txt", captiveRedirect);
   server.on("/ncsi.txt", captiveRedirect);
 
-  // API Scan WiFi Sekitar (Fitur WiFiManager)
+  // API Scan WiFi Sekitar (Asinkron & Cepat, Tanpa Freeze CPU)
   server.on("/api/wifi-scan", HTTP_GET, []() {
-    Serial.println("🔍 [WiFi Scan] Memindai jaringan WiFi di sekitar...");
-    int n = WiFi.scanNetworks(false, true);
+    int16_t scanStatus = WiFi.scanComplete();
+    if (scanStatus == WIFI_SCAN_FAILED || scanStatus == -2) {
+      // Mulai scan baru secara asinkron (0ms blocking time)
+      WiFi.scanNetworks(true, false);
+      server.send(200, "application/json", "{\"status\":\"scanning\",\"list\":[]}");
+      return;
+    }
+    if (scanStatus == WIFI_SCAN_RUNNING) {
+      server.send(200, "application/json", "{\"status\":\"scanning\",\"list\":[]}");
+      return;
+    }
+
+    // Scan selesai (scanStatus >= 0)
     StaticJsonDocument<1536> doc;
-    JsonArray arr = doc.to<JsonArray>();
-    if (n > 0) {
-      for (int i = 0; i < n && i < 20; ++i) {
-        String s = WiFi.SSID(i);
-        if (s.length() == 0) continue;
-        JsonObject item = arr.createNestedObject();
-        item["ssid"] = s;
-        item["rssi"] = WiFi.RSSI(i);
-        item["sec"]  = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
-      }
+    doc["status"] = "done";
+    JsonArray arr = doc.createNestedArray("list");
+    for (int i = 0; i < scanStatus && i < 20; ++i) {
+      String s = WiFi.SSID(i);
+      if (s.length() == 0) continue;
+      JsonObject item = arr.createNestedObject();
+      item["ssid"] = s;
+      item["rssi"] = WiFi.RSSI(i);
+      item["sec"]  = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
     }
     WiFi.scanDelete();
     String res;
