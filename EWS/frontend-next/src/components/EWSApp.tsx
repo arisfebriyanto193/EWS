@@ -234,9 +234,25 @@ export default function App() {
             updated.gsmStatus = 'online';
             updated.lastUpdated = 'Live WS (Baru saja)';
 
+            const incomingReason = (typeof payload === 'object' && (payload?.alarmReason || payload?.sensorData?.alarmReason)) || e.alarmReason;
+            if (incomingReason) {
+              updated.alarmReason = incomingReason;
+            }
+
+            let updatedStatus = e.status;
+            if (typeof payload === 'object' && payload?.status && payload.status !== 'offline') {
+              // Jangan turunkan status peringatan (bahaya, siaga, baterai_lemah) ke 'aman' hanya dari update satu sensor parsial
+              if (payload.status !== 'aman' || (e.status !== 'bahaya' && e.status !== 'siaga' && e.status !== 'baterai_lemah')) {
+                updatedStatus = payload.status;
+              }
+            } else if (e.status === 'offline') {
+              updatedStatus = 'aman';
+            }
+
             return {
               ...e,
-              status: typeof payload === 'object' && payload?.status ? payload.status : (e.status === 'offline' ? 'aman' : e.status),
+              status: updatedStatus,
+              alarmReason: incomingReason,
               sirenActive: typeof payload === 'object' && payload?.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: typeof payload === 'object' && payload?.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
               sensorData: updated,

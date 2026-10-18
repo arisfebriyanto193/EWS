@@ -1,5 +1,6 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { EWSNode } from '../types';
 import {
   AlertTriangle,
@@ -36,7 +37,31 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
   onResetAlarm,
   onOpenThresholdConfig,
 }) => {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Handle ESC key & lock body scroll while modal is active
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !mounted) return null;
 
   const { sensorData, thresholds, status } = ews;
 
@@ -46,14 +71,17 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
   const pitchDev = Math.abs(sensorData.pitchAngle - safePitch);
   const rollDev = Math.abs(sensorData.rollAngle - safeRoll);
 
-  const isTiltDanger =
-    pitchDev >= thresholds.tiltDanger || rollDev >= thresholds.tiltDanger;
-  const isTiltWarning =
-    !isTiltDanger &&
-    (pitchDev >= thresholds.tiltWarning ||
-      rollDev >= thresholds.tiltWarning ||
-      pitchDev >= (thresholds.tiltTolerance ?? 2) ||
-      rollDev >= (thresholds.tiltTolerance ?? 2));
+  const isPitchDanger = pitchDev >= thresholds.tiltDanger;
+  const isRollDanger = rollDev >= thresholds.tiltDanger;
+  const isTiltDanger = isPitchDanger || isRollDanger;
+
+  const isPitchWarning =
+    !isPitchDanger &&
+    (pitchDev >= thresholds.tiltWarning || pitchDev >= (thresholds.tiltTolerance ?? 2));
+  const isRollWarning =
+    !isRollDanger &&
+    (rollDev >= thresholds.tiltWarning || rollDev >= (thresholds.tiltTolerance ?? 2));
+  const isTiltWarning = !isTiltDanger && (isPitchWarning || isRollWarning);
 
   // 2. Analisis Hujan
   const isRainDanger = sensorData.rainfallRate >= thresholds.rainDanger;
@@ -78,8 +106,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
     !isBattZeroOrDisconnected &&
     sensorData.batteryVoltage < thresholds.batteryLowVoltage;
 
-  // Ambil Alasan Utama
-  const displayReason =
+  // Format teks alasan agar rapi dan tidak kaku
+  let displayReason =
     ews.alarmReason ||
     sensorData.alarmReason ||
     (status === 'bahaya'
@@ -88,25 +116,39 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
       ? 'Parameter kemiringan tanah / curah hujan / kelembapan tanah telah melampaui batas toleransi siaga'
       : status === 'baterai_lemah'
       ? isBattZeroOrDisconnected
-        ? 'Tegangan Baterai / Sensor Daya 0.00V [Bukan Tanda Bahaya, Relay OFF]'
-        : `Tegangan Aki Berada di Bawah Batas Aman (${sensorData.batteryVoltage}V < ${thresholds.batteryLowVoltage}V)`
+        ? 'Tegangan Baterai / Sensor Daya 0.00V [Peringatan Pemeliharaan Web Saja, Relay Lapangan OFF]'
+        : `Tegangan Baterai Lemah (${sensorData.batteryVoltage.toFixed(2)}V < ${thresholds.batteryLowVoltage}V) [Relay Lapangan OFF]`
       : 'Semua parameter sensor berada dalam batas normal dan aman');
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/40 rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
-        
+  // Bersihkan teks dari format kurung siku untuk ringkasan utama
+  const cleanSummary = displayReason
+    .replace(/\[.*?\]/g, '')
+    .trim();
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-800/40 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header Modal */}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-purple-900/30 flex items-center justify-between gap-3 bg-slate-50/80 dark:bg-[#17142b]/80">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-purple-900/30 flex items-center justify-between gap-3 bg-slate-50/90 dark:bg-[#17142b]/90">
           <div className="flex items-center gap-3">
             <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
                 status === 'bahaya'
-                  ? 'bg-red-100 text-red-600 dark:bg-red-950/80 dark:text-red-400'
+                  ? 'bg-red-100 text-red-600 dark:bg-red-950/80 dark:text-red-400 ring-2 ring-red-500/30'
                   : status === 'siaga'
-                  ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/80 dark:text-amber-400'
+                  ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/80 dark:text-amber-400 ring-2 ring-amber-500/30'
                   : status === 'baterai_lemah'
-                  ? 'bg-orange-100 text-orange-600 dark:bg-orange-950/80 dark:text-orange-400'
+                  ? 'bg-orange-100 text-orange-600 dark:bg-orange-950/80 dark:text-orange-400 ring-2 ring-orange-500/30'
                   : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400'
               }`}
             >
@@ -121,12 +163,12 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Identifikasi Sensor Pemicu Status
+                  Identifikasi & Analisis Sensor Pemicu
                 </h3>
                 <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     status === 'bahaya'
                       ? 'bg-red-600 text-white'
                       : status === 'siaga'
@@ -136,18 +178,19 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                       : 'bg-emerald-600 text-white'
                   }`}
                 >
-                  {status === 'baterai_lemah' ? 'BATERAI LEMAH' : status.toUpperCase()}
+                  {status === 'baterai_lemah' ? 'PERINGATAN PEMELIHARAAN' : status.toUpperCase()}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-purple-300/70 font-mono">
-                {ews.id} &bull; {ews.name}
+              <p className="text-xs text-slate-500 dark:text-purple-300/70 font-mono mt-0.5">
+                Perangkat: <strong>{ews.id}</strong> &bull; {ews.name} {ews.location ? `(${ews.location})` : ''}
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-purple-950/50 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+            title="Tutup (ESC)"
           >
             <X className="w-5 h-5" />
           </button>
@@ -155,10 +198,10 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
         {/* Content Body */}
         <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
-
+          
           {/* 1. Highlight Banner Penyebab Utama */}
           <div
-            className={`p-4 rounded-xl border ${
+            className={`p-4 rounded-xl border transition-all ${
               status === 'bahaya'
                 ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200'
                 : status === 'siaga'
@@ -168,263 +211,314 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
             }`}
           >
-            <div className="flex items-center gap-2 mb-1.5 font-bold text-xs uppercase tracking-wider">
-              <Info className="w-4 h-4 shrink-0" />
-              <span>Deskripsi Penyebab / Alasan Alarm:</span>
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <span className="flex items-center gap-1.5 font-bold text-xs uppercase tracking-wider">
+                <Info className="w-4 h-4 shrink-0" />
+                <span>Penyebab Pemicu Status Saat Ini:</span>
+              </span>
+
+              {/* Status Relay Protection Pill */}
+              {status === 'baterai_lemah' ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-200 dark:bg-orange-900/60 text-orange-900 dark:text-orange-200 border border-orange-300 dark:border-orange-700">
+                  Relay Lapangan: MATI (OFF) Diproteksi
+                </span>
+              ) : status === 'bahaya' ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-200 dark:bg-red-900/60 text-red-900 dark:text-red-200 border border-red-300 dark:border-red-700">
+                  Relay Lapangan: AKTIF (ON) Sesuai Siklus
+                </span>
+              ) : status === 'siaga' ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                  Relay Strobo: AKTIF (ON) | Sirine: MATI
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                  Relay Lapangan: SIAGA NORMAL (OFF)
+                </span>
+              )}
             </div>
+
             <p className="text-sm font-semibold leading-relaxed">
-              {displayReason}
+              {cleanSummary}
             </p>
+
             {status === 'baterai_lemah' && (
-              <div className="mt-2.5 pt-2 border-t border-orange-200 dark:border-orange-800/60 text-[11px] text-orange-800 dark:text-orange-300">
-                🛡️ <strong>Catatan Keamanan:</strong> Kondisi tegangan baterai/INA 0V <strong>BUKAN tanda bahaya bencana alam</strong>. Relay sirine dan lampu strobo di lapangan sengaja dinonaktifkan (OFF) agar aki terlindungi dari kerusakan dan tidak menimbulkan alarm palsu di pemukiman warga.
+              <div className="mt-3 pt-2.5 border-t border-orange-200 dark:border-orange-800/60 text-[11px] text-orange-800 dark:text-orange-300 space-y-1">
+                <p>
+                  🛡️ <strong>Catatan Keamanan & Proteksi Sistem:</strong>
+                </p>
+                <p className="leading-relaxed">
+                  Tegangan aki / sensor INA terdeteksi <strong>{sensorData.batteryVoltage.toFixed(2)}V</strong>. Kondisi ini <strong>BUKAN tanda bahaya bencana alam</strong>. Relay sirine dan lampu strobo di lapangan sengaja dinonaktifkan (OFF) agar aki terlindungi dari kerusakan deep discharge dan tidak membunyikan alarm palsu di pemukiman warga.
+                </p>
               </div>
             )}
           </div>
 
           {/* 2. Matriks Evaluasi Parameter Sensor vs Ambang Batas */}
           <div>
-            <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
-              <span>Analisis Pembacaan Sensor vs Ambang Batas (Thresholds)</span>
-            </h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <span>Analisis Pembacaan Seluruh Sensor vs Ambang Batas</span>
+              </h4>
+              <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                Kartu bergaris tebal menandakan sensor pemicu aktif
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               
               {/* Parameter 1: Inclinometer Kemiringan Pitch */}
               <div
-                className={`p-3 rounded-xl border flex flex-col justify-between ${
-                  pitchDev >= thresholds.tiltDanger
-                    ? 'bg-red-50/70 dark:bg-red-950/30 border-red-300 dark:border-red-800'
-                    : pitchDev >= thresholds.tiltWarning
-                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
-                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
+                  isPitchDanger
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
+                    : isPitchWarning
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
+                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    Kemiringan Pitch (X)
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      pitchDev >= thresholds.tiltDanger
-                        ? 'bg-red-600 text-white'
-                        : pitchDev >= thresholds.tiltWarning
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {pitchDev >= thresholds.tiltDanger
-                      ? 'BAHAYA'
-                      : pitchDev >= thresholds.tiltWarning
-                      ? 'SIAGA'
-                      : 'NORMAL'}
-                  </span>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      Kemiringan Pitch (X)
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        isPitchDanger
+                          ? 'bg-red-600 text-white'
+                          : isPitchWarning
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {isPitchDanger ? 'BAHAYA' : isPitchWarning ? 'SIAGA' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline justify-between font-mono">
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">
+                      {sensorData.pitchAngle > 0 ? `+${sensorData.pitchAngle}°` : `${sensorData.pitchAngle}°`}
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                      Simpangan: {pitchDev.toFixed(2)}°
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between font-mono">
-                  <span className="text-lg font-bold text-slate-900 dark:text-white">
-                    {sensorData.pitchAngle > 0 ? `+${sensorData.pitchAngle}°` : `${sensorData.pitchAngle}°`}
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                    Simpangan: {pitchDev.toFixed(2)}°
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-1">
-                  Baseline: {safePitch}° &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
+
+                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                  Aman: {safePitch}° &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
                 </div>
               </div>
 
               {/* Parameter 2: Inclinometer Kemiringan Roll */}
               <div
-                className={`p-3 rounded-xl border flex flex-col justify-between ${
-                  rollDev >= thresholds.tiltDanger
-                    ? 'bg-red-50/70 dark:bg-red-950/30 border-red-300 dark:border-red-800'
-                    : rollDev >= thresholds.tiltWarning
-                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
-                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
+                  isRollDanger
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
+                    : isRollWarning
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
+                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    Kemiringan Roll (Y)
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      rollDev >= thresholds.tiltDanger
-                        ? 'bg-red-600 text-white'
-                        : rollDev >= thresholds.tiltWarning
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {rollDev >= thresholds.tiltDanger
-                      ? 'BAHAYA'
-                      : rollDev >= thresholds.tiltWarning
-                      ? 'SIAGA'
-                      : 'NORMAL'}
-                  </span>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      Kemiringan Roll (Y)
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        isRollDanger
+                          ? 'bg-red-600 text-white'
+                          : isRollWarning
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {isRollDanger ? 'BAHAYA' : isRollWarning ? 'SIAGA' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline justify-between font-mono">
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">
+                      {sensorData.rollAngle > 0 ? `+${sensorData.rollAngle}°` : `${sensorData.rollAngle}°`}
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                      Simpangan: {rollDev.toFixed(2)}°
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between font-mono">
-                  <span className="text-lg font-bold text-slate-900 dark:text-white">
-                    {sensorData.rollAngle > 0 ? `+${sensorData.rollAngle}°` : `${sensorData.rollAngle}°`}
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                    Simpangan: {rollDev.toFixed(2)}°
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-1">
-                  Baseline: {safeRoll}° &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
+
+                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                  Aman: {safeRoll}° &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
                 </div>
               </div>
 
               {/* Parameter 3: Intensitas Curah Hujan */}
               <div
-                className={`p-3 rounded-xl border flex flex-col justify-between ${
+                className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isRainDanger
-                    ? 'bg-red-50/70 dark:bg-red-950/30 border-red-300 dark:border-red-800'
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
                     : isRainWarning
-                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
-                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
+                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Droplets className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                    Curah Hujan (Tipping Bucket)
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      isRainDanger
-                        ? 'bg-red-600 text-white'
-                        : isRainWarning
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {isRainDanger ? 'BAHAYA' : isRainWarning ? 'SIAGA' : 'NORMAL'}
-                  </span>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Droplets className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                      Curah Hujan (Tipping)
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        isRainDanger
+                          ? 'bg-red-600 text-white'
+                          : isRainWarning
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {isRainDanger ? 'BAHAYA' : isRainWarning ? 'SIAGA' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline justify-between font-mono">
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">
+                      {sensorData.rainfallRate}{' '}
+                      <span className="text-xs font-normal text-slate-500">mm/jam</span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                      Total: {sensorData.rainfallCumulative} mm
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between font-mono">
-                  <span className="text-lg font-bold text-slate-900 dark:text-white">
-                    {sensorData.rainfallRate} <span className="text-xs font-normal">mm/jam</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                    Total: {sensorData.rainfallCumulative} mm
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-1">
-                  Siaga: {thresholds.rainWarning} mm &bull; Bahaya: {thresholds.rainDanger} mm
+
+                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                  Siaga: {thresholds.rainWarning} mm/jam &bull; Bahaya: {thresholds.rainDanger} mm/jam
                 </div>
               </div>
 
               {/* Parameter 4: Kelembapan Tanah */}
               <div
-                className={`p-3 rounded-xl border flex flex-col justify-between ${
+                className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isSoilWarning
-                    ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
-                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
+                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Droplets className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    Kelembapan Tanah
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      isSoilWarning ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {isSoilWarning ? 'SIAGA (JENUH)' : 'NORMAL'}
-                  </span>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Droplets className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      Kelembapan Tanah
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        isSoilWarning ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {isSoilWarning ? 'SIAGA (JENUH)' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline justify-between font-mono">
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">
+                      {sensorData.soilMoisture.toFixed(1)}%
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                      Suhu: {sensorData.soilTemperature ?? 25.2}°C
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between font-mono">
-                  <span className="text-lg font-bold text-slate-900 dark:text-white">
-                    {sensorData.soilMoisture.toFixed(1)}%
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                    Suhu: {sensorData.soilTemperature ?? 25.2}°C
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-1">
-                  Baseline: {safeSoil}% &bull; Batas Jenuh: {thresholds.soilMoistureWarning}%
+
+                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                  Aman: {safeSoil}% &bull; Batas Jenuh: {thresholds.soilMoistureWarning}%
                 </div>
               </div>
 
               {/* Parameter 5: Sensor Getaran Gempa */}
               <div
-                className={`p-3 rounded-xl border flex flex-col justify-between ${
+                className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isVibDanger
-                    ? 'bg-red-50/70 dark:bg-red-950/30 border-red-300 dark:border-red-800'
-                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
+                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Radio className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    Getaran / Akselerometer
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      isVibDanger ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {isVibDanger ? 'BAHAYA' : 'NORMAL'}
-                  </span>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      Getaran Gempa / Lereng
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        isVibDanger ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {isVibDanger ? 'BAHAYA' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline justify-between font-mono">
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">
+                      {sensorData.vibrationLevel}{' '}
+                      <span className="text-xs font-normal text-slate-500">g</span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                      Ambang: {thresholds.vibrationDanger}g
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between font-mono">
-                  <span className="text-lg font-bold text-slate-900 dark:text-white">
-                    {sensorData.vibrationLevel} <span className="text-xs font-normal">g</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                    Ambang: {thresholds.vibrationDanger}g
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-1">
+
+                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
                   Sensor Getaran Digital & Akselerometer 801S
                 </div>
               </div>
 
               {/* Parameter 6: Tegangan Baterai Aki & Sensor INA */}
               <div
-                className={`p-3 rounded-xl border flex flex-col justify-between ${
+                className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isBattZeroOrDisconnected || isBattLow
-                    ? 'bg-orange-50/70 dark:bg-orange-950/30 border-orange-300 dark:border-orange-800'
-                    : 'bg-slate-50 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-orange-50/80 dark:bg-orange-950/40 border-orange-500 ring-2 ring-orange-500/50 shadow-sm'
+                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Battery className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    Catu Daya Aki {sensorData.inaAvailable ? '(INA219/226)' : '(Divider 11:4)'}
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      isBattZeroOrDisconnected
-                        ? 'bg-orange-600 text-white'
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Battery className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      Catu Daya Aki {sensorData.inaAvailable ? '(INA219)' : '(Divider 11:4)'}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        isBattZeroOrDisconnected
+                          ? 'bg-orange-600 text-white'
+                          : isBattLow
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {isBattZeroOrDisconnected
+                        ? '0.00V / TERPUTUS'
                         : isBattLow
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {isBattZeroOrDisconnected
-                      ? '0.00V / TERPUTUS'
-                      : isBattLow
-                      ? 'BATERAI LEMAH'
-                      : 'NORMAL'}
-                  </span>
+                        ? 'BATERAI LEMAH'
+                        : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline justify-between font-mono">
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">
+                      {sensorData.batteryVoltage.toFixed(2)} V
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                      Arus: {sensorData.batteryCurrent ?? 0} mA
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-baseline justify-between font-mono">
-                  <span className="text-lg font-bold text-slate-900 dark:text-white">
-                    {sensorData.batteryVoltage.toFixed(2)} V
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                    Arus: {sensorData.batteryCurrent ?? 0} mA
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-1">
-                  Batas Aman: {thresholds.batteryLowVoltage}V &bull; Relay: MATI (OFF)
+
+                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                  Ambang Bawah: {thresholds.batteryLowVoltage}V &bull; Relay: MATI (OFF)
                 </div>
               </div>
 
@@ -432,20 +526,20 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
           </div>
 
           {/* 3. Status Aktuator Fisik di Lapangan (Relay GPIO 46) */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#17142b] border border-slate-200 dark:border-purple-900/30">
-            <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
+          <div className="p-3.5 rounded-xl bg-slate-50/90 dark:bg-[#17142b] border border-slate-200 dark:border-purple-900/30">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
                 <Zap className="w-3.5 h-3.5 text-yellow-500" />
-                Status Aktuator Relay Lapangan (GPIO 46)
+                Status Aktuator Relay Lapangan (GPIO 46 - Active-High)
               </span>
               <span className="text-[10px] font-mono text-slate-400">
-                Active-High &bull; Sirine & Strobo Terpadu
+                Sirine & Strobo Terpadu
               </span>
-            </h4>
+            </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center font-mono">
-              <div className="p-2 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block">
+              <div className="p-2.5 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block mb-0.5">
                   Sirine 12V 110dB
                 </span>
                 <span
@@ -454,34 +548,34 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                       ? 'text-red-500'
                       : ews.sirenActive
                       ? 'text-red-600 dark:text-red-400 animate-pulse'
-                      : 'text-slate-500'
+                      : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   {ews.muted ? 'DISENYAPKAN (MUTED)' : ews.sirenActive ? 'AKTIF (ON)' : 'MATI (OFF)'}
                 </span>
               </div>
 
-              <div className="p-2 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block">
+              <div className="p-2.5 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block mb-0.5">
                   Lampu Strobo 12V
                 </span>
                 <span
                   className={`text-xs font-bold ${
                     ews.stroboActive
                       ? 'text-amber-500 dark:text-amber-400 animate-pulse'
-                      : 'text-slate-500'
+                      : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   {ews.stroboActive ? 'AKTIF (ON)' : 'MATI (OFF)'}
                 </span>
               </div>
 
-              <div className="col-span-2 sm:col-span-1 p-2 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block">
+              <div className="col-span-2 sm:col-span-1 p-2.5 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block mb-0.5">
                   Siklus Timer Sirine
                 </span>
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  {thresholds.alarmDuration ?? 60}s Bunyi / {thresholds.alarmPause ?? 30}s Jeda
+                  {thresholds.alarmDuration ?? 60}s ON / {thresholds.alarmPause ?? 30}s Jeda
                 </span>
               </div>
             </div>
@@ -490,7 +584,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-5 py-3 border-t border-slate-200 dark:border-purple-900/30 flex flex-wrap items-center justify-between gap-2 bg-slate-50/80 dark:bg-[#17142b]/80">
+        <div className="px-5 py-3.5 border-t border-slate-200 dark:border-purple-900/30 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50/90 dark:bg-[#17142b]/90">
           <div className="flex items-center gap-2">
             {onToggleMute && (
               <button
@@ -536,7 +630,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
             <button
               onClick={onClose}
-              className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors cursor-pointer"
+              className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-sm"
             >
               Tutup
             </button>
@@ -546,4 +640,6 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };

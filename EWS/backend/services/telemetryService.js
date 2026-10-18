@@ -414,29 +414,37 @@ class TelemetryService {
           const rain = parseFloat(currentNode.last_rainfall_rate || 0);
           const soilM = parseFloat(currentNode.last_soil_moisture || 0);
           const vib = parseFloat(currentNode.last_vibration || 0);
-          const batt = parseFloat(currentNode.last_battery_voltage || 12.8);
+          const rawBatt = currentNode.last_battery_voltage;
+          const batt = (rawBatt !== null && rawBatt !== undefined && rawBatt !== '' && !isNaN(Number(rawBatt)))
+            ? Number(rawBatt)
+            : 12.8;
 
           let newStatus = 'aman';
           let sirenActive = false;
           let stroboActive = false;
+          let triggerCause = 'Semua parameter sensor dalam batas aman';
 
           if (pitch >= tiltDanger || roll >= tiltDanger || rain >= rainDanger || vib >= vibrationDanger) {
             newStatus = 'bahaya';
             sirenActive = true;
             stroboActive = true;
+            triggerCause = currentNode.alarm_reason || `Pemicu ${sensorKey} (${numVal}) melebihi ambang batas BAHAYA`;
           } else if (pitch >= tiltWarning || roll >= tiltWarning || rain >= rainWarning || soilM >= soilMoistureWarning) {
             newStatus = 'siaga';
             sirenActive = false;
             stroboActive = true;
+            triggerCause = currentNode.alarm_reason || `Pemicu ${sensorKey} (${numVal}) melebihi ambang batas SIAGA`;
           } else if (batt <= 0.5) {
             // Sensor arus/tegangan INA tidak terbaca / 0V: BUKAN bahaya bencana, relay wajib OFF
             newStatus = 'baterai_lemah';
             sirenActive = false;
             stroboActive = false;
+            triggerCause = 'Tegangan Baterai / Sensor Daya 0.00V [Warning Web Saja, Relay OFF]';
           } else if (batt < batteryLow) {
             newStatus = 'baterai_lemah';
             sirenActive = false;
             stroboActive = false;
+            triggerCause = `Tegangan Baterai Lemah (${batt.toFixed(2)}V < ${batteryLow}V) [Warning Web Saja, Relay OFF]`;
           } else {
             newStatus = 'aman';
             sirenActive = false;
@@ -469,7 +477,7 @@ class TelemetryService {
                     alarmId,
                     ewsId,
                     newStatus,
-                    `Pemicu ${sensorKey} (${numVal}) melebihi ambang batas ${newStatus.toUpperCase()}`,
+                    triggerCause,
                     `${sensorKey}: ${numVal}`,
                   ]
                 );
@@ -494,8 +502,8 @@ class TelemetryService {
               parseFloat(currentNode.last_rainfall_rate || 0),
               parseFloat(currentNode.last_rainfall_cumulative || 0),
               parseFloat(currentNode.last_vibration || 0),
-              parseFloat(currentNode.last_battery_voltage || 12.8),
-              parseInt(currentNode.last_battery_current || 400, 10),
+              batt,
+              parseInt(currentNode.last_battery_current || 0, 10),
               parseInt(currentNode.last_solar_current || 1800, 10),
               parseInt(currentNode.last_gsm_signal || -70, 10),
               currentNode.last_gsm_status || 'online',
@@ -508,6 +516,7 @@ class TelemetryService {
             sensorKey: target.prop,
             rawValue: numVal,
             status: newStatus,
+            alarmReason: triggerCause,
             sirenActive,
             stroboActive,
             sensorData: {
@@ -518,10 +527,13 @@ class TelemetryService {
               rainfallRate: parseFloat(currentNode.last_rainfall_rate || 0),
               rainfallCumulative: parseFloat(currentNode.last_rainfall_cumulative || 0),
               vibrationLevel: parseFloat(currentNode.last_vibration || 0),
-              batteryVoltage: parseFloat(currentNode.last_battery_voltage || 12.8),
+              batteryVoltage: batt,
+              batteryCurrent: parseInt(currentNode.last_battery_current || 0, 10),
               solarCurrent: parseInt(currentNode.last_solar_current || 1800, 10),
               gsmSignalDbm: parseInt(currentNode.last_gsm_signal || -70, 10),
               uptimeHours: parseInt(currentNode.uptime_hours || 0, 10),
+              alarmReason: triggerCause,
+              inaAvailable: batt > 0.5,
             },
             timestamp: new Date().toISOString(),
           };

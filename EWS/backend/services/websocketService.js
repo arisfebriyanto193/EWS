@@ -207,9 +207,13 @@ class WebSocketService {
       if (result) {
         processedPayload = result;
 
-        // Broadcast juga ke agregat telemetri agar dashboard tetap sinkron instan
-        this.broadcastToTopic(`ews/${ewsId}/telemetry`, result);
-        this.broadcastToTopic('ews/+/telemetry', result);
+        // Broadcast ke topik general sensor_update agar dashboard memperbarui widget secara parsial
+        this.broadcastToTopic('ews/sensor_update', {
+          ewsId,
+          sensorKey,
+          payload: result,
+          timestamp: result.timestamp,
+        });
 
         if (result.status === 'siaga' || result.status === 'bahaya') {
           this.publish('alarms', {
