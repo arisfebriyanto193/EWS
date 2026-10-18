@@ -174,7 +174,7 @@ class TelemetryService {
       pitchDev >= thresholds.tiltDanger ||
       rollDev >= thresholds.tiltDanger ||
       data.rainfallRate >= thresholds.rainDanger ||
-      data.vibrationLevel >= thresholds.vibrationDanger
+      data.vibrationLevel >= (thresholds.vibrationDanger * 2.0)
     ) {
       newStatus = 'bahaya';
       sirenActive = true;
@@ -186,14 +186,15 @@ class TelemetryService {
       pitchDev >= thresholds.tiltWarning ||
       rollDev >= thresholds.tiltWarning ||
       data.rainfallRate >= thresholds.rainWarning ||
-      data.soilMoisture >= thresholds.soilMoistureWarning
+      data.soilMoisture >= thresholds.soilMoistureWarning ||
+      data.vibrationLevel >= thresholds.vibrationDanger
     ) {
       newStatus = 'siaga';
       sirenActive = false;
       stroboActive = false;
       alarmTriggered = true;
-      triggerCause = sensorData.alarmReason || 'Kemiringan / Curah Hujan / Kelembapan Melebihi Batas Siaga [Relay Lapangan OFF]';
-      triggerValue = `Pitch: ${data.pitchAngle}°, Hujan: ${data.rainfallRate}mm/h, Kelembapan: ${data.soilMoisture}%`;
+      triggerCause = sensorData.alarmReason || 'Kemiringan / Curah Hujan / Getaran Melebihi Batas Siaga [Relay Lapangan OFF]';
+      triggerValue = `Pitch: ${data.pitchAngle}°, Hujan: ${data.rainfallRate}mm/h, Kelembapan: ${data.soilMoisture}%, Getaran: ${data.vibrationLevel}g`;
     } else if (data.batteryVoltage <= 0.5) {
       // Sensor arus/tegangan INA atau pembagi resistor tidak terbaca / 0V: BUKAN tanda bahaya bencana!
       // Relay sirine & strobo WAJIB OFF, hanya warning visual di web dashboard!
@@ -514,12 +515,12 @@ class TelemetryService {
           let stroboActive = false;
           let triggerCause = 'Semua parameter sensor dalam batas aman';
 
-          if (pitch >= tiltDanger || roll >= tiltDanger || rain >= rainDanger || vib >= vibrationDanger) {
+          if (pitch >= tiltDanger || roll >= tiltDanger || rain >= rainDanger || vib >= (vibrationDanger * 2.0)) {
             newStatus = 'bahaya';
             sirenActive = true;
             stroboActive = true;
             triggerCause = currentNode.alarm_reason || `Pemicu ${sensorKey} (${numVal}) melebihi ambang batas BAHAYA`;
-          } else if (pitch >= tiltWarning || roll >= tiltWarning || rain >= rainWarning || soilM >= soilMoistureWarning) {
+          } else if (pitch >= tiltWarning || roll >= tiltWarning || rain >= rainWarning || soilM >= soilMoistureWarning || vib >= vibrationDanger) {
             newStatus = 'siaga';
             sirenActive = false;
             stroboActive = false;

@@ -291,14 +291,22 @@ SemaphoreHandle_t i2cMutex  = NULL; // Mutex untuk proteksi transaksi hardware I
 SensorDataSnapshot sharedSensors;
 String currentAlarmReason = "Semua parameter sensor dalam batas aman";
 
-// Critical Section untuk ISR Sensor Getaran Digital 801S
+// Critical Section & Debounce Filter untuk ISR Sensor Getaran Digital 801S
 portMUX_TYPE vibMux = portMUX_INITIALIZER_UNLOCKED;
 volatile unsigned long vibPulseCounter = 0;
+// Debounce lockout filter mikrodetik (5000 us = 5 ms)
+// Mengeliminasi bouncing mekanik pegas frekuensi tinggi & derau induksi EMI (relay/WiFi)
+const unsigned long MIN_VIB_PULSE_INTERVAL_US = 5000;
+volatile unsigned long lastVibInterruptMicros = 0;
 
 void IRAM_ATTR onVibrationTriggered() {
-  portENTER_CRITICAL_ISR(&vibMux);
-  vibPulseCounter++;
-  portEXIT_CRITICAL_ISR(&vibMux);
+  unsigned long nowUs = micros();
+  if ((nowUs - lastVibInterruptMicros) >= MIN_VIB_PULSE_INTERVAL_US) {
+    lastVibInterruptMicros = nowUs;
+    portENTER_CRITICAL_ISR(&vibMux);
+    vibPulseCounter++;
+    portEXIT_CRITICAL_ISR(&vibMux);
+  }
 }
 
 // --- SENSOR CURAH HUJAN TIPPING BUCKET (GPIO 10) ---
@@ -1195,9 +1203,12 @@ float readVibrationLevel(unsigned long &rawPulsesOut) {
   portEXIT_CRITICAL(&vibMux);
 
   rawPulsesOut = pulses;
-  // Sensor Getaran Digital 801S:
-  // Ketika diam = 0 pulsa. Saat terjadi getaran tanah, kontak getar menghasilkan rentetan pulsa.
-  float vibG = (float)pulses * 0.05f;
+  // Sensor Getaran Digital 801S (dengan ISR filter lockout 5ms):
+  // - Diam / siaga normal: 0 pulsa (0.00g)
+  // - Senggolan ringan / derau angin tiang: 1 - 3 pulsa (0.02 - 0.06g)
+  // - Getaran sedang / ketukan boks: 4 - 10 pulsa (0.08 - 0.20g)
+  // - Getaran gempa bumi / pergeseran tanah: > 15 - 50+ pulsa (0.30 - 1.00+g)
+  float vibG = (float)pulses * 0.02f;
   if (vibG > 5.0f) vibG = 5.0f;
   return vibG;
 }
@@ -1628,12 +1639,28 @@ void sensorTask(void *pvParameters) {
     // Evaluasi status & deskripsi pemicu alarm berdasarkan ambang batas EEPROM
     String st = "aman";
     String reason = "Semua parameter sensor dalam batas aman";
+    // Evaluasi status getaran dengan Software Persistence Filter (Anti-False Alarm)
+    static int consecutiveVibHits = 0;
+    bool isVibActive = (thresh.vibrationDanger > 0.0f && vib >= thresh.vibrationDanger);
+
+    if (isVibActive) {
+      consecutiveVibHits++;
+    } else {
+      if (consecutiveVibHits > 0) consecutiveVibHits--;
+    }
+
     bool isVibDanger = false;
-    if (thresh.vibrationDanger > 0.0f) {
-      if (thresh.vibrationDanger >= 1.0f) {
-        isVibDanger = (rawVibPulses >= (unsigned long)thresh.vibrationDanger);
+    bool isVibWarning = false;
+
+    if (isVibActive) {
+      // Jika getaran sangat dahsyat (>= 2x ambang bahaya) ATAU getaran konsisten terus berlanjut (>= 2 siklus / >= 4 detik):
+      // Pemicu BAHAYA (Sirine & strobo aktif)
+      if (vib >= (thresh.vibrationDanger * 2.0f) || consecutiveVibHits >= 2) {
+        isVibDanger = true;
       } else {
-        isVibDanger = (vib >= thresh.vibrationDanger);
+        // Lonjakan sesaat awal siklus ke-1 (misal ketukan boks / senggolan tiang / kendaraan lewat):
+        // Masuk status SIAGA (Warning visual di web/telemetri, Relay Sirine & Strobo Lapangan DIJAMIN OFF)
+        isVibWarning = true;
       }
     }
 
@@ -1652,9 +1679,9 @@ void sensorTask(void *pvParameters) {
       reason = "Curah Hujan Ekstrem Bahaya (" + String(rain, 1) + " mm/jam >= Batas " + String(thresh.rainDanger, 1) + " mm/jam)";
     } else if (isVibDanger) {
       st = "bahaya";
-      reason = "Getaran Gempa / Pergerakan Tanah Bahaya (" + String(rawVibPulses) + " pulsa)";
+      reason = "Getaran Gempa / Pergerakan Tanah Bahaya (" + String(vib, 2) + "g / " + String(rawVibPulses) + " pulsa)";
     }
-    // 2. Prioritas Kedua: Evaluasi Kondisi Siaga (Pergeseran Awal / Hujan Lebat / Tanah Jenuh)
+    // 2. Prioritas Kedua: Evaluasi Kondisi Siaga (Pergeseran Awal / Hujan Lebat / Tanah Jenuh / Getaran Awal)
     else if (pitchDev >= thresh.tiltWarning || rollDev >= thresh.tiltWarning) {
       st = "siaga";
       if (pitchDev >= thresh.tiltWarning && rollDev >= thresh.tiltWarning) {
@@ -1673,6 +1700,9 @@ void sensorTask(void *pvParameters) {
     } else if (thresh.soilMoistureTolerance > 0.0f && soil > (thresh.safeSoilMoisture + thresh.soilMoistureTolerance)) {
       st = "siaga";
       reason = "Kelembapan Tanah Melebihi Toleransi Aman (" + String(soil, 1) + "% > " + String(thresh.safeSoilMoisture + thresh.soilMoistureTolerance, 1) + "%)";
+    } else if (isVibWarning) {
+      st = "siaga";
+      reason = "Getaran Sesaat Terdeteksi (" + String(vib, 2) + "g / " + String(rawVibPulses) + " pulsa) [Verifikasi Persistensi, Relay OFF]";
     }
     // 3. Status Baterai & Sensor INA/Divider (HANYA WARNING DI WEB, BUKAN BAHAYA BENCANA, RELAY WAJIB OFF!)
     else if (batt <= 0.5f) {
@@ -2036,7 +2066,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_RAIN_DIGITAL), countTip, FALLING);
   pinMode(PIN_VIB_SIG, INPUT_PULLUP);
   pinMode(PIN_SOIL_ANALOG, INPUT);
-  attachInterrupt(digitalPinToInterrupt(PIN_VIB_SIG), onVibrationTriggered, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_VIB_SIG), onVibrationTriggered, FALLING);
 
   // Diagnostik, Multi-Bus I2C Auto-Scan, & Inisialisasi Seluruh Modul Hardware
   initHardwareOnce();
