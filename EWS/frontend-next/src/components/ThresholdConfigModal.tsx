@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { EWSNode } from '../types';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
@@ -49,15 +49,17 @@ const DEFAULT_THRESHOLDS: EWSNode['thresholds'] = {
   alarmPause: 30,
 };
 
+type FormThresholds = Partial<Record<keyof EWSNode['thresholds'], string | number>>;
+
 export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
   ews,
   isOpen,
   onClose,
   onSave,
 }) => {
-  const [thresholds, setThresholds] = useState<EWSNode['thresholds']>({
+  const [thresholds, setThresholds] = useState<FormThresholds>({
     ...DEFAULT_THRESHOLDS,
-    ...ews.thresholds,
+    ...(ews.thresholds || {}),
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -65,27 +67,63 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [quickCalibToast, setQuickCalibToast] = useState<string | null>(null);
 
+  // Ref untuk mendeteksi pembukaan modal atau pergantian node ID
+  const prevOpenRef = useRef(false);
+  const prevIdRef = useRef(ews.id);
+
   useEffect(() => {
-    if (isOpen && ews?.thresholds) {
+    // Hanya re-populate data formulir saat modal BARU DIBUKA (isOpen transisi false -> true)
+    // atau ketika pengguna berpindah ke node ID EWS yang berbeda.
+    // JANGAN re-populate saat modal sedang aktif dibuka agar input ketikan pengguna tidak tertimpa telemetri WebSocket!
+    const isNewOpen = isOpen && !prevOpenRef.current;
+    const isDifferentNode = isOpen && prevIdRef.current !== ews.id;
+
+    if (isNewOpen || isDifferentNode) {
       setThresholds({
         ...DEFAULT_THRESHOLDS,
-        ...ews.thresholds,
+        ...(ews?.thresholds || {}),
       });
       setSaveError(null);
       setSaveSuccess(false);
       setIsSaving(false);
       setQuickCalibToast(null);
     }
-  }, [isOpen, ews.id, ews.thresholds]);
+
+    prevOpenRef.current = isOpen;
+    prevIdRef.current = ews.id;
+  }, [isOpen, ews.id]);
 
   if (!isOpen) return null;
 
   const handleChange = (key: keyof EWSNode['thresholds'], val: string) => {
-    const num = parseFloat(val);
+    // Simpan string mentah agar pengguna bebas mengetik tanda minus (-), desimal (.), atau backspace tanpa tertimpa atau reset
     setThresholds((prev) => ({
       ...prev,
-      [key]: isNaN(num) ? 0 : num,
+      [key]: val,
     }));
+  };
+
+  // Konversi seluruh nilai form menjadi angka bersih dan terverifikasi
+  const getCleanThresholds = (raw: FormThresholds): EWSNode['thresholds'] => {
+    return {
+      safeTiltPitch: parseFloat(String(raw.safeTiltPitch ?? 0)) || 0,
+      safeTiltRoll: parseFloat(String(raw.safeTiltRoll ?? 0)) || 0,
+      tiltTolerance: Math.max(0.1, parseFloat(String(raw.tiltTolerance ?? 2)) || 2),
+      tiltWarning: Math.max(0.1, parseFloat(String(raw.tiltWarning ?? 5)) || 5),
+      tiltDanger: Math.max(0.1, parseFloat(String(raw.tiltDanger ?? 10)) || 10),
+      rainWarning: Math.max(0, parseFloat(String(raw.rainWarning ?? 20)) || 20),
+      rainDanger: Math.max(0, parseFloat(String(raw.rainDanger ?? 50)) || 50),
+      rainCalibPerTip: Math.max(0.01, parseFloat(String(raw.rainCalibPerTip ?? 0.70)) || 0.70),
+      safeSoilMoisture: Math.max(0, parseFloat(String(raw.safeSoilMoisture ?? 50)) || 50),
+      soilMoistureTolerance: Math.max(0, parseFloat(String(raw.soilMoistureTolerance ?? 15)) || 15),
+      soilMoistureWarning: Math.max(0, parseFloat(String(raw.soilMoistureWarning ?? 75)) || 75),
+      soilAdcDry: parseInt(String(raw.soilAdcDry ?? 3300), 10) || 3300,
+      soilAdcWet: parseInt(String(raw.soilAdcWet ?? 1200), 10) || 1200,
+      vibrationDanger: Math.max(0, parseFloat(String(raw.vibrationDanger ?? 0.25)) || 0.25),
+      batteryLowVoltage: Math.max(0, parseFloat(String(raw.batteryLowVoltage ?? 11.8)) || 11.8),
+      alarmDuration: Math.max(1, parseInt(String(raw.alarmDuration ?? 60), 10) || 60),
+      alarmPause: Math.max(0, parseInt(String(raw.alarmPause ?? 30), 10) || 30),
+    };
   };
 
   // 1-KLIK AMBIL NILAI SENSOR SAAT INI SEBAGAI TITIK AMAN
@@ -102,57 +140,60 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
     }));
 
     setQuickCalibToast(
-      `Nilai acuan posisi aman berhasil diperbarui dari sensor: Pitch=${curPitch}°, Roll=${curRoll}°, Tanah=${curSoil}%`
+      `Nilai acuan posisi aman diserap dari sensor: Pitch=${curPitch > 0 ? `+${curPitch}` : curPitch}°, Roll=${curRoll > 0 ? `+${curRoll}` : curRoll}°, Tanah=${curSoil}%`
     );
     setTimeout(() => setQuickCalibToast(null), 4000);
   };
 
   // EKSEKUSI PENYIMPANAN KE WEBSOCKET & REST API
-  const executeSave = async (targetThresholds: EWSNode['thresholds']) => {
+  const executeSave = async (targetThresholds?: FormThresholds) => {
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
 
     try {
+      const cleanThresholds = getCleanThresholds(targetThresholds || thresholds);
+      setThresholds(cleanThresholds);
+
       // Buat payload ganda (camelCase & shortKey) agar 100% kompatibel dengan Web Server & EEPROM ESP32
       const fullPayload = {
         // CamelCase
-        safeTiltPitch: targetThresholds.safeTiltPitch,
-        safeTiltRoll: targetThresholds.safeTiltRoll,
-        tiltTolerance: targetThresholds.tiltTolerance,
-        tiltWarning: targetThresholds.tiltWarning,
-        tiltDanger: targetThresholds.tiltDanger,
-        rainWarning: targetThresholds.rainWarning,
-        rainDanger: targetThresholds.rainDanger,
-        rainCalibPerTip: targetThresholds.rainCalibPerTip,
-        safeSoilMoisture: targetThresholds.safeSoilMoisture,
-        soilMoistureTolerance: targetThresholds.soilMoistureTolerance,
-        soilMoistureWarning: targetThresholds.soilMoistureWarning,
-        soilAdcDry: targetThresholds.soilAdcDry,
-        soilAdcWet: targetThresholds.soilAdcWet,
-        vibrationDanger: targetThresholds.vibrationDanger,
-        batteryLowVoltage: targetThresholds.batteryLowVoltage,
-        alarmDuration: targetThresholds.alarmDuration ?? 60,
-        alarmPause: targetThresholds.alarmPause ?? 30,
+        safeTiltPitch: cleanThresholds.safeTiltPitch,
+        safeTiltRoll: cleanThresholds.safeTiltRoll,
+        tiltTolerance: cleanThresholds.tiltTolerance,
+        tiltWarning: cleanThresholds.tiltWarning,
+        tiltDanger: cleanThresholds.tiltDanger,
+        rainWarning: cleanThresholds.rainWarning,
+        rainDanger: cleanThresholds.rainDanger,
+        rainCalibPerTip: cleanThresholds.rainCalibPerTip,
+        safeSoilMoisture: cleanThresholds.safeSoilMoisture,
+        soilMoistureTolerance: cleanThresholds.soilMoistureTolerance,
+        soilMoistureWarning: cleanThresholds.soilMoistureWarning,
+        soilAdcDry: cleanThresholds.soilAdcDry,
+        soilAdcWet: cleanThresholds.soilAdcWet,
+        vibrationDanger: cleanThresholds.vibrationDanger,
+        batteryLowVoltage: cleanThresholds.batteryLowVoltage,
+        alarmDuration: cleanThresholds.alarmDuration ?? 60,
+        alarmPause: cleanThresholds.alarmPause ?? 30,
 
         // Format Web Server ESP32 (/api/save_calibration)
-        safePitch: targetThresholds.safeTiltPitch,
-        safeRoll: targetThresholds.safeTiltRoll,
-        tiltTol: targetThresholds.tiltTolerance,
-        tiltWarn: targetThresholds.tiltWarning,
-        tiltDang: targetThresholds.tiltDanger,
-        rainWarn: targetThresholds.rainWarning,
-        rainDang: targetThresholds.rainDanger,
-        rainCalib: targetThresholds.rainCalibPerTip,
-        safeSoil: targetThresholds.safeSoilMoisture,
-        soilTol: targetThresholds.soilMoistureTolerance,
-        soilWarn: targetThresholds.soilMoistureWarning,
-        soilDry: targetThresholds.soilAdcDry,
-        soilWet: targetThresholds.soilAdcWet,
-        vibDang: targetThresholds.vibrationDanger,
-        battLow: targetThresholds.batteryLowVoltage,
-        alarmDur: targetThresholds.alarmDuration ?? 60,
-        alarmPau: targetThresholds.alarmPause ?? 30,
+        safePitch: cleanThresholds.safeTiltPitch,
+        safeRoll: cleanThresholds.safeTiltRoll,
+        tiltTol: cleanThresholds.tiltTolerance,
+        tiltWarn: cleanThresholds.tiltWarning,
+        tiltDang: cleanThresholds.tiltDanger,
+        rainWarn: cleanThresholds.rainWarning,
+        rainDang: cleanThresholds.rainDanger,
+        rainCalib: cleanThresholds.rainCalibPerTip,
+        safeSoil: cleanThresholds.safeSoilMoisture,
+        soilTol: cleanThresholds.soilMoistureTolerance,
+        soilWarn: cleanThresholds.soilMoistureWarning,
+        soilDry: cleanThresholds.soilAdcDry,
+        soilWet: cleanThresholds.soilAdcWet,
+        vibDang: cleanThresholds.vibrationDanger,
+        battLow: cleanThresholds.batteryLowVoltage,
+        alarmDur: cleanThresholds.alarmDuration ?? 60,
+        alarmPau: cleanThresholds.alarmPause ?? 30,
       };
 
       // 1. Siarkan perintah SET_THRESHOLDS via WebSocket langsung ke ESP32
@@ -164,10 +205,10 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
       });
 
       // 2. Simpan ke Backend Database (REST API)
-      await api.updateEwsThresholds(ews.id, targetThresholds);
+      await api.updateEwsThresholds(ews.id, cleanThresholds);
 
       // 3. Update state di parent dashboard
-      onSave(targetThresholds);
+      onSave(cleanThresholds);
 
       setSaveSuccess(true);
       setTimeout(() => {
@@ -187,7 +228,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
     const curRoll  = parseFloat((ews.sensorData?.rollAngle ?? 0).toFixed(2));
     const curSoil  = parseFloat((ews.sensorData?.soilMoisture ?? 0).toFixed(1));
 
-    const updated: EWSNode['thresholds'] = {
+    const updated: FormThresholds = {
       ...thresholds,
       safeTiltPitch: curPitch,
       safeTiltRoll: curRoll,
@@ -208,7 +249,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
 
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
-    executeSave(thresholds);
+    executeSave();
   };
 
   const handleResetDefaults = () => {
@@ -223,9 +264,12 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
   const livePitch = ews.sensorData?.pitchAngle ?? 0;
   const liveRoll  = ews.sensorData?.rollAngle ?? 0;
   const liveSoil  = ews.sensorData?.soilMoisture ?? 0;
-  const pitchDev  = Math.abs(livePitch - (thresholds.safeTiltPitch ?? 0));
-  const rollDev   = Math.abs(liveRoll - (thresholds.safeTiltRoll ?? 0));
-  const soilDev   = Math.abs(liveSoil - (thresholds.safeSoilMoisture ?? 50));
+  const safePitchNum = parseFloat(String(thresholds.safeTiltPitch ?? 0)) || 0;
+  const safeRollNum  = parseFloat(String(thresholds.safeTiltRoll ?? 0)) || 0;
+  const safeSoilNum  = parseFloat(String(thresholds.safeSoilMoisture ?? 50)) || 50;
+  const pitchDev  = Math.abs(livePitch - safePitchNum);
+  const rollDev   = Math.abs(liveRoll - safeRollNum);
+  const soilDev   = Math.abs(liveSoil - safeSoilNum);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
