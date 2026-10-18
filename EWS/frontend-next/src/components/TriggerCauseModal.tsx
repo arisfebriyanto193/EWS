@@ -29,6 +29,13 @@ interface TriggerCauseModalProps {
   onOpenThresholdConfig?: () => void;
 }
 
+const f2 = (val: number | string | undefined | null, fallback = 0): string => {
+  if (val === undefined || val === null || val === '') return fallback.toFixed(2);
+  const num = typeof val === 'number' ? val : parseFloat(String(val));
+  if (isNaN(num)) return fallback.toFixed(2);
+  return num.toFixed(2);
+};
+
 export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
   ews,
   isOpen,
@@ -113,7 +120,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
       : status === 'baterai_lemah'
       ? isBattZeroOrDisconnected
         ? 'Tegangan Baterai / Sensor Daya 0.00V [Peringatan Pemeliharaan Web Saja, Relay Lapangan OFF]'
-        : `Tegangan Baterai Lemah (${sensorData.batteryVoltage.toFixed(2)}V < ${thresholds.batteryLowVoltage}V) [Relay Lapangan OFF]`
+        : `Tegangan Baterai Lemah (${f2(sensorData.batteryVoltage)}V < ${f2(thresholds.batteryLowVoltage)}V) [Relay Lapangan OFF]`
       : 'Semua parameter sensor berada dalam batas normal dan aman');
 
   // Bersihkan teks dari format kurung siku untuk ringkasan utama
@@ -243,7 +250,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                   🛡️ <strong>Catatan Keamanan & Proteksi Sistem:</strong>
                 </p>
                 <p className="leading-relaxed">
-                  Tegangan aki / sensor INA terdeteksi <strong>{sensorData.batteryVoltage.toFixed(2)}V</strong>. Kondisi ini <strong>BUKAN tanda bahaya bencana alam</strong>. Relay sirine dan lampu strobo di lapangan sengaja dinonaktifkan (OFF) agar aki terlindungi dari kerusakan deep discharge dan tidak membunyikan alarm palsu di pemukiman warga.
+                  Tegangan aki / sensor INA terdeteksi <strong>{f2(sensorData.batteryVoltage)}V</strong>. Kondisi ini <strong>BUKAN tanda bahaya bencana alam</strong>. Relay sirine dan lampu strobo di lapangan sengaja dinonaktifkan (OFF) agar aki terlindungi dari kerusakan deep discharge dan tidak membunyikan alarm palsu di pemukiman warga.
                 </p>
               </div>
             )}
@@ -293,16 +300,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
                   <div className="mt-2 flex items-baseline justify-between font-mono">
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
-                      {sensorData.pitchAngle > 0 ? `+${sensorData.pitchAngle}°` : `${sensorData.pitchAngle}°`}
+                      {sensorData.pitchAngle > 0 ? `+${f2(sensorData.pitchAngle)}°` : `${f2(sensorData.pitchAngle)}°`}
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                      Simpangan: {pitchDev.toFixed(2)}°
+                      Simpangan: {f2(pitchDev)}°
                     </span>
                   </div>
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Aman: {safePitch > 0 ? `+${safePitch}` : safePitch}° (±{thresholds.tiltTolerance ?? 2}°) &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
+                  Aman: {safePitch > 0 ? `+${f2(safePitch)}` : f2(safePitch)}° (±{f2(thresholds.tiltTolerance ?? 2)}°) &bull; Siaga: {f2(thresholds.tiltWarning)}° &bull; Bahaya: {f2(thresholds.tiltDanger)}°
                 </div>
               </div>
 
@@ -337,16 +344,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
                   <div className="mt-2 flex items-baseline justify-between font-mono">
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
-                      {sensorData.rollAngle > 0 ? `+${sensorData.rollAngle}°` : `${sensorData.rollAngle}°`}
+                      {sensorData.rollAngle > 0 ? `+${f2(sensorData.rollAngle)}°` : `${f2(sensorData.rollAngle)}°`}
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                      Simpangan: {rollDev.toFixed(2)}°
+                      Simpangan: {f2(rollDev)}°
                     </span>
                   </div>
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Aman: {safeRoll > 0 ? `+${safeRoll}` : safeRoll}° (±{thresholds.tiltTolerance ?? 2}°) &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
+                  Aman: {safeRoll > 0 ? `+${f2(safeRoll)}` : f2(safeRoll)}° (±{f2(thresholds.tiltTolerance ?? 2)}°) &bull; Siaga: {f2(thresholds.tiltWarning)}° &bull; Bahaya: {f2(thresholds.tiltDanger)}°
                 </div>
               </div>
 
@@ -381,17 +388,17 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
                   <div className="mt-2 flex items-baseline justify-between font-mono">
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
-                      {sensorData.rainfallRate}{' '}
+                      {f2(sensorData.rainfallRate)}{' '}
                       <span className="text-xs font-normal text-slate-500">mm/jam</span>
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                      Total: {sensorData.rainfallCumulative} mm
+                      Total: {f2(sensorData.rainfallCumulative)} mm
                     </span>
                   </div>
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Siaga: {thresholds.rainWarning} mm/jam &bull; Bahaya: {thresholds.rainDanger} mm/jam
+                  Siaga: {f2(thresholds.rainWarning)} mm/jam &bull; Bahaya: {f2(thresholds.rainDanger)} mm/jam
                 </div>
               </div>
 
@@ -420,16 +427,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
                   <div className="mt-2 flex items-baseline justify-between font-mono">
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
-                      {sensorData.soilMoisture.toFixed(1)}%
+                      {f2(sensorData.soilMoisture)}%
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                      Suhu: {sensorData.soilTemperature ?? 25.2}°C
+                      Suhu: {f2(sensorData.soilTemperature ?? 25.2)}°C
                     </span>
                   </div>
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Aman: {safeSoil}% (±{soilTol}%) &bull; Batas Jenuh: {thresholds.soilMoistureWarning}%
+                  Aman: {f2(safeSoil)}% (±{f2(soilTol)}%) &bull; Batas Jenuh: {f2(thresholds.soilMoistureWarning)}%
                 </div>
               </div>
 
@@ -458,11 +465,11 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
                   <div className="mt-2 flex items-baseline justify-between font-mono">
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
-                      {sensorData.vibrationLevel}{' '}
+                      {f2(sensorData.vibrationLevel)}{' '}
                       <span className="text-xs font-normal text-slate-500">g</span>
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                      Ambang: {thresholds.vibrationDanger}g
+                      Ambang: {f2(thresholds.vibrationDanger)}g
                     </span>
                   </div>
                 </div>
@@ -505,7 +512,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
                   <div className="mt-2 flex items-baseline justify-between font-mono">
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
-                      {sensorData.batteryVoltage.toFixed(2)} V
+                      {f2(sensorData.batteryVoltage)} V
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-purple-300/70 font-sans">
                       {sensorData.batteryVoltage <= 0.5 ? 'Terputus / 0V' : 'Catu Daya Siaga'}
@@ -514,7 +521,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Ambang Bawah: {thresholds.batteryLowVoltage}V &bull; Relay: MATI (OFF)
+                  Ambang Bawah: {f2(thresholds.batteryLowVoltage)}V &bull; Relay: MATI (OFF)
                 </div>
               </div>
 

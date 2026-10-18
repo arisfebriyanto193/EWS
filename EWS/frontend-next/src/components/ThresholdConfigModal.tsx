@@ -51,16 +51,45 @@ const DEFAULT_THRESHOLDS: EWSNode['thresholds'] = {
 
 type FormThresholds = Partial<Record<keyof EWSNode['thresholds'], string | number>>;
 
+const toFixed2 = (val: any, fallback = 0): number => {
+  if (val === undefined || val === null || val === '') return fallback;
+  const num = typeof val === 'number' ? val : parseFloat(String(val));
+  if (isNaN(num)) return fallback;
+  return parseFloat(num.toFixed(2));
+};
+
+const formatInitialThresholds = (src?: Partial<EWSNode['thresholds']>): FormThresholds => {
+  const merged = { ...DEFAULT_THRESHOLDS, ...(src || {}) };
+  return {
+    safeTiltPitch: toFixed2(merged.safeTiltPitch, 0),
+    safeTiltRoll: toFixed2(merged.safeTiltRoll, 0),
+    tiltTolerance: toFixed2(merged.tiltTolerance, 2),
+    tiltWarning: toFixed2(merged.tiltWarning, 5),
+    tiltDanger: toFixed2(merged.tiltDanger, 10),
+    rainWarning: toFixed2(merged.rainWarning, 20),
+    rainDanger: toFixed2(merged.rainDanger, 50),
+    rainCalibPerTip: toFixed2(merged.rainCalibPerTip, 0.70),
+    safeSoilMoisture: toFixed2(merged.safeSoilMoisture, 50),
+    soilMoistureTolerance: toFixed2(merged.soilMoistureTolerance, 15),
+    soilMoistureWarning: toFixed2(merged.soilMoistureWarning, 75),
+    soilAdcDry: Math.round(Number(merged.soilAdcDry ?? 3300)),
+    soilAdcWet: Math.round(Number(merged.soilAdcWet ?? 1200)),
+    vibrationDanger: toFixed2(merged.vibrationDanger, 0.25),
+    batteryLowVoltage: toFixed2(merged.batteryLowVoltage, 11.8),
+    alarmDuration: Math.round(Number(merged.alarmDuration ?? 60)),
+    alarmPause: Math.round(Number(merged.alarmPause ?? 30)),
+  };
+};
+
 export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
   ews,
   isOpen,
   onClose,
   onSave,
 }) => {
-  const [thresholds, setThresholds] = useState<FormThresholds>({
-    ...DEFAULT_THRESHOLDS,
-    ...(ews.thresholds || {}),
-  });
+  const [thresholds, setThresholds] = useState<FormThresholds>(
+    formatInitialThresholds(ews.thresholds)
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -79,10 +108,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
     const isDifferentNode = isOpen && prevIdRef.current !== ews.id;
 
     if (isNewOpen || isDifferentNode) {
-      setThresholds({
-        ...DEFAULT_THRESHOLDS,
-        ...(ews?.thresholds || {}),
-      });
+      setThresholds(formatInitialThresholds(ews?.thresholds));
       setSaveError(null);
       setSaveSuccess(false);
       setIsSaving(false);
@@ -254,7 +280,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
 
   const handleResetDefaults = () => {
     if (confirm('Kembalikan semua nilai kalibrasi dan ambang batas ke setelan pabrik default?')) {
-      setThresholds({ ...DEFAULT_THRESHOLDS });
+      setThresholds(formatInitialThresholds(DEFAULT_THRESHOLDS));
       setQuickCalibToast('Nilai formulir telah direset ke setelan standar pabrik.');
       setTimeout(() => setQuickCalibToast(null), 3000);
     }

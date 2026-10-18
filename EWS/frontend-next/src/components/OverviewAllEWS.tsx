@@ -342,7 +342,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                           Kemiringan
                         </span>
                         <div className="text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white mt-1">
-                          {ews.sensorData.pitchAngle}° / {ews.sensorData.rollAngle}°
+                          {ews.sensorData.pitchAngle?.toFixed(2) ?? '0.00'}° / {ews.sensorData.rollAngle?.toFixed(2) ?? '0.00'}°
                         </div>
                       </div>
 
@@ -352,7 +352,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                           Curah Hujan
                         </span>
                         <div className="text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white mt-1">
-                          {ews.sensorData.rainfallRate} <span className="text-[10px] font-normal text-slate-500">mm</span>
+                          {(ews.sensorData.rainfallRate ?? 0).toFixed(2)} <span className="text-[10px] font-normal text-slate-500">mm</span>
                         </div>
                       </div>
 
@@ -551,7 +551,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                       </div>
                       <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block">{ews.location}</span>
                       <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-purple-900/40 text-[10px] text-purple-700 dark:text-purple-300 font-mono">
-                        Sudut: {ews.sensorData.pitchAngle}° &bull; Hujan: {ews.sensorData.rainfallRate} mm/j
+                        Sudut: {ews.sensorData.pitchAngle?.toFixed(2) ?? '0.00'}° &bull; Hujan: {(ews.sensorData.rainfallRate ?? 0).toFixed(2)} mm/j
                       </div>
                       <span className="text-[9px] text-slate-400 dark:text-purple-400/60 block mt-1">
                         Klik untuk membuka analisis lengkap &rarr;

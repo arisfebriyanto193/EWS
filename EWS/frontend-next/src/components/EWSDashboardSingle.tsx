@@ -576,7 +576,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="bg-slate-50 dark:bg-[#1a162b] p-3 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
               <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70">Sumbu Pitch (X)</span>
               <div className="text-xl sm:text-2xl font-bold font-mono text-purple-800 dark:text-purple-200 mt-0.5">
-                {ews.sensorData.pitchAngle > 0 ? `+${ews.sensorData.pitchAngle}°` : `${ews.sensorData.pitchAngle}°`}
+                {ews.sensorData.pitchAngle > 0 ? `+${ews.sensorData.pitchAngle.toFixed(2)}°` : `${ews.sensorData.pitchAngle.toFixed(2)}°`}
               </div>
               <div className="text-[10px] text-purple-600 dark:text-purple-400 font-mono mt-0.5">
                 Simpangan: {Math.abs(ews.sensorData.pitchAngle - (ews.thresholds.safeTiltPitch ?? 0)).toFixed(2)}°
@@ -589,7 +589,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="bg-slate-50 dark:bg-[#1a162b] p-3 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
               <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70">Sumbu Roll (Y)</span>
               <div className="text-xl sm:text-2xl font-bold font-mono text-purple-800 dark:text-purple-200 mt-0.5">
-                {ews.sensorData.rollAngle > 0 ? `+${ews.sensorData.rollAngle}°` : `${ews.sensorData.rollAngle}°`}
+                {ews.sensorData.rollAngle > 0 ? `+${ews.sensorData.rollAngle.toFixed(2)}°` : `${ews.sensorData.rollAngle.toFixed(2)}°`}
               </div>
               <div className="text-[10px] text-purple-600 dark:text-purple-400 font-mono mt-0.5">
                 Simpangan: {Math.abs(ews.sensorData.rollAngle - (ews.thresholds.safeTiltRoll ?? 0)).toFixed(2)}°
