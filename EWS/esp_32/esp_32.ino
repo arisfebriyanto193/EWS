@@ -1471,6 +1471,12 @@ float readSoilMoisture(int &rawOut, float &voltOut) {
   return percent;
 }
 
+// Buffer 60 menit untuk menghitung laju curah hujan per jam (mm/jam) secara rolling window (standar BMKG/WMO)
+static uint16_t rainTipsInMinute[60] = {0};
+static uint8_t rainCurrentMinuteSlot = 0;
+static unsigned long rainLastMinuteTickMs = 0;
+static unsigned long rainLastRecordedTips = 0;
+
 void readRainSensor(float &rainfallRate, float &cumulative, unsigned long &totalTips) {
   noInterrupts();
   unsigned long currentTips = tipCount;
@@ -1479,27 +1485,55 @@ void readRainSensor(float &rainfallRate, float &cumulative, unsigned long &total
   totalTips = currentTips;
 
   float curahFactor = currentThresholds.rainCalibPerTip > 0.0f ? currentThresholds.rainCalibPerTip : CURAH_PER_TIP;
-  cumulative = currentTips * curahFactor;
-
-  static unsigned long lastRainCalcTime = 0;
-  static unsigned long lastRainTips = 0;
-  static float cachedRainRate = 0.0;
+  cumulative = (float)currentTips * curahFactor;
 
   unsigned long now = millis();
-  unsigned long elapsed = now - lastRainCalcTime;
 
-  if (lastRainCalcTime == 0) {
-    lastRainCalcTime = now;
-    lastRainTips = currentTips;
-  } else if (elapsed >= 10000) {
-    unsigned long deltaTips = (currentTips >= lastRainTips) ? (currentTips - lastRainTips) : 0;
-    lastRainTips = currentTips;
-    lastRainCalcTime = now;
-
-    cachedRainRate = (float)deltaTips * curahFactor * (3600000.0f / (float)elapsed);
+  // Inisialisasi awal saat boot
+  if (rainLastMinuteTickMs == 0) {
+    rainLastMinuteTickMs = now;
+    rainLastRecordedTips = currentTips;
+    memset(rainTipsInMinute, 0, sizeof(rainTipsInMinute));
   }
 
-  rainfallRate = cachedRainRate;
+  // Jika tipCount direset (misal dari kalibrasi atau tombol reset)
+  if (currentTips < rainLastRecordedTips) {
+    memset(rainTipsInMinute, 0, sizeof(rainTipsInMinute));
+    rainLastRecordedTips = currentTips;
+  }
+
+  // Geser slot menit jika 60 detik (60.000 ms) telah berlalu
+  unsigned long elapsedSinceTick = now - rainLastMinuteTickMs;
+  if (elapsedSinceTick >= 60000UL) {
+    unsigned int minutesPassed = elapsedSinceTick / 60000UL;
+    if (minutesPassed >= 60) {
+      memset(rainTipsInMinute, 0, sizeof(rainTipsInMinute));
+      rainCurrentMinuteSlot = 0;
+      rainLastMinuteTickMs = now;
+    } else {
+      for (unsigned int m = 0; m < minutesPassed; m++) {
+        rainCurrentMinuteSlot = (rainCurrentMinuteSlot + 1) % 60;
+        rainTipsInMinute[rainCurrentMinuteSlot] = 0;
+      }
+      rainLastMinuteTickMs += (unsigned long)minutesPassed * 60000UL;
+    }
+  }
+
+  // Akumulasikan tip baru yang masuk ke slot menit aktif
+  if (currentTips > rainLastRecordedTips) {
+    unsigned long delta = currentTips - rainLastRecordedTips;
+    rainTipsInMinute[rainCurrentMinuteSlot] += (uint16_t)delta;
+    rainLastRecordedTips = currentTips;
+  }
+
+  // Hitung total tip dalam 60 menit terakhir (1 jam bergulir)
+  uint32_t tipsInLastHour = 0;
+  for (int i = 0; i < 60; i++) {
+    tipsInLastHour += rainTipsInMinute[i];
+  }
+
+  // Laju curah hujan dalam mm/jam (akumulasi 1 jam terakhir)
+  rainfallRate = (float)tipsInLastHour * curahFactor;
 }
 
 float readVibrationLevel(unsigned long &rawPulsesOut) {
@@ -1900,12 +1934,9 @@ void sensorTask(void *pvParameters) {
     static unsigned long lastPrintTime = 0;
     if (millis() - lastPrintTime >= 2000) {
       lastPrintTime = millis();
-      Serial.print("Jumlah Tip : ");
-      Serial.print(currentRainTips);
-      Serial.print(" | Total Curah Hujan: ");
-      Serial.print(rainCumu, 2);
-      Serial.printf(" mm | Pin GPIO %d: ", PIN_RAIN_DIGITAL);
-      Serial.println(digitalRead(PIN_RAIN_DIGITAL) == HIGH ? "HIGH (Diam/Siaga)" : "LOW (Kontak)");
+      Serial.printf("Jumlah Tip : %lu | Total Curah Hujan: %.2f mm | Laju: %.1f mm/jam | Pin GPIO %d: %s\n",
+                    currentRainTips, rainCumu, rain, PIN_RAIN_DIGITAL,
+                    digitalRead(PIN_RAIN_DIGITAL) == HIGH ? "HIGH (Diam/Siaga)" : "LOW (Kontak)");
     }
 
     // Deteksi penambahan curah hujan untuk pelacakan siklus hujan
@@ -3362,6 +3393,7 @@ void handleApiLive() {
   doc["soil"]     = round(snap.soilMoisture * 10.0) / 10.0;
   doc["soilAdc"]  = raw.soilAdcRaw;
   doc["rain"]     = round(snap.rainRate * 10.0) / 10.0;
+  doc["rainCumu"] = round(snap.rainCumulative * 100.0) / 100.0;
   doc["tips"]     = raw.rainTipsRaw;
   doc["vib"]      = raw.vibPulsesRaw;
   doc["batt"]     = round(snap.batteryVoltage * 100.0) / 100.0;
