@@ -41,10 +41,11 @@ interface TelemetryPoint {
 
 interface EWSDashboardSingleProps {
   ews: EWSNode;
-  currentUser: UserAccount;
+  currentUser: UserAccount | null;
   onUpdateEws: (updated: EWSNode) => void;
   onTriggerAlarm: (ewsId: string, type: 'siaga' | 'bahaya') => void;
   onResetAlarm: (ewsId: string) => void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
@@ -52,6 +53,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   currentUser,
   onUpdateEws,
   onResetAlarm,
+  onRequireLogin,
 }) => {
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [isTelkomselModalOpen, setIsTelkomselModalOpen] = useState(false);
@@ -133,8 +135,40 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
     ews.sensorData.batteryVoltage,
   ]);
 
-  const isSuperadmin = currentUser.role === 'superadmin';
-  const canControl = isSuperadmin || currentUser.assignedEwsId === ews.id;
+  const isSuperadmin = currentUser?.role === 'superadmin';
+  const canControl = isSuperadmin || (currentUser && currentUser.assignedEwsId === ews.id);
+
+  const handleOpenTelegram = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mengonfigurasi Bot Telegram.');
+      return;
+    }
+    setIsTelegramModalOpen(true);
+  };
+
+  const handleOpenTelkomsel = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mengonfigurasi Paket & Kuota Telkomsel.');
+      return;
+    }
+    setIsTelkomselModalOpen(true);
+  };
+
+  const handleOpenThreshold = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mengubah ambang batas sensor geoteknik.');
+      return;
+    }
+    setIsThresholdModalOpen(true);
+  };
+
+  const handleResetClick = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mereset status alarm.');
+      return;
+    }
+    onResetAlarm(ews.id);
+  };
 
   const handleSaveTelegram = (newConfig: TelegramConfig) => {
     onUpdateEws({
@@ -151,6 +185,10 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   };
 
   const handleToggleMute = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk menyenyapkan sirine.');
+      return;
+    }
     onUpdateEws({
       ...ews,
       muted: !ews.muted,
@@ -158,6 +196,10 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   };
 
   const handleTestSiren = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk menguji sirine.');
+      return;
+    }
     setIsSirenTesting(true);
     onUpdateEws({
       ...ews,
@@ -178,6 +220,10 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   const [isRestarting, setIsRestarting] = useState(false);
 
   const handleRestartEsp = async () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk me-restart mikrokontroler ESP32.');
+      return;
+    }
     const confirmRestart = window.confirm(
       `Apakah Anda yakin ingin me-restart mikrokontroler ESP32 (${ews.name} [${ews.id}])?\n\nSistem akan menyimpan data curah hujan harian ke EEPROM dan memulai ulang perangkat secara otomatis.`
     );
@@ -316,7 +362,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setIsTelegramModalOpen(true)}
+              onClick={handleOpenTelegram}
               className="px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
               title="Konfigurasi Bot Telegram Mandiri khusus untuk titik ini"
             >
@@ -328,7 +374,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             </button>
 
             <button
-              onClick={() => setIsTelkomselModalOpen(true)}
+              onClick={handleOpenTelkomsel}
               className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
               title="Monitoring Kuota Internet & Pulsa Telkomsel modem 4G"
             >
@@ -344,7 +390,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             </button>
 
             <button
-              onClick={() => setIsThresholdModalOpen(true)}
+              onClick={handleOpenThreshold}
               className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#1e1933] hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-purple-900/50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Atur ambang batas (threshold) sensor dan simpan ke EEPROM ESP32"
             >
@@ -416,7 +462,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
 
                 {ews.status !== 'aman' && (
                   <button
-                    onClick={() => onResetAlarm(ews.id)}
+                    onClick={handleResetClick}
                     className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -951,7 +997,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
 
             {/* Telkomsel SIM & Quota Card Row */}
             <div
-              onClick={() => setIsTelkomselModalOpen(true)}
+              onClick={handleOpenTelkomsel}
               className="p-2.5 rounded-lg bg-red-50/70 dark:bg-red-950/30 border border-red-200/80 dark:border-red-900/40 hover:border-red-400 dark:hover:border-red-700 transition-all cursor-pointer group"
               title="Klik untuk melihat kuota lengkap atau login Telkomsel"
             >
@@ -1191,8 +1237,8 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         isOpen={isTriggerCauseModalOpen}
         onClose={() => setIsTriggerCauseModalOpen(false)}
         onToggleMute={handleToggleMute}
-        onResetAlarm={onResetAlarm}
-        onOpenThresholdConfig={() => setIsThresholdModalOpen(true)}
+        onResetAlarm={handleResetClick}
+        onOpenThresholdConfig={handleOpenThreshold}
       />
 
       {/* Download Sensor Storage & Telemetry CSV Modal */}

@@ -1,0 +1,7 @@
+# Temporary / lock files
+.~lock.*#
+*.tmp
+.DS_Store
+
+# Telemetry export dumps
+dokumen/*.csv

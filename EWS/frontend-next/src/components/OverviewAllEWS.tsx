@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { EWSNode } from '../types';
+import { EWSNode, UserAccount } from '../types';
 import {
   AlertTriangle,
   ArrowRight,
@@ -27,24 +27,64 @@ import {
 
 interface OverviewAllEWSProps {
   ewsNodes: EWSNode[];
+  currentUser?: UserAccount | null;
   onSelectEws: (ewsId: string) => void;
   onOpenTelegramConfig: (ews: EWSNode) => void;
   onOpenTelkomselConfig?: (ews: EWSNode) => void;
   onAddEwsClick: () => void;
   onDeleteEws?: (ewsId: string) => void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
   ewsNodes,
+  currentUser,
   onSelectEws,
   onOpenTelegramConfig,
   onOpenTelkomselConfig,
   onAddEwsClick,
   onDeleteEws,
+  onRequireLogin,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'aman' | 'siaga' | 'bahaya'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleAddClick = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login sebagai Superadmin untuk mendaftarkan titik pantau EWS baru.');
+      return;
+    }
+    if (currentUser.role !== 'superadmin') {
+      alert('Hanya akun Superadmin yang berwenang menambah titik EWS baru.');
+      return;
+    }
+    onAddEwsClick();
+  };
+
+  const handleDeleteClick = (id: string) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login untuk menghapus titik pantau EWS.');
+      return;
+    }
+    if (onDeleteEws) onDeleteEws(id);
+  };
+
+  const handleTelegramClick = (node: EWSNode) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login untuk mengonfigurasi Bot Telegram.');
+      return;
+    }
+    onOpenTelegramConfig(node);
+  };
+
+  const handleTelkomselClick = (node: EWSNode) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login untuk mengonfigurasi Paket & Kuota Telkomsel.');
+      return;
+    }
+    if (onOpenTelkomselConfig) onOpenTelkomselConfig(node);
+  };
 
   const safeCount = ewsNodes.filter((e) => e.status === 'aman').length;
   const siagaCount = ewsNodes.filter((e) => e.status === 'siaga').length;
@@ -163,7 +203,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
 
             <button
               type="button"
-              onClick={onAddEwsClick}
+              onClick={handleAddClick}
               className="self-start sm:self-auto px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 active:scale-[0.98] text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -263,7 +303,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={onAddEwsClick}
+                onClick={handleAddClick}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -337,7 +377,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         {onDeleteEws && (
                           <button
                             type="button"
-                            onClick={() => onDeleteEws(ews.id)}
+                            onClick={() => handleDeleteClick(ews.id)}
                             className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
                             title={`Hapus ${ews.id}`}
                           >
@@ -411,7 +451,8 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         </span>
                       </div>
                       <button
-                        onClick={() => onOpenTelegramConfig(ews)}
+                        type="button"
+                        onClick={() => handleTelegramClick(ews)}
                         className="text-[11px] font-medium text-purple-700 dark:text-purple-300 hover:underline cursor-pointer"
                       >
                         Konfigurasi Bot
@@ -429,7 +470,8 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         </span>
                       </div>
                       <button
-                        onClick={() => onOpenTelkomselConfig && onOpenTelkomselConfig(ews)}
+                        type="button"
+                        onClick={() => handleTelkomselClick(ews)}
                         className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:underline cursor-pointer"
                       >
                         {ews.telkomselConfig?.isConnected ? 'Cek Kuota' : 'Hubungkan'}

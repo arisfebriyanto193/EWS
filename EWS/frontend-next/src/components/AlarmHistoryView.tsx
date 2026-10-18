@@ -14,14 +14,16 @@ import {
 
 interface AlarmHistoryViewProps {
   logs: AlarmLog[];
-  currentUser: UserAccount;
+  currentUser: UserAccount | null;
   onAcknowledgeLog: (logId: string, note: string, author: string) => void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
   logs,
   currentUser,
   onAcknowledgeLog,
+  onRequireLogin,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -64,7 +66,7 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
 
   const handleConfirmAck = () => {
     if (!selectedLogForAck || !ackNoteInput.trim()) return;
-    onAcknowledgeLog(selectedLogForAck.id, ackNoteInput, currentUser.fullName);
+    onAcknowledgeLog(selectedLogForAck.id, ackNoteInput, currentUser?.fullName || 'Petugas Lapangan');
     setSelectedLogForAck(null);
     setAckNoteInput('');
   };
@@ -206,7 +208,13 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
                     <td className="py-3 px-4 text-right">
                       {!log.acknowledged ? (
                         <button
-                          onClick={() => setSelectedLogForAck(log)}
+                          onClick={() => {
+                            if (!currentUser) {
+                              onRequireLogin?.('Silakan login terlebih dahulu untuk mengonfirmasi dan memberi catatan mitigasi insiden.');
+                              return;
+                            }
+                            setSelectedLogForAck(log);
+                          }}
                           className="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-[11px] font-medium transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                         >
                           Konfirmasi
@@ -244,7 +252,7 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
               <p><strong>Titik:</strong> {selectedLogForAck.ewsName} ({selectedLogForAck.ewsId})</p>
               <p><strong>Pemicu:</strong> {selectedLogForAck.triggerCause}</p>
               <p><strong>Nilai:</strong> {selectedLogForAck.triggerValue}</p>
-              <p><strong>Petugas yang Mengkonfirmasi:</strong> {currentUser.fullName}</p>
+              <p><strong>Petugas yang Mengkonfirmasi:</strong> {currentUser?.fullName || 'Petugas Lapangan'}</p>
             </div>
 
             <div>

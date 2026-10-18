@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { EWSProvider } from "@/context/EWSContext";
+import { AppLayout } from "@/components/AppLayout";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -27,7 +29,11 @@ export default function RootLayout({
     <html lang="id" suppressHydrationWarning className={`${plusJakartaSans.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen bg-[var(--bg-app)] text-[var(--text-app)] antialiased">
         <ThemeProvider>
-          {children}
+          <EWSProvider>
+            <AppLayout>
+              {children}
+            </AppLayout>
+          </EWSProvider>
         </ThemeProvider>
       </body>
     </html>

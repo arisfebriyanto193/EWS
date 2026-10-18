@@ -14,11 +14,12 @@ import {
   Bug,
   GraduationCap,
   AlertTriangle,
+  LogIn,
 } from 'lucide-react';
 import { TriggerCauseModal } from './TriggerCauseModal';
 
 interface HeaderProps {
-  currentUser: UserAccount;
+  currentUser: UserAccount | null;
   activeTab: string;
   activeEws?: EWSNode;
   onOpenMobileMenu: () => void;
@@ -27,6 +28,7 @@ interface HeaderProps {
   globalMute: boolean;
   onToggleMute: () => void;
   onAddEwsClick?: () => void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   globalMute,
   onToggleMute,
   onAddEwsClick,
+  onRequireLogin,
 }) => {
   const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
   const activeTriggerNode = activeSirenNodes[0] || activeEws;
@@ -113,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right: Quick Actions */}
           <div className="flex items-center gap-2">
             {/* Quick Add EWS Button on Overview */}
-            {activeTab === 'overview' && onAddEwsClick && currentUser.role === 'superadmin' && (
+            {activeTab === 'overview' && onAddEwsClick && currentUser?.role === 'superadmin' && (
               <button
                 type="button"
                 onClick={onAddEwsClick}
@@ -121,6 +124,19 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Registrasi Titik Baru</span>
+              </button>
+            )}
+
+            {/* Quick Login Button jika belum login */}
+            {!currentUser && (
+              <button
+                type="button"
+                onClick={() => onRequireLogin?.('Silakan login untuk mengakses konfigurasi dan wewenang petugas.')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 active:scale-[0.98] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span className="hidden xs:inline">Login Petugas</span>
+                <span className="xs:hidden">Login</span>
               </button>
             )}
 

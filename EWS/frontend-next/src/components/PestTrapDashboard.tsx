@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { PestTrapNode, ColorPresetItem } from '../types';
+import { PestTrapNode, ColorPresetItem, UserAccount } from '../types';
 import { api } from '../services/api';
 import {
   Battery,
@@ -25,14 +25,17 @@ import {
   Undo2,
   AlertCircle,
   CheckCircle2,
+  Lock,
 } from 'lucide-react';
 
 interface PestTrapDashboardProps {
   traps: PestTrapNode[];
+  currentUser?: UserAccount | null;
   onUpdateTrap: (updated: PestTrapNode) => void;
   onAddTrap?: (newTrap: Partial<PestTrapNode>) => Promise<any>;
   onDeleteTrap?: (id: string) => Promise<any>;
   onRequestFastTelemetry?: (trapId: string) => Promise<any> | void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 const DEFAULT_PRESETS: ColorPresetItem[] = [
@@ -200,10 +203,12 @@ const BatteryChart: React.FC<{ trapId: string }> = ({ trapId }) => {
 
 export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   traps,
+  currentUser,
   onUpdateTrap,
   onAddTrap,
   onDeleteTrap,
   onRequestFastTelemetry,
+  onRequireLogin,
 }) => {
   const [selectedTrapId, setSelectedTrapId] = useState<string>(traps[0]?.id || 'TRAP-01');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -319,6 +324,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   );
 
   const handleSaveConfig = async () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk menyimpan perubahan konfigurasi perangkap hama.');
+      return;
+    }
     if (!activeTrap) return;
     setIsSaving(true);
     try {
@@ -368,6 +377,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
   // Immediate actuator toggles (for physical tests/maintenance)
   const handleToggleUV = (trap: PestTrapNode) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mengontrol lampu UV LED.');
+      return;
+    }
     onUpdateTrap({
       ...trap,
       uvLedStatus: !trap.uvLedStatus,
@@ -375,6 +388,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   };
 
   const handleToggleBlower = (trap: PestTrapNode) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mengontrol motor blower.');
+      return;
+    }
     onUpdateTrap({
       ...trap,
       blowerStatus: !trap.blowerStatus,
@@ -382,6 +399,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   };
 
   const handleEmptyContainer = (trap: PestTrapNode) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mereset penampung serangga.');
+      return;
+    }
     onUpdateTrap({
       ...trap,
       containerCapacityPercent: 0,
@@ -391,6 +412,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   };
 
   const openEditPresetModal = (idx: number) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk mengubah preset warna LED.');
+      return;
+    }
     const p = presets[idx];
     if (!p) return;
     setEditingPresetIdx(idx);
@@ -401,6 +426,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   };
 
   const handleSavePresetModal = () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk menyimpan preset.');
+      return;
+    }
     if (editingPresetIdx === null) return;
     const updatedPresets = [...presets];
     updatedPresets[editingPresetIdx] = {
@@ -417,6 +446,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
   const handleCreateTrapSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk menambah perangkat perangkap baru.');
+      return;
+    }
     if (!newTrapId.trim() || !newTrapName.trim()) {
       alert('Harap isi ID dan Nama Perangkat');
       return;
@@ -449,6 +482,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   };
 
   const handleDeleteActiveTrap = async () => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login terlebih dahulu untuk menghapus perangkat perangkap.');
+      return;
+    }
     if (!activeTrap) return;
     if (confirm(`Yakin ingin menghapus perangkat ${activeTrap.id} (${activeTrap.name})?`)) {
       if (onDeleteTrap) {

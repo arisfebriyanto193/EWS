@@ -12,6 +12,7 @@ import {
   Moon,
   Sun,
   LogOut,
+  LogIn,
   Clock,
   Shield,
   X,
@@ -22,7 +23,7 @@ import {
 } from 'lucide-react';
 
 interface SidebarProps {
-  currentUser: UserAccount;
+  currentUser: UserAccount | null;
   activeTab: string;
   onSelectTab: (tab: string) => void;
   onLogout: () => void;
@@ -33,6 +34,7 @@ interface SidebarProps {
   onAddEwsClick?: () => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -47,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAddEwsClick,
   isOpenMobile,
   onCloseMobile,
+  onRequireLogin,
 }) => {
   const { theme, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState('');
@@ -68,8 +71,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const isOperator = currentUser.role.startsWith('operator_');
-  const assignedEws = currentUser.assignedEwsId;
+  const isOperator = currentUser ? currentUser.role.startsWith('operator_') : false;
+  const assignedEws = currentUser ? currentUser.assignedEwsId : undefined;
 
   // Hitung alarm belum di-acknowledge
   const pendingAlarmCount = alarmLogs.filter((a) => !a.acknowledged).length;
@@ -253,12 +256,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-1">
             <div className="px-3 flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-purple-300/60 uppercase tracking-wider mb-2">
               <span>Sensor Lereng Multi-Node</span>
-              {onAddEwsClick && currentUser.role === 'superadmin' && (
+              {onAddEwsClick && (
                 <button
                   type="button"
                   onClick={() => {
-                    onAddEwsClick();
-                    onCloseMobile();
+                    if (!currentUser) {
+                      onRequireLogin?.('Silakan login sebagai Superadmin untuk mendaftarkan titik pantau EWS baru.');
+                    } else if (currentUser.role === 'superadmin') {
+                      onAddEwsClick();
+                      onCloseMobile();
+                    } else {
+                      alert('Hanya akun Superadmin yang memiliki wewenang untuk mendaftarkan titik EWS baru.');
+                    }
                   }}
                   className="p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-950/80 text-purple-700 dark:text-purple-300 cursor-pointer transition-colors"
                   title="Tambah Titik EWS Baru"
@@ -377,32 +386,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Footer / User Strip */}
         <div className="p-3 border-t border-slate-200 dark:border-purple-950/40 bg-slate-50 dark:bg-[#0c0a15] shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-purple-200 dark:border-purple-800/80 shrink-0 bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
-                {currentUser.avatarUrl ? (
-                  <img
-                    src={currentUser.avatarUrl}
-                    alt={currentUser.fullName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-xs font-bold text-purple-700 dark:text-purple-300">
-                    {currentUser.fullName.charAt(0)}
-                  </span>
-                )}
-              </div>
-
-              <div className="truncate text-left leading-tight">
-                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                  {currentUser.fullName}
+            {currentUser ? (
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-purple-200 dark:border-purple-800/80 shrink-0 bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
+                  {currentUser.avatarUrl ? (
+                    <img
+                      src={currentUser.avatarUrl}
+                      alt={currentUser.fullName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-xs font-bold text-purple-700 dark:text-purple-300">
+                      {currentUser.fullName.charAt(0)}
+                    </span>
+                  )}
                 </div>
-                <div className="text-[10px] text-purple-700 dark:text-purple-300/80 font-medium truncate">
-                  {isOperator ? `Pos Pantau ${assignedEws}` : 'Peneliti / Superadmin'}
+
+                <div className="truncate text-left leading-tight">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                    {currentUser.fullName}
+                  </div>
+                  <div className="text-[10px] text-purple-700 dark:text-purple-300/80 font-medium truncate">
+                    {isOperator ? `Pos Pantau ${assignedEws}` : 'Peneliti / Superadmin'}
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className="w-8 h-8 rounded-full border border-slate-200 dark:border-purple-900/60 shrink-0 bg-slate-100 dark:bg-purple-950/50 flex items-center justify-center text-slate-500 dark:text-purple-300">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="truncate text-left leading-tight">
+                  <div className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
+                    Tamu / Pengamat
+                  </div>
+                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium truncate">
+                    Mode Monitoring Aktif
+                  </div>
+                </div>
+              </div>
+            )}
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               {/* Dark / Light Toggle */}
               <button
                 onClick={toggleTheme}
@@ -420,14 +445,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </button>
 
-              {/* Logout */}
-              <button
-                onClick={onLogout}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors cursor-pointer"
-                title="Keluar dari sistem"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              {/* Login jika tamu, Logout jika login */}
+              {currentUser ? (
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors cursor-pointer"
+                  title="Keluar dari sistem"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => onRequireLogin?.('Silakan login untuk mengakses konfigurasi dan kendali sistem.')}
+                  className="p-1.5 rounded-lg text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/60 transition-colors cursor-pointer flex items-center gap-1 font-semibold text-xs"
+                  title="Masuk sebagai Petugas"
+                >
+                  <LogIn className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>

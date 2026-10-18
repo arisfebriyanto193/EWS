@@ -17,14 +17,42 @@ import {
 } from 'lucide-react';
 
 interface AccountSettingsViewProps {
-  currentUser: UserAccount;
+  currentUser: UserAccount | null;
   onUpdateUser: (updatedUser: UserAccount) => void;
+  onRequireLogin?: (notice?: string) => void;
 }
 
 export const AccountSettingsView: React.FC<AccountSettingsViewProps> = ({
   currentUser,
   onUpdateUser,
+  onRequireLogin,
 }) => {
+  if (!currentUser) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4 text-center">
+        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-2xl p-8 shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 flex items-center justify-center mx-auto mb-4">
+            <Shield className="w-7 h-7" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+            Akses Konfigurasi Akun Terbatas
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-purple-300/70 max-w-md mx-auto mb-6 leading-relaxed">
+            Anda saat ini berada dalam mode <strong>Monitoring (Tamu)</strong>. Untuk mengelola profil petugas, memperbarui kata sandi, atau mengakses hak administrator, silakan masuk dengan akun resmi Anda.
+          </p>
+          <button
+            type="button"
+            onClick={() => onRequireLogin?.('Silakan login untuk mengakses pengaturan akun petugas.')}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <Lock className="w-4 h-4" />
+            <span>Masuk ke Akun Petugas</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Form profile state
   const [fullName, setFullName] = useState(currentUser.fullName);
   const [department, setDepartment] = useState(currentUser.department || '');
