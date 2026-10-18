@@ -267,6 +267,7 @@ struct SensorDataSnapshot {
   unsigned long uptimeHours;
   char status[16];
   char alarmReason[96];
+  char alarmCode[8];
 };
 
 // Objek Global, EEPROM / NVS & Mutex Handles
@@ -302,6 +303,7 @@ SemaphoreHandle_t sdMutex   = NULL; // Mutex untuk proteksi akses SPI file Micro
 
 SensorDataSnapshot sharedSensors;
 String currentAlarmReason = "Semua parameter sensor dalam batas aman";
+String currentAlarmCode   = "OK";
 
 // Critical Section & Debounce Filter untuk ISR Sensor Getaran Digital 801S
 portMUX_TYPE vibMux = portMUX_INITIALIZER_UNLOCKED;
@@ -675,26 +677,40 @@ void initDS3231() {
 }
 
 void readDS3231Time() {
-  if (!rtcAvailable) return;
-  if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    selectI2CBus(activeRtcSda, activeRtcScl, 100000);
-    Wire.beginTransmission(DS3231_ADDR);
-    Wire.write(0x00);
-    if (Wire.endTransmission() == 0 && Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)7) == 7) {
-      uint8_t sec  = bcd2dec(Wire.read() & 0x7F);
-      uint8_t min  = bcd2dec(Wire.read());
-      uint8_t hour = bcd2dec(Wire.read() & 0x3F);
-      uint8_t dow  = bcd2dec(Wire.read());
-      uint8_t day  = bcd2dec(Wire.read());
-      uint8_t mon  = bcd2dec(Wire.read() & 0x1F);
-      uint16_t yr  = 2000 + bcd2dec(Wire.read());
-      if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31 && hour <= 23 && min <= 59 && sec <= 59) {
+  if (rtcAvailable) {
+    if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      selectI2CBus(activeRtcSda, activeRtcScl, 100000);
+      Wire.beginTransmission(DS3231_ADDR);
+      Wire.write(0x00);
+      if (Wire.endTransmission() == 0 && Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)7) == 7) {
+        uint8_t sec  = bcd2dec(Wire.read() & 0x7F);
+        uint8_t min  = bcd2dec(Wire.read());
+        uint8_t hour = bcd2dec(Wire.read() & 0x3F);
+        uint8_t dow  = bcd2dec(Wire.read());
+        uint8_t day  = bcd2dec(Wire.read());
+        uint8_t mon  = bcd2dec(Wire.read() & 0x1F);
+        uint16_t yr  = 2000 + bcd2dec(Wire.read());
+        if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31 && hour <= 23 && min <= 59 && sec <= 59) {
+          char timeBuf[32];
+          snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
+          rtcTimeString = String(timeBuf);
+        }
+      }
+      xSemaphoreGive(i2cMutex);
+    }
+  } else {
+    // Jika modul DS3231 fisik tidak terpasang, gunakan jam sistem internal ESP32 (disinkronkan via NTP)
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 0)) {
+      int yr = timeinfo.tm_year + 1900;
+      if (yr >= 2024) {
         char timeBuf[32];
-        snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
+        snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+                 yr, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         rtcTimeString = String(timeBuf);
       }
     }
-    xSemaphoreGive(i2cMutex);
   }
 }
 
@@ -747,67 +763,51 @@ const char* ntpServer1        = "pool.ntp.org";
 const char* ntpServer2        = "id.pool.ntp.org";
 const char* ntpServer3        = "time.google.com";
 
-volatile bool ntpSyncAttempted = false; // Flag apakah sinkronisasi awal sudah dijalankan
-volatile bool rtcSyncedWithNTP = false; // Flag apakah RTC berhasil disinkronkan ke NTP
+volatile bool rtcSyncedWithNTP = false; // Flag apakah waktu berhasil disinkronkan ke NTP
 
 void syncRTCWithNTP(bool force) {
-  // Hanya jalankan 1x di awal saat tersambung jaringan & ada internet (kecuali force=true dari command manual)
-  if (!force && ntpSyncAttempted) return;
+  if (!force && rtcSyncedWithNTP) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // Tandai sudah dicoba agar tidak diulang-ulang di loop sensorTask
-  if (!force) {
-    ntpSyncAttempted = true;
+  static unsigned long lastNtpCheck = 0;
+  unsigned long now = millis();
+  if (!force && lastNtpCheck > 0 && (now - lastNtpCheck < 10000UL)) {
+    return; // Coba ulang tiap 10 detik jika belum berhasil
   }
+  lastNtpCheck = now;
 
-  Serial.println("[NTP-RTC] Jaringan WiFi terhubung. Memeriksa ketersediaan koneksi Internet...");
-
-  // Cek apakah benar-benar ada internet dengan resolve DNS server NTP
-  IPAddress resolvedIP;
-  bool hasInternet = (WiFi.hostByName("pool.ntp.org", resolvedIP) == 1) ||
-                     (WiFi.hostByName("time.google.com", resolvedIP) == 1);
-
-  if (!hasInternet) {
-    Serial.println("[INFO] [NTP-RTC] WiFi terhubung tetapi TIDAK ADA AKSES INTERNET (DNS gagal). Melewati sinkronisasi waktu NTP.");
-    return;
+  static bool configTimeStarted = false;
+  if (!configTimeStarted || force) {
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
+    configTimeStarted = true;
+    Serial.println("[NTP] Memulai query sinkronisasi waktu NTP (GMT+7 WIB)...");
   }
-
-  Serial.println("[NTP-RTC] Akses internet terkonfirmasi! Mengambil waktu dari server NTP (1x di awal)...");
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
 
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo, 4000)) { // Tunggu hingga 4 detik
-    Serial.println("[NTP-RTC] Timeout mengambil waktu dari server NTP! Melewati proses sinkronisasi.");
-    return;
-  }
+  if (getLocalTime(&timeinfo, 1500)) {
+    int yr  = timeinfo.tm_year + 1900;
+    int mon = timeinfo.tm_mon + 1;
+    int day = timeinfo.tm_mday;
+    int hr  = timeinfo.tm_hour;
+    int min = timeinfo.tm_min;
+    int sec = timeinfo.tm_sec;
 
-  int yr  = timeinfo.tm_year + 1900;
-  int mon = timeinfo.tm_mon + 1;
-  int day = timeinfo.tm_mday;
-  int hr  = timeinfo.tm_hour;
-  int min = timeinfo.tm_min;
-  int sec = timeinfo.tm_sec;
-
-  if (yr < 2024) {
-    Serial.printf("[NTP-RTC] Tahun NTP belum valid (%d). Melewati proses sinkronisasi.\n", yr);
-    return;
-  }
-
-  if (rtcAvailable) {
-    if (setRTC(yr, mon, day, hr, min, sec)) {
-      readDS3231Time();
+    if (yr >= 2024) {
+      char timeBuf[32];
+      snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hr, min, sec);
+      rtcTimeString = String(timeBuf);
       rtcSyncedWithNTP = true;
-      Serial.printf("[NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB (Sinkronisasi awal selesai)\n", rtcTimeString.c_str());
-    } else {
-      Serial.println("[ERR] [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
+
+      if (rtcAvailable) {
+        if (setRTC(yr, mon, day, hr, min, sec)) {
+          Serial.printf("[NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB\n", rtcTimeString.c_str());
+        } else {
+          Serial.println("[ERR] [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
+        }
+      } else {
+        Serial.printf("[NTP] Waktu sistem internal ESP32 berhasil disinkronkan ke NTP: %s WIB\n", rtcTimeString.c_str());
+      }
     }
-  } else {
-    // Jika modul DS3231 fisik tidak ada, gunakan waktu NTP untuk waktu internal sistem
-    char timeBuf[32];
-    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hr, min, sec);
-    rtcTimeString = String(timeBuf);
-    rtcSyncedWithNTP = true;
-    Serial.printf("[INFO] [NTP-RTC] DS3231 fisik tidak aktif. Waktu NTP disinkronkan ke sistem internal ESP32: %s WIB\n", rtcTimeString.c_str());
   }
 }
 
@@ -1014,10 +1014,21 @@ void readInclinometer(float &pitch, float &roll) {
 // 10. DRIVER STORAGE HYBRID: MICROSD (SPI BUS) & FLASH INTERNAL (SPIFFS)
 // =============================================================================
 
-// Helper format timestamp cadangan jika RTC DS3231 belum tersinkron
+// Helper format timestamp: prioritaskan RTC DS3231 / NTP, fallback waktu sejak boot
 String getLogTimeString() {
-  if (rtcAvailable && rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--") {
+  if (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--" && rtcTimeString.length() >= 19) {
     return rtcTimeString;
+  }
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo, 0)) {
+    int yr = timeinfo.tm_year + 1900;
+    if (yr >= 2024) {
+      char buf[32];
+      snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
+               yr, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      return String(buf);
+    }
   }
   unsigned long s = millis() / 1000;
   unsigned long m = (s % 3600) / 60;
@@ -1202,15 +1213,15 @@ void initSPIFFS() {
 }
 
 // Pencatatan kejadian abnormalitas lokal (Hybrid: MicroSD jika ada, fallback Flash Internal SPIFFS)
-void logEventToSD(const char* status, const char* reason, float pitch, float roll, float rain, float soil, float batt) {
+void logEventToSD(const char* status, const char* errCode, float pitch, float roll, float rain, float soil, float batt) {
   if (sdAvailable) {
     if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
       File f = SD.open("/ews_log.csv", FILE_APPEND);
       if (f) {
-        f.printf("%s,%s,\"%s\",%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
+        f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
                  getLogTimeString().c_str(),
                  status ? status : "-",
-                 reason ? reason : "-",
+                 errCode ? errCode : "OK",
                  pitch, roll, rain, soil, batt,
                  sirenActive ? 1 : 0, stroboActive ? 1 : 0);
         f.close();
@@ -1220,10 +1231,10 @@ void logEventToSD(const char* status, const char* reason, float pitch, float rol
   } else if (spiffsAvailable) {
     File f = SPIFFS.open("/ews_log.csv", FILE_APPEND);
     if (f) {
-      f.printf("%s,%s,\"%s\",%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
+      f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
                getLogTimeString().c_str(),
                status ? status : "-",
-               reason ? reason : "-",
+               errCode ? errCode : "OK",
                pitch, roll, rain, soil, batt,
                sirenActive ? 1 : 0, stroboActive ? 1 : 0);
       f.close();
@@ -1236,13 +1247,13 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                               float rain, float rainCumu, unsigned long tips,
                               float vib, unsigned long vibPulses,
                               float batt, int battMa, int solar,
-                              const char* status, const char* reason) {
+                              const char* status, const char* errCode) {
   if (sdAvailable) {
     if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
       checkAndPruneSDCard();
       File f = SD.open("/ews_telemetry.csv", FILE_APPEND);
       if (f) {
-        f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.2f,%lu,%.1f,%d,%.2f,%lu,%.2f,%d,%d,%d,%d,\"%s\"\n",
+        f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.2f,%lu,%.1f,%d,%.2f,%lu,%.2f,%d,%d,%d,%d,%s\n",
                  getLogTimeString().c_str(),
                  ewsId.c_str(),
                  status ? status : "aman",
@@ -1252,10 +1263,10 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                  vib, vibPulses,
                  batt, battMa, solar,
                  sirenActive ? 1 : 0, stroboActive ? 1 : 0,
-                 reason ? reason : "-");
+                 errCode ? errCode : "OK");
         f.close();
-        Serial.printf("[SD CARD] Telemetri 5-menit berhasil direkam ke MicroSD (%s | Status: %s)\n",
-                      getLogTimeString().c_str(), status ? status : "aman");
+        Serial.printf("[SD CARD] Telemetri 5-menit berhasil direkam ke MicroSD (%s | Status: %s | Kode: %s)\n",
+                      getLogTimeString().c_str(), status ? status : "aman", errCode ? errCode : "OK");
       }
       xSemaphoreGive(sdMutex);
     }
@@ -1263,7 +1274,7 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
     checkAndPruneSPIFFS();
     File f = SPIFFS.open("/ews_telemetry.csv", FILE_APPEND);
     if (f) {
-      f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.2f,%lu,%.1f,%d,%.2f,%lu,%.2f,%d,%d,%d,%d,\"%s\"\n",
+      f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.2f,%lu,%.1f,%d,%.2f,%lu,%.2f,%d,%d,%d,%d,%s\n",
                getLogTimeString().c_str(),
                ewsId.c_str(),
                status ? status : "aman",
@@ -1273,10 +1284,10 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                vib, vibPulses,
                batt, battMa, solar,
                sirenActive ? 1 : 0, stroboActive ? 1 : 0,
-               reason ? reason : "-");
+               errCode ? errCode : "OK");
       f.close();
-      Serial.printf("[SPIFFS] SD Card tidak terdeteksi. Telemetri 5-menit direkam ke Flash Internal (%s | Status: %s)\n",
-                    getLogTimeString().c_str(), status ? status : "aman");
+      Serial.printf("[SPIFFS] SD Card tidak terdeteksi. Telemetri 5-menit direkam ke Flash Internal (%s | Status: %s | Kode: %s)\n",
+                    getLogTimeString().c_str(), status ? status : "aman", errCode ? errCode : "OK");
     }
   }
 }
@@ -1812,7 +1823,7 @@ void wsTask(void *pvParameters) {
   Serial.println("[FreeRTOS] wsTask berjalan pada Core 0 (Dedicated Network)");
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
-      if (!ntpSyncAttempted) {
+      if (!rtcSyncedWithNTP) {
         syncRTCWithNTP();
       }
       if (wsMutex != NULL && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -1898,6 +1909,7 @@ void sensorTask(void *pvParameters) {
     // Evaluasi status & deskripsi pemicu alarm berdasarkan ambang batas EEPROM
     String st = "aman";
     String reason = "Semua parameter sensor dalam batas aman";
+    String errCode = "OK";
     // Evaluasi status getaran dengan Software Persistence Filter (Anti-False Alarm)
     static int consecutiveVibHits = 0;
     bool isVibActive = (thresh.vibrationDanger > 0.0f && vib >= thresh.vibrationDanger);
@@ -1926,6 +1938,7 @@ void sensorTask(void *pvParameters) {
     // 1. Prioritas Utama: Evaluasi Bahaya Imminent (Longsor / Banjir Bandang / Gempa)
     if (pitchDev >= thresh.tiltDanger || rollDev >= thresh.tiltDanger) {
       st = "bahaya";
+      errCode = "A2"; // A2: Kemiringan Gyro Ekstrem (Bahaya)
       if (pitchDev >= thresh.tiltDanger && rollDev >= thresh.tiltDanger) {
         reason = "Kemiringan Pitch & Roll Ekstrem (P:" + String(pitchDev, 1) + "°, R:" + String(rollDev, 1) + "° >= " + String(thresh.tiltDanger, 1) + "°)";
       } else if (pitchDev >= thresh.tiltDanger) {
@@ -1935,14 +1948,17 @@ void sensorTask(void *pvParameters) {
       }
     } else if (rain >= thresh.rainDanger) {
       st = "bahaya";
+      errCode = "A4"; // A4: Curah Hujan Ekstrem (Bahaya)
       reason = "Curah Hujan Ekstrem Bahaya (" + String(rain, 1) + " mm/jam >= Batas " + String(thresh.rainDanger, 1) + " mm/jam)";
     } else if (isVibDanger) {
       st = "bahaya";
+      errCode = "A6"; // A6: Getaran Gempa / Pergerakan Tanah (Bahaya)
       reason = "Getaran Gempa / Pergerakan Tanah Bahaya (" + String(vib, 2) + "g / " + String(rawVibPulses) + " pulsa)";
     }
     // 2. Prioritas Kedua: Evaluasi Kondisi Siaga (Pergeseran Awal / Hujan Lebat / Tanah Jenuh / Getaran Awal)
     else if (pitchDev >= thresh.tiltWarning || rollDev >= thresh.tiltWarning) {
       st = "siaga";
+      errCode = "A3"; // A3: Kemiringan Gyro Siaga
       if (pitchDev >= thresh.tiltWarning && rollDev >= thresh.tiltWarning) {
         reason = "Kemiringan Pitch & Roll Siaga (P:" + String(pitchDev, 1) + "°, R:" + String(rollDev, 1) + "° >= " + String(thresh.tiltWarning, 1) + "°)";
       } else if (pitchDev >= thresh.tiltWarning) {
@@ -1952,23 +1968,29 @@ void sensorTask(void *pvParameters) {
       }
     } else if (rain >= thresh.rainWarning) {
       st = "siaga";
+      errCode = "A5"; // A5: Curah Hujan Lebat Siaga
       reason = "Curah Hujan Lebat Siaga (" + String(rain, 1) + " mm/jam >= Batas " + String(thresh.rainWarning, 1) + " mm/jam)";
     } else if (soil >= thresh.soilMoistureWarning) {
       st = "siaga";
+      errCode = "A7"; // A7: Kelembapan Tanah Kritis / Jenuh Air
       reason = "Kelembapan Tanah Kritis / Jenuh Air (" + String(soil, 1) + "% >= Batas " + String(thresh.soilMoistureWarning, 1) + "%)";
     } else if (thresh.soilMoistureTolerance > 0.0f && soil > (thresh.safeSoilMoisture + thresh.soilMoistureTolerance)) {
       st = "siaga";
+      errCode = "A7"; // A7: Kelembapan Tanah Melebihi Toleransi
       reason = "Kelembapan Tanah Melebihi Toleransi Aman (" + String(soil, 1) + "% > " + String(thresh.safeSoilMoisture + thresh.soilMoistureTolerance, 1) + "%)";
     } else if (isVibWarning) {
       st = "siaga";
+      errCode = "A8"; // A8: Getaran Sesaat Terdeteksi
       reason = "Getaran Sesaat Terdeteksi (" + String(vib, 2) + "g / " + String(rawVibPulses) + " pulsa) [Verifikasi Persistensi, Relay OFF]";
     }
     // 3. Status Baterai & Sensor INA/Divider (HANYA WARNING DI WEB, BUKAN BAHAYA BENCANA, RELAY WAJIB OFF!)
     else if (batt <= 0.5f) {
       st = "baterai_lemah";
+      errCode = "A1"; // A1: Sensor Daya 0V / Baterai Terputus
       reason = "Tegangan Baterai / Sensor Daya 0.00V [Warning Web Saja, Relay OFF]";
     } else if (batt < thresh.batteryLowVoltage) {
       st = "baterai_lemah";
+      errCode = "A1"; // A1: Tegangan Aki Lemah
       if (inaAvailable) {
         reason = "Tegangan Aki Lemah INA (" + String(batt, 2) + "V < " + String(thresh.batteryLowVoltage, 2) + "V) [Warning Web Saja, Relay OFF]";
       } else {
@@ -1976,6 +1998,7 @@ void sensorTask(void *pvParameters) {
       }
     } else {
       st = "aman";
+      errCode = "OK";
       reason = "Semua parameter sensor dalam batas aman";
     }
 
@@ -1986,8 +2009,8 @@ void sensorTask(void *pvParameters) {
     // Kontrol relay otomatis berdasarkan status sensor & siklus timer sirine (Autonomous Offline Protection)
     if (st == "bahaya") {
       if (currentStatus != "bahaya") {
-        logEventToSD("BAHAYA", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("[ALARM BAHAYA] Penyebab: %s\n", reason.c_str());
+        logEventToSD("BAHAYA", errCode.c_str(), pitch, roll, rain, soil, batt);
+        Serial.printf("[ALARM BAHAYA] Kode: %s | Penyebab: %s\n", errCode.c_str(), reason.c_str());
       }
 
       unsigned long curMs = millis();
@@ -2003,8 +2026,8 @@ void sensorTask(void *pvParameters) {
           alarmCycleState = ALARM_STATE_SOUNDING;
           alarmSoundingStartTime = curMs;
           setRelaySirine(true);
-          Serial.printf("[ALARM TANAH] Gerakan tanah/gempa bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s). Penyebab: %s\n",
-                        thresh.alarmDuration, thresh.alarmPause, reason.c_str());
+          Serial.printf("[ALARM TANAH] Gerakan tanah/gempa bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s). Kode: %s | Penyebab: %s\n",
+                        thresh.alarmDuration, thresh.alarmPause, errCode.c_str(), reason.c_str());
         }
         else if (alarmCycleState == ALARM_STATE_SOUNDING) {
           if (durationMs > 0 && (curMs - alarmSoundingStartTime >= durationMs)) {
@@ -2039,8 +2062,8 @@ void sensorTask(void *pvParameters) {
             alarmSoundingStartTime = curMs;
             setRelaySirine(true);
             setRelayStrobo(true);
-            Serial.printf("[ALARM HUJAN] Curah hujan tinggi terdeteksi! Sirine dibunyikan 1x (Durasi: %u s). Penyebab: %s\n",
-                          thresh.alarmDuration, reason.c_str());
+            Serial.printf("[ALARM HUJAN] Curah hujan tinggi terdeteksi! Sirine dibunyikan 1x (Durasi: %u s). Kode: %s | Penyebab: %s\n",
+                          thresh.alarmDuration, errCode.c_str(), reason.c_str());
           }
           else if (alarmCycleState == ALARM_STATE_SOUNDING) {
             if (durationMs > 0 && (curMs - alarmSoundingStartTime >= durationMs)) {
@@ -2067,8 +2090,8 @@ void sensorTask(void *pvParameters) {
       if (sirenActive) setRelaySirine(false);
       if (stroboActive) setRelayStrobo(false);
       if (currentStatus != "siaga") {
-        logEventToSD("SIAGA", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("[ALARM SIAGA] %s -> Relay Lapangan MATI (Hanya Peringatan Web & Telegram)\n", reason.c_str());
+        logEventToSD("SIAGA", errCode.c_str(), pitch, roll, rain, soil, batt);
+        Serial.printf("[ALARM SIAGA] [%s] %s -> Relay Lapangan MATI (Hanya Peringatan Web & Telegram)\n", errCode.c_str(), reason.c_str());
       }
     } else if (st == "baterai_lemah") {
       alarmCycleState = ALARM_STATE_IDLE;
@@ -2076,15 +2099,15 @@ void sensorTask(void *pvParameters) {
       if (sirenActive) setRelaySirine(false);
       if (stroboActive) setRelayStrobo(false);
       if (currentStatus != "baterai_lemah") {
-        logEventToSD("BATERAI_LEMAH", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("[INFO] [WARNING WEB] %s -> Relay dipastikan MATI (OFF)\n", reason.c_str());
+        logEventToSD("BATERAI_LEMAH", errCode.c_str(), pitch, roll, rain, soil, batt);
+        Serial.printf("[INFO] [WARNING WEB] [%s] %s -> Relay dipastikan MATI (OFF)\n", errCode.c_str(), reason.c_str());
       }
     } else if (st == "aman") {
       alarmCycleState = ALARM_STATE_IDLE;
       if (sirenActive) setRelaySirine(false);
       if (stroboActive) setRelayStrobo(false);
       if (currentStatus == "bahaya" || currentStatus == "siaga" || currentStatus == "baterai_lemah") {
-        logEventToSD("AMAN_KEMBALI", reason.c_str(), pitch, roll, rain, soil, batt);
+        logEventToSD("AMAN_KEMBALI", "OK", pitch, roll, rain, soil, batt);
         Serial.println("[SENSOR] Kondisi normal kembali. Sirine & strobo dinonaktifkan.");
       }
     }
@@ -2107,8 +2130,10 @@ void sensorTask(void *pvParameters) {
       sharedSensors.uptimeHours = millis() / 3600000;
       strncpy(sharedSensors.status, st.c_str(), sizeof(sharedSensors.status) - 1);
       strncpy(sharedSensors.alarmReason, reason.c_str(), sizeof(sharedSensors.alarmReason) - 1);
+      strncpy(sharedSensors.alarmCode, errCode.c_str(), sizeof(sharedSensors.alarmCode) - 1);
       currentStatus = st;
       currentAlarmReason = reason;
+      currentAlarmCode = errCode;
 
       // Update nilai mentah sensor untuk Web Server Kalibrasi
       sharedRawSensors.pitchRaw        = pitch;
@@ -2127,6 +2152,11 @@ void sensorTask(void *pvParameters) {
     // Update layar OLED
     updateOledDisplay(pitch, roll, soil, rain, batt);
 
+    // Sinkronisasi waktu NTP jika WiFi terhubung dan waktu belum sinkron
+    if (!rtcSyncedWithNTP && WiFi.status() == WL_CONNECTED) {
+      syncRTCWithNTP();
+    }
+
     // Rekam Telemetri Berkala secara HYBRID (MicroSD / SPIFFS Internal) setiap 5 menit (300.000 ms)
     static unsigned long lastSdPeriodicLogTime = 0;
     if (sdAvailable || spiffsAvailable) {
@@ -2137,7 +2167,7 @@ void sensorTask(void *pvParameters) {
                                  rain, rainCumu, currentRainTips,
                                  vib, rawVibPulses,
                                  batt, battMa, solar,
-                                 st.c_str(), reason.c_str());
+                                 st.c_str(), errCode.c_str());
       }
     }
 
@@ -2216,8 +2246,9 @@ void telemetryTask(void *pvParameters) {
         p["inaAvailable"]       = (inaAvailable || data.batteryVoltage > 0.5f);
         p["status"]             = data.status;
         p["alarmReason"]        = data.alarmReason;
+        p["alarmCode"]          = data.alarmCode;
         p["relayAlarmState"]    = (sirenActive || stroboActive) ? "HIGH" : "LOW";
-        p["rtcTime"]            = rtcAvailable ? rtcTimeString : "N/A";
+        p["rtcTime"]            = (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--") ? rtcTimeString : getLogTimeString();
         p["sdCard"]             = sdAvailable ? "OK" : "NONE";
 
         // Konfigurasi Ambang Batas & Titik Aman EEPROM ESP32
@@ -2946,7 +2977,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </button>
     </div>
     <p class="helper-text" style="margin-top: 0.65rem;">
-      💡 Data sensor otomatis direkam tiap 5 menit ke MicroSD. Bila MicroSD tidak ada/rusak, sistem otomatis beralih merekam ke Flash Internal (SPIFFS). Jika memori hampir penuh, sistem cerdas akan otomatis membuang data terlama (FIFO Auto-Pruning).
+      💡 Data sensor otomatis direkam tiap 5 menit ke MicroSD / Flash Internal (SPIFFS). Jika memori hampir penuh, sistem cerdas otomatis memangkas data terlama (FIFO).<br>
+      📌 <b>Daftar Kode Anomali CSV:</b> <code>OK</code>=Aman | <code>A1</code>=Baterai Lemah/0V | <code>A2</code>=Kemiringan Bahaya | <code>A3</code>=Kemiringan Siaga | <code>A4</code>=Hujan Bahaya | <code>A5</code>=Hujan Siaga | <code>A6</code>=Getaran Bahaya | <code>A7</code>=Tanah Jenuh | <code>A8</code>=Getaran Sesaat.
     </p>
   </div>
 
@@ -3045,7 +3077,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const badge = document.getElementById('statusBadge');
         const txtSt = document.getElementById('txtStatus');
         badge.className = 'badge status-' + d.status;
-        txtSt.innerText = d.status.toUpperCase();
+        txtSt.innerText = (d.alarmCode && d.alarmCode !== "OK") ? (d.status.toUpperCase() + ' (' + d.alarmCode + ')') : d.status.toUpperCase();
       })
       .catch(e => console.error("Poll error:", e));
   }
@@ -3253,9 +3285,10 @@ void handleApiLive() {
   doc["vib"]      = raw.vibPulsesRaw;
   doc["batt"]     = round(snap.batteryVoltage * 100.0) / 100.0;
   doc["solar"]    = snap.solarCurrent;
-  doc["rtc"]      = snap.uptimeHours > 0 ? (rtcAvailable ? rtcTimeString : "Aktif") : (rtcAvailable ? rtcTimeString : "N/A");
+  doc["rtc"]      = (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--") ? rtcTimeString : getLogTimeString();
   doc["status"]      = currentStatus;
   doc["alarmReason"] = currentAlarmReason;
+  doc["alarmCode"]   = currentAlarmCode;
   doc["inaAvailable"] = (inaAvailable || snap.batteryVoltage > 0.5f);
   doc["inaType"]      = inaAvailable ? (isINA219 ? "INA219" : "INA226") : (snap.batteryVoltage > 0.5f ? "DIVIDER_11_4" : "NONE");
   doc["relay"]       = (sirenActive || stroboActive) ? "ON" : "OFF";
