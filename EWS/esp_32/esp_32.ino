@@ -1084,7 +1084,7 @@ void checkAndPruneSDCard() {
   }
 }
 
-// Auto-Pruning FIFO Flash Internal (SPIFFS 1MB): jika sisa ruang < 100KB atau file > 400KB
+// Auto-Pruning FIFO Flash Internal SPIFFS: adaptif sesuai ukuran partisi (ruang sisa < 15% atau file > 70%)
 void checkAndPruneSPIFFS() {
   if (!spiffsAvailable) return;
 
@@ -1097,7 +1097,13 @@ void checkAndPruneSPIFFS() {
   size_t fileSize = checkFile.size();
   checkFile.close();
 
-  if (fileSize > 409600 || freeB < 102400) {
+  // Pruning dinamis: jika sisa ruang < 15% total atau file melebihi 70% total
+  uint64_t freeThreshold = (total > 0) ? (total * 15 / 100) : 102400;
+  uint64_t sizeThreshold = (total > 0) ? (total * 70 / 100) : 409600;
+  if (freeThreshold < 102400) freeThreshold = 102400;
+  if (sizeThreshold < 409600) sizeThreshold = 409600;
+
+  if (fileSize > sizeThreshold || freeB < freeThreshold) {
     Serial.println("[SPIFFS] Flash internal SPIFFS hampir penuh. Menghapus data terlama (Auto-Prune FIFO)...");
     File src = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
     if (!src) return;
