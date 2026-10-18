@@ -920,3 +920,59 @@ exports.deleteTelkomselConfig = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * Unduh rekaman data sensor (.CSV) dari penyimpanan ESP32 (MicroSD / Internal SPIFFS)
+ * dengan fallback otomatis ke database server jika alat offline.
+ */
+exports.downloadDeviceStorage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { source = '' } = req.query; // 'sd', 'internal', 'spiffs', or '' (auto)
+    const pool = db.getPool();
+
+    let ipAddress = null;
+    if (pool && db.getIsConnected()) {
+      const [rows] = await pool.query('SELECT ip_address FROM ews_nodes WHERE id = ?', [id]);
+      if (rows.length > 0 && rows[0].ip_address) {
+        ipAddress = rows[0].ip_address;
+      }
+    }
+
+    // Jika alamat IP perangkat tersedia dan valid
+    if (ipAddress && ipAddress !== '0.0.0.0' && ipAddress !== '127.0.0.1') {
+      const queryParam = source ? `?source=${encodeURIComponent(source)}` : '';
+      const espUrl = `http://${ipAddress}/download_telemetry${queryParam}`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 detik timeout
+
+      try {
+        const espRes = await fetch(espUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (espRes.ok) {
+          const contentType = espRes.headers.get('content-type') || 'text/csv; charset=utf-8';
+          const suffix = source ? `_${source}` : '';
+          const filename = `telemetri_${id}${suffix}.csv`;
+
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+          const arrayBuffer = await espRes.arrayBuffer();
+          return res.status(200).send(Buffer.from(arrayBuffer));
+        }
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        console.warn(`[STORAGE PROXY] Tidak dapat mengunduh langsung dari ESP32 (${ipAddress}): ${fetchErr.message}. Beralih ke database server.`);
+      }
+    }
+
+    // Fallback: Jika ESP32 tidak dapat diakses langsung via IP, unduh dari database server
+    return res.redirect(`/api/logs/export/csv?ewsId=${id}`);
+  } catch (error) {
+    console.error('Error in downloadDeviceStorage:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+

@@ -372,4 +372,16 @@ export const api = {
       return [];
     }
   },
+
+  // 6. Download Storage & Telemetry CSV
+  getDownloadStorageUrl(id: string, source: 'sd' | 'internal' | 'auto' = 'auto'): string {
+    const q = source && source !== 'auto' ? `?source=${source}` : '';
+    return `${API_BASE}/ews/${id}/download-storage${q}`;
+  },
+
+  getExportCsvUrl(ewsId?: string): string {
+    const q = ewsId ? `?ewsId=${encodeURIComponent(ewsId)}` : '';
+    return `${API_BASE}/logs/export/csv${q}`;
+  },
 };
+

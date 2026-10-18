@@ -10,6 +10,7 @@ import {
   Compass,
   Copy,
   Check,
+  Download,
   Droplets,
   Layers,
   MapPin,
@@ -149,14 +150,26 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onAddEwsClick}
-            className="self-start sm:self-auto px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 active:scale-[0.98] text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Titik EWS</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/api/logs/export/csv"
+              download
+              className="self-start sm:self-auto px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-purple-950/60 hover:bg-slate-200 dark:hover:bg-purple-900/80 text-slate-700 dark:text-purple-200 border border-slate-300 dark:border-purple-800 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              title="Ekspor seluruh rekaman telemetri sensor semua stasiun (.CSV)"
+            >
+              <Download className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <span>Ekspor Semua CSV</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={onAddEwsClick}
+              className="self-start sm:self-auto px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 active:scale-[0.98] text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Titik EWS</span>
+            </button>
+          </div>
         </div>
 
         {/* Interactive Filter & Search Bar */}

@@ -27,6 +27,7 @@ router.post('/ews/:id/telkomsel/request-otp', ewsController.requestTelkomselOtp)
 router.post('/ews/:id/telkomsel/verify-otp', ewsController.verifyTelkomselOtp);
 router.post('/ews/:id/telkomsel/refresh', ewsController.refreshTelkomselQuota);
 router.delete('/ews/:id/telkomsel', ewsController.deleteTelkomselConfig);
+router.get('/ews/:id/download-storage', ewsController.downloadDeviceStorage);
 
 // 3. Pest Trap Routes
 router.get('/traps', trapController.getAllTraps);

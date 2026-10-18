@@ -12,6 +12,7 @@ import {
   Droplets,
   MapPin,
   Radio,
+  Download,
   RefreshCw,
   Send,
   ShieldAlert,
@@ -26,6 +27,7 @@ import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { ThresholdConfigModal } from './ThresholdConfigModal';
 import { TriggerCauseModal } from './TriggerCauseModal';
+import { DownloadStorageModal } from './DownloadStorageModal';
 import { wsClient } from '../services/websocket';
 
 interface TelemetryPoint {
@@ -54,6 +56,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   const [isTelkomselModalOpen, setIsTelkomselModalOpen] = useState(false);
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const [isTriggerCauseModalOpen, setIsTriggerCauseModalOpen] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [historyRange, setHistoryRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [activeChartMetric, setActiveChartMetric] = useState<'tilt' | 'rain' | 'moisture' | 'power'>('tilt');
   const [isSirenTesting, setIsSirenTesting] = useState(false);
@@ -327,6 +330,15 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             >
               <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               <span>Atur Ambang Batas</span>
+            </button>
+
+            <button
+              onClick={() => setIsDownloadModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Unduh rekaman telemetri sensor dari MicroSD, Flash Internal SPIFFS, atau Database Server (.CSV)"
+            >
+              <Download className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>Unduh Data (.CSV)</span>
             </button>
 
             <button
@@ -882,12 +894,22 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               </span>
             </div>
 
-            {/* MicroSD Backup */}
+            {/* MicroSD & Internal Storage Backup */}
             <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#1a162b] border border-slate-200/80 dark:border-purple-900/30">
-              <span className="text-slate-500 dark:text-purple-300/70">MicroSD Backup:</span>
-              <span className="font-mono text-slate-700 dark:text-slate-300">
-                {(ews.sensorData.microSdStorageUsedMb / 1024).toFixed(1)} GB / 32 GB
-              </span>
+              <span className="text-slate-500 dark:text-purple-300/70">Penyimpanan Alat:</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-slate-700 dark:text-slate-300 text-xs">
+                  {(ews.sensorData.microSdStorageUsedMb / 1024).toFixed(1)} GB (SD) / 6.18MB
+                </span>
+                <button
+                  onClick={() => setIsDownloadModalOpen(true)}
+                  className="px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 text-[11px] font-bold hover:bg-sky-200 dark:hover:bg-sky-900 transition-colors cursor-pointer flex items-center gap-1"
+                  title="Unduh rekaman CSV"
+                >
+                  <Download className="w-3 h-3" />
+                  Unduh
+                </button>
+              </div>
             </div>
 
             {/* Uptime Kontrol */}
@@ -1008,6 +1030,15 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                 </button>
               ))}
             </div>
+
+            <button
+              onClick={() => setIsDownloadModalOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Unduh rekaman CSV sensor"
+            >
+              <Download className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>Ekspor CSV</span>
+            </button>
           </div>
         </div>
 
@@ -1131,6 +1162,13 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         onToggleMute={handleToggleMute}
         onResetAlarm={onResetAlarm}
         onOpenThresholdConfig={() => setIsThresholdModalOpen(true)}
+      />
+
+      {/* Download Sensor Storage & Telemetry CSV Modal */}
+      <DownloadStorageModal
+        ews={ews}
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
       />
     </div>
   );

@@ -2997,28 +2997,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <span class="sensor-val" id="valSdStatus" style="font-size:0.85rem; font-weight:700;">Memeriksa...</span>
       </div>
       <div class="sensor-row" style="background: rgba(255,255,255,0.03); padding: 0.6rem 0.85rem; border-radius: 8px;">
-        <span class="sensor-name">Kapasitas Bebas</span>
-        <span class="sensor-val" id="valSdFree" style="font-size:0.85rem;">-</span>
+        <span class="sensor-name">MicroSD Card</span>
+        <span class="sensor-val" id="valSdDetail" style="font-size:0.85rem;">-</span>
       </div>
       <div class="sensor-row" style="background: rgba(255,255,255,0.03); padding: 0.6rem 0.85rem; border-radius: 8px;">
-        <span class="sensor-name">Ukuran Log Telemetri</span>
-        <span class="sensor-val" id="valSdTelemetrySize" style="font-size:0.85rem;">-</span>
+        <span class="sensor-name">Flash Internal (SPIFFS)</span>
+        <span class="sensor-val" id="valSpiffsDetail" style="font-size:0.85rem;">-</span>
       </div>
     </div>
 
     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
       <a href="/download_telemetry" class="btn btn-primary" style="flex: 2; min-width: 200px; text-align: center; text-decoration: none; margin-top: 0; background: linear-gradient(135deg, #0284c7, #0369a1);" download>
-        📥 Unduh Data Telemetri (.CSV)
+        📥 Unduh Telemetri CSV (Otomatis)
+      </a>
+      <a href="/download_telemetry?source=internal" class="btn btn-secondary" style="flex: 2; min-width: 200px; text-align: center; text-decoration: none; border-color: #0284c7; color: #38bdf8;" download>
+        📁 Unduh dari Flash Internal (.CSV)
+      </a>
+      <a href="/download_telemetry?source=sd" id="btnDlSd" class="btn btn-secondary" style="flex: 2; min-width: 200px; text-align: center; text-decoration: none; border-color: #10b981; color: #34d399;" download>
+        💳 Unduh dari MicroSD (.CSV)
       </a>
       <a href="/download_events" class="btn btn-secondary" style="flex: 2; min-width: 200px; text-align: center; text-decoration: none; border-color: var(--card-border);" download>
-        📥 Unduh Log Kejadian Alarm (.CSV)
+        🚨 Unduh Log Kejadian Alarm (.CSV)
       </a>
       <button type="button" class="btn btn-secondary" style="flex: 1; min-width: 150px; border-color: #ef4444; color: #ef4444;" onclick="clearStorage()">
         🗑️ Bersihkan Memori
       </button>
     </div>
     <p class="helper-text" style="margin-top: 0.65rem;">
-      💡 Data sensor otomatis direkam tiap 5 menit ke MicroSD / Flash Internal (SPIFFS). Jika memori hampir penuh, sistem cerdas otomatis memangkas data terlama (FIFO).<br>
+      💡 Data sensor otomatis direkam tiap 5 menit secara hybrid (MicroSD jika ada, fallback Flash Internal 6.18MB). Anda dapat mengunduh data dari Flash Internal maupun MicroSD langsung lewat browser.<br>
       📌 <b>Daftar Kode Anomali CSV:</b> <code>OK</code>=Aman | <code>A1</code>=Baterai Lemah/0V | <code>A2</code>=Kemiringan Bahaya | <code>A3</code>=Kemiringan Siaga | <code>A4</code>=Hujan Bahaya | <code>A5</code>=Hujan Siaga | <code>A6</code>=Getaran Bahaya | <code>A7</code>=Tanah Jenuh | <code>A8</code>=Getaran Sesaat.
     </p>
   </div>
@@ -3238,24 +3244,40 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       .then(res => res.json())
       .then(d => {
         const elStatus = document.getElementById('valSdStatus');
-        const elFree   = document.getElementById('valSdFree');
-        const elSize   = document.getElementById('valSdTelemetrySize');
-        if (!elStatus || !elFree || !elSize) return;
+        const elSd     = document.getElementById('valSdDetail');
+        const elSpiffs = document.getElementById('valSpiffsDetail');
+        if (!elStatus) return;
 
         if (d.activeStorage === "MicroSD") {
-          elStatus.innerHTML = '<span style="color:var(--accent-green);font-weight:700;">MicroSD (' + d.totalMB + ' MB)</span>';
-          elFree.innerText   = d.freeMB + ' MB Bebas / ' + d.totalMB + ' MB';
-          let kb = d.telemetryBytes ? (d.telemetryBytes / 1024).toFixed(1) : '0';
-          elSize.innerText   = kb + ' KB (MicroSD)';
+          elStatus.innerHTML = '<span style="color:var(--accent-green);font-weight:700;">🟢 MicroSD (Aktif)</span>';
         } else if (d.activeStorage === "Internal SPIFFS") {
-          elStatus.innerHTML = '<span style="color:var(--accent-yellow);font-weight:700;">Flash SPIFFS (' + d.totalKB + ' KB)</span>';
-          elFree.innerText   = d.freeKB + ' KB Bebas / ' + d.totalKB + ' KB';
-          let kb = d.telemetryBytes ? (d.telemetryBytes / 1024).toFixed(1) : '0';
-          elSize.innerText   = kb + ' KB (Flash Internal)';
+          elStatus.innerHTML = '<span style="color:var(--accent-yellow);font-weight:700;">🟡 Flash Internal (Aktif)</span>';
         } else {
-          elStatus.innerHTML = '<span style="color:#ef4444;font-weight:700;">TIDAK TERSEDIA</span>';
-          elFree.innerText   = '-';
-          elSize.innerText   = '-';
+          elStatus.innerHTML = '<span style="color:#ef4444;font-weight:700;">🔴 TIDAK TERSEDIA</span>';
+        }
+
+        if (elSd) {
+          if (d.sdAvailable) {
+            let kb = d.sdTelemetryBytes ? (d.sdTelemetryBytes / 1024).toFixed(1) : '0';
+            elSd.innerHTML = d.sdFreeMB + ' MB Bebas / ' + d.sdTotalMB + ' MB <br><span style="color:#94a3b8;font-size:0.75rem;">(Log: ' + kb + ' KB)</span>';
+            const btnSd = document.getElementById('btnDlSd');
+            if (btnSd) btnSd.style.display = 'inline-block';
+          } else {
+            elSd.innerHTML = '<span style="color:#ef4444;">Tidak Terdeteksi</span>';
+            const btnSd = document.getElementById('btnDlSd');
+            if (btnSd) btnSd.style.display = 'none';
+          }
+        }
+
+        if (elSpiffs) {
+          if (d.spiffsAvailable) {
+            let kb = d.spiffsTelemetryBytes ? (d.spiffsTelemetryBytes / 1024).toFixed(1) : '0';
+            let freeMB = (d.spiffsFreeKB / 1024).toFixed(1);
+            let totalMB = (d.spiffsTotalKB / 1024).toFixed(1);
+            elSpiffs.innerHTML = freeMB + ' MB Bebas / ' + totalMB + ' MB <br><span style="color:#94a3b8;font-size:0.75rem;">(Log: ' + kb + ' KB)</span>';
+          } else {
+            elSpiffs.innerHTML = '<span style="color:#ef4444;">Tidak Tersedia</span>';
+          }
         }
       })
       .catch(e => console.error("Storage info error:", e));
@@ -3464,33 +3486,61 @@ void handleApiSaveDevice() {
 void handleDownloadTelemetry() {
   File f;
   bool isSd = false;
+  String sourceReq = localServer.hasArg("source") ? localServer.arg("source") : "";
 
-  if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
-    if (SD.exists("/ews_telemetry.csv")) {
-      f = SD.open("/ews_telemetry.csv", FILE_READ);
-      if (f) {
-        isSd = true;
+  // 1. Jika secara eksplisit meminta data dari flash internal (SPIFFS)
+  if (sourceReq == "spiffs" || sourceReq == "internal") {
+    if (spiffsAvailable && SPIFFS.exists("/ews_telemetry.csv")) {
+      f = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+      isSd = false;
+    }
+  }
+  // 2. Jika secara eksplisit meminta data dari MicroSD
+  else if (sourceReq == "sd") {
+    if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+      if (SD.exists("/ews_telemetry.csv")) {
+        f = SD.open("/ews_telemetry.csv", FILE_READ);
+        if (f) {
+          isSd = true;
+        } else {
+          xSemaphoreGive(sdMutex);
+        }
       } else {
         xSemaphoreGive(sdMutex);
       }
-    } else {
-      xSemaphoreGive(sdMutex);
     }
   }
+  // 3. Mode otomatis: prioritaskan MicroSD jika ada, jika tidak ada atau kosong beralih ke Flash Internal
+  else {
+    if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+      if (SD.exists("/ews_telemetry.csv")) {
+        f = SD.open("/ews_telemetry.csv", FILE_READ);
+        if (f) {
+          isSd = true;
+        } else {
+          xSemaphoreGive(sdMutex);
+        }
+      } else {
+        xSemaphoreGive(sdMutex);
+      }
+    }
 
-  if (!f && spiffsAvailable) {
-    if (SPIFFS.exists("/ews_telemetry.csv")) {
-      f = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+    if (!f && spiffsAvailable) {
+      if (SPIFFS.exists("/ews_telemetry.csv")) {
+        f = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+      }
     }
   }
 
   if (!f) {
-    localServer.send(404, "text/plain; charset=utf-8", "Belum ada rekaman telemetri di MicroSD maupun Flash Internal (/ews_telemetry.csv).");
+    localServer.send(404, "text/plain; charset=utf-8", "Belum ada rekaman telemetri di media penyimpanan yang dipilih.");
     return;
   }
 
-  String filename = "telemetri_" + ewsId + ".csv";
-  localServer.sendHeader("Content-Type", "text/csv");
+  String suffix = isSd ? "_sd.csv" : "_internal.csv";
+  if (sourceReq == "") suffix = ".csv";
+  String filename = "telemetri_" + ewsId + suffix;
+  localServer.sendHeader("Content-Type", "text/csv; charset=utf-8");
   localServer.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
   localServer.sendHeader("Connection", "close");
   size_t sent = localServer.streamFile(f, "text/csv");
@@ -3505,33 +3555,61 @@ void handleDownloadTelemetry() {
 void handleDownloadEvents() {
   File f;
   bool isSd = false;
+  String sourceReq = localServer.hasArg("source") ? localServer.arg("source") : "";
 
-  if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
-    if (SD.exists("/ews_log.csv")) {
-      f = SD.open("/ews_log.csv", FILE_READ);
-      if (f) {
-        isSd = true;
+  // 1. Jika secara eksplisit meminta data dari flash internal (SPIFFS)
+  if (sourceReq == "spiffs" || sourceReq == "internal") {
+    if (spiffsAvailable && SPIFFS.exists("/ews_log.csv")) {
+      f = SPIFFS.open("/ews_log.csv", FILE_READ);
+      isSd = false;
+    }
+  }
+  // 2. Jika secara eksplisit meminta data dari MicroSD
+  else if (sourceReq == "sd") {
+    if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+      if (SD.exists("/ews_log.csv")) {
+        f = SD.open("/ews_log.csv", FILE_READ);
+        if (f) {
+          isSd = true;
+        } else {
+          xSemaphoreGive(sdMutex);
+        }
       } else {
         xSemaphoreGive(sdMutex);
       }
-    } else {
-      xSemaphoreGive(sdMutex);
     }
   }
+  // 3. Mode otomatis
+  else {
+    if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+      if (SD.exists("/ews_log.csv")) {
+        f = SD.open("/ews_log.csv", FILE_READ);
+        if (f) {
+          isSd = true;
+        } else {
+          xSemaphoreGive(sdMutex);
+        }
+      } else {
+        xSemaphoreGive(sdMutex);
+      }
+    }
 
-  if (!f && spiffsAvailable) {
-    if (SPIFFS.exists("/ews_log.csv")) {
-      f = SPIFFS.open("/ews_log.csv", FILE_READ);
+    if (!f && spiffsAvailable) {
+      if (SPIFFS.exists("/ews_log.csv")) {
+        f = SPIFFS.open("/ews_log.csv", FILE_READ);
+      }
     }
   }
 
   if (!f) {
-    localServer.send(404, "text/plain; charset=utf-8", "Belum ada log kejadian di MicroSD maupun Flash Internal (/ews_log.csv).");
+    localServer.send(404, "text/plain; charset=utf-8", "Belum ada log kejadian di media penyimpanan yang dipilih.");
     return;
   }
 
-  String filename = "kejadian_alarm_" + ewsId + ".csv";
-  localServer.sendHeader("Content-Type", "text/csv");
+  String suffix = isSd ? "_sd.csv" : "_internal.csv";
+  if (sourceReq == "") suffix = ".csv";
+  String filename = "kejadian_alarm_" + ewsId + suffix;
+  localServer.sendHeader("Content-Type", "text/csv; charset=utf-8");
   localServer.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
   localServer.sendHeader("Connection", "close");
   size_t sent = localServer.streamFile(f, "text/csv");
@@ -3544,67 +3622,76 @@ void handleDownloadEvents() {
 }
 
 void handleApiStorageInfo() {
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
+
+  doc["sdAvailable"]     = sdAvailable;
+  doc["spiffsAvailable"] = spiffsAvailable;
 
   if (sdAvailable) {
     doc["activeStorage"] = "MicroSD";
-    doc["sdAvailable"] = true;
-    doc["spiffsAvailable"] = spiffsAvailable;
     uint64_t totalBytes = SD.totalBytes();
     uint64_t usedBytes  = SD.usedBytes();
     uint64_t freeBytes  = (totalBytes > usedBytes) ? (totalBytes - usedBytes) : 0;
-    
-    doc["totalMB"] = (unsigned long)(totalBytes / (1024 * 1024));
-    doc["usedMB"]  = (unsigned long)(usedBytes / (1024 * 1024));
-    doc["freeMB"]  = (unsigned long)(freeBytes / (1024 * 1024));
+
+    doc["sdTotalMB"] = (unsigned long)(totalBytes / (1024 * 1024));
+    doc["sdUsedMB"]  = (unsigned long)(usedBytes / (1024 * 1024));
+    doc["sdFreeMB"]  = (unsigned long)(freeBytes / (1024 * 1024));
+    doc["totalMB"]   = doc["sdTotalMB"];
+    doc["freeMB"]    = doc["sdFreeMB"];
 
     if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
       if (SD.exists("/ews_telemetry.csv")) {
         File f = SD.open("/ews_telemetry.csv", FILE_READ);
         if (f) {
-          doc["telemetryBytes"] = (unsigned long)f.size();
+          doc["sdTelemetryBytes"] = (unsigned long)f.size();
           f.close();
         }
       }
       if (SD.exists("/ews_log.csv")) {
         File f = SD.open("/ews_log.csv", FILE_READ);
         if (f) {
-          doc["eventBytes"] = (unsigned long)f.size();
+          doc["sdEventBytes"] = (unsigned long)f.size();
           f.close();
         }
       }
       xSemaphoreGive(sdMutex);
     }
+    doc["telemetryBytes"] = doc["sdTelemetryBytes"] | 0;
   } else if (spiffsAvailable) {
     doc["activeStorage"] = "Internal SPIFFS";
-    doc["sdAvailable"] = false;
-    doc["spiffsAvailable"] = true;
+  } else {
+    doc["activeStorage"] = "None";
+  }
+
+  if (spiffsAvailable) {
     size_t totalBytes = SPIFFS.totalBytes();
     size_t usedBytes  = SPIFFS.usedBytes();
     size_t freeBytes  = (totalBytes > usedBytes) ? (totalBytes - usedBytes) : 0;
 
-    doc["totalKB"] = (unsigned long)(totalBytes / 1024);
-    doc["usedKB"]  = (unsigned long)(usedBytes / 1024);
-    doc["freeKB"]  = (unsigned long)(freeBytes / 1024);
+    doc["spiffsTotalKB"] = (unsigned long)(totalBytes / 1024);
+    doc["spiffsUsedKB"]  = (unsigned long)(usedBytes / 1024);
+    doc["spiffsFreeKB"]  = (unsigned long)(freeBytes / 1024);
 
     if (SPIFFS.exists("/ews_telemetry.csv")) {
       File f = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
       if (f) {
-        doc["telemetryBytes"] = (unsigned long)f.size();
+        doc["spiffsTelemetryBytes"] = (unsigned long)f.size();
         f.close();
       }
     }
     if (SPIFFS.exists("/ews_log.csv")) {
       File f = SPIFFS.open("/ews_log.csv", FILE_READ);
       if (f) {
-        doc["eventBytes"] = (unsigned long)f.size();
+        doc["spiffsEventBytes"] = (unsigned long)f.size();
         f.close();
       }
     }
-  } else {
-    doc["activeStorage"] = "None";
-    doc["sdAvailable"] = false;
-    doc["spiffsAvailable"] = false;
+
+    if (!sdAvailable) {
+      doc["totalKB"] = doc["spiffsTotalKB"];
+      doc["freeKB"]  = doc["spiffsFreeKB"];
+      doc["telemetryBytes"] = doc["spiffsTelemetryBytes"] | 0;
+    }
   }
 
   String res;
