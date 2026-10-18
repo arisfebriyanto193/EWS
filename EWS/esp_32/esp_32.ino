@@ -79,6 +79,7 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                               float batt, int battMa, int solar,
                               const char* status, const char* reason);
 void logEventToSD(const char* status, const char* reason, float pitch, float roll, float rain, float soil, float batt);
+void checkDailyRainReset();
 
 // FreeRTOS Headers
 #include "freertos/FreeRTOS.h"
@@ -1536,6 +1537,59 @@ void readRainSensor(float &rainfallRate, float &cumulative, unsigned long &total
   rainfallRate = (float)tipsInLastHour * curahFactor;
 }
 
+// Fungsi pengecekan pergantian hari (00:00 WIB) untuk reset akumulasi curah hujan harian ke 0.0 mm
+void checkDailyRainReset() {
+  int currentDay = -1;
+  int currentYear = 0;
+  int currentHour = -1;
+  int currentMinute = -1;
+
+  if (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--" && rtcTimeString.length() >= 19) {
+    // Format standar: "DD-MM-YYYY HH:MM:SS"
+    currentDay    = rtcTimeString.substring(0, 2).toInt();
+    currentYear   = rtcTimeString.substring(6, 10).toInt();
+    currentHour   = rtcTimeString.substring(11, 13).toInt();
+    currentMinute = rtcTimeString.substring(14, 16).toInt();
+  } else {
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 0)) {
+      currentYear   = timeinfo.tm_year + 1900;
+      currentDay    = timeinfo.tm_mday;
+      currentHour   = timeinfo.tm_hour;
+      currentMinute = timeinfo.tm_min;
+    }
+  }
+
+  // Hanya proses jika tanggal/jam sudah terverifikasi valid (tahun >= 2024)
+  if (currentYear < 2024 || currentDay < 1 || currentDay > 31) {
+    return;
+  }
+
+  static int lastDayRecorded = -1;
+
+  // Inisialisasi awal saat pertama kali tanggal valid terbaca sejak boot
+  if (lastDayRecorded == -1) {
+    lastDayRecorded = currentDay;
+    return;
+  }
+
+  // Deteksi pergantian hari (misal tanggal 18 berubah ke tanggal 19 tepat pukul 00:00:00 WIB)
+  if (currentDay != lastDayRecorded) {
+    lastDayRecorded = currentDay;
+
+    noInterrupts();
+    tipCount = 0;
+    interrupts();
+
+    lastObservedRainTips = 0;
+    rainAlarmSoundedThisCycle = false;
+
+    Serial.printf("[HUJAN] Pergantian hari terdeteksi (%02d:%02d WIB, Tanggal %02d). Akumulasi curah hujan harian otomatis direset ke 0.0 mm.\n",
+                  currentHour, currentMinute, currentDay);
+    logEventToSD("RESET_HUJAN_HARIAN", "00:00_WIB", 0, 0, 0, 0, 0);
+  }
+}
+
 float readVibrationLevel(unsigned long &rawPulsesOut) {
   portENTER_CRITICAL(&vibMux);
   unsigned long pulses = vibPulseCounter;
@@ -1919,6 +1973,9 @@ void wsTask(void *pvParameters) {
 void sensorTask(void *pvParameters) {
   Serial.println("[FreeRTOS] sensorTask berjalan pada Core 1 (Sensors & OLED)");
   for (;;) {
+    readDS3231Time();
+    checkDailyRainReset();
+
     float pitch = 0.0, roll = 0.0;
     readInclinometer(pitch, roll);
 
@@ -1957,7 +2014,6 @@ void sensorTask(void *pvParameters) {
     float batt = 0.0f;
     int solar = 0, battMa = 0;
     readPowerMonitor(batt, solar, battMa);
-    readDS3231Time();
 
     // Ambil ambang batas dari memori yang sinkron
     SensorThresholds thresh;
