@@ -48,6 +48,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SD.h>
+#include <SPIFFS.h>
 #include <math.h>
 #include <time.h>
 #include <Preferences.h>
@@ -68,11 +69,15 @@ void saveDeviceConfigToNVS(const String &newId, const String &newSsid, const Str
 void loadDeviceConfigFromNVS();
 void syncRTCWithNTP(bool force = false);
 void checkAndPruneSDCard();
+void checkAndPruneSPIFFS();
+void initMicroSD();
+void initSPIFFS();
 void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                               float rain, float rainCumu, unsigned long tips,
                               float vib, unsigned long vibPulses,
                               float batt, int battMa, int solar,
                               const char* status, const char* reason);
+void logEventToSD(const char* status, const char* reason, float pitch, float roll, float rain, float soil, float batt);
 
 // FreeRTOS Headers
 #include "freertos/FreeRTOS.h"
@@ -362,7 +367,7 @@ void loadDeviceConfigFromNVS() {
     prefs.end();
   }
   updateWebSocketTopics();
-  Serial.printf("📋 [NVS] Identitas Perangkat: Device ID [%s], Host: %s:%d%s\n", 
+  Serial.printf("[NVS] Identitas Perangkat: Device ID [%s], Host: %s:%d%s\n", 
                 ewsId.c_str(), wsHost.c_str(), wsPort, wsPath.c_str());
 }
 
@@ -386,7 +391,7 @@ void saveDeviceConfigToNVS(const String &newId, const String &newSsid, const Str
     wsPath              = newPath;
     wsUseSsl            = newSsl;
     updateWebSocketTopics();
-    Serial.printf("💾 [NVS] Konfigurasi Device ID [%s] & Koneksi Berhasil Disimpan!\n", ewsId.c_str());
+    Serial.printf("[NVS] Konfigurasi Device ID [%s] & Koneksi Berhasil Disimpan!\n", ewsId.c_str());
   }
 }
 
@@ -412,7 +417,7 @@ void loadThresholdsFromEEPROM() {
     currentThresholds.alarmPause            = prefs.getUInt("alarmPause", 30);
     prefs.end();
 
-    Serial.println("💾 [EEPROM/NVS] Berhasil memuat nilai acuan kalibrasi & ambang batas:");
+    Serial.println("[EEPROM/NVS] Berhasil memuat nilai acuan kalibrasi & ambang batas:");
     Serial.printf("   - Sudut Aman Pitch/Roll : %.2f° / %.2f° (Toleransi: +-%.2f°)\n", 
                   currentThresholds.safeTiltPitch, currentThresholds.safeTiltRoll, currentThresholds.tiltTolerance);
     Serial.printf("   - Sudut Siaga/Bahaya    : >= %.2f° / >= %.2f°\n", currentThresholds.tiltWarning, currentThresholds.tiltDanger);
@@ -426,7 +431,7 @@ void loadThresholdsFromEEPROM() {
     Serial.printf("   - Siklus Alarm Otomatis : Aktif %u s | Jeda %u s\n", 
                   currentThresholds.alarmDuration, currentThresholds.alarmPause);
   } else {
-    Serial.println("ℹ️ [EEPROM/NVS] Belum ada konfigurasi di Flash. Menggunakan nilai bawaan.");
+    Serial.println("[INFO] [EEPROM/NVS] Belum ada konfigurasi di Flash. Menggunakan nilai bawaan.");
   }
 }
 
@@ -459,10 +464,10 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
       currentThresholds = newT;
     }
 
-    Serial.println("💾 [EEPROM/NVS] Nilai Kalibrasi & Ambang Batas BARU BERHASIL DISIMPAN!");
+    Serial.println("[EEPROM/NVS] Nilai Kalibrasi & Ambang Batas BARU BERHASIL DISIMPAN!");
     Serial.printf("   - Siklus Alarm Tersimpan: Aktif=%u s, Jeda=%u s\n", newT.alarmDuration, newT.alarmPause);
   } else {
-    Serial.println("❌ [EEPROM/NVS] Gagal membuka partisi flash ews_thresh untuk penulisan!");
+    Serial.println("[ERR] [EEPROM/NVS] Gagal membuka partisi flash ews_thresh untuk penulisan!");
   }
 }
 
@@ -527,6 +532,9 @@ String rtcTimeString = "--:--:--";
 
 bool sdAvailable = false;
 uint64_t sdCardSizeMB = 0;
+bool spiffsAvailable = false;
+uint64_t spiffsTotalBytes = 0;
+uint64_t spiffsUsedBytes = 0;
 
 // =============================================================================
 // 5. HELPER PENGIRIMAN WEBSOCKET DENGAN MUTEX
@@ -645,7 +653,7 @@ void initDS3231() {
     activeRtcScl = PIN_RTC_SCL;
     rtcAvailable = true;
     rtcTimeString = timeResult;
-    Serial.printf("✅ [DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", rtcTimeString.c_str(), activeRtcSda, activeRtcScl);
+    Serial.printf("[DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", rtcTimeString.c_str(), activeRtcSda, activeRtcScl);
     return;
   }
 
@@ -656,14 +664,14 @@ void initDS3231() {
     activeRtcScl = PIN_RTC_SDA;
     rtcAvailable = true;
     rtcTimeString = timeResult;
-    Serial.printf("✅ [DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", rtcTimeString.c_str(), activeRtcSda, activeRtcScl);
+    Serial.printf("[DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", rtcTimeString.c_str(), activeRtcSda, activeRtcScl);
     return;
   }
 
   // 3. Jika kedua konfigurasi pin gagal membaca register waktu DS3231 nyata
   rtcAvailable = false;
   rtcTimeString = "TIDAK TERDETEKSI";
-  Serial.printf("⚠️ [DS3231] Modul RTC tidak terdeteksi pada pin SDA 15/16. Melanjutkan booting...\n");
+  Serial.printf("[DS3231] Modul RTC tidak terdeteksi pada pin SDA 15/16. Melanjutkan booting...\n");
 }
 
 void readDS3231Time() {
@@ -723,7 +731,7 @@ bool setRTC(int year, int month, int day, int hour, int minute, int second) {
       }
       success = true;
     } else {
-      Serial.printf("❌ [DS3231] Gagal menulis register I2C (Error code: %d)\n", txErr);
+      Serial.printf("[ERR] [DS3231] Gagal menulis register I2C (Error code: %d)\n", txErr);
     }
     xSemaphoreGive(i2cMutex);
   }
@@ -752,7 +760,7 @@ void syncRTCWithNTP(bool force) {
     ntpSyncAttempted = true;
   }
 
-  Serial.println("⏱️ [NTP-RTC] Jaringan WiFi terhubung. Memeriksa ketersediaan koneksi Internet...");
+  Serial.println("[NTP-RTC] Jaringan WiFi terhubung. Memeriksa ketersediaan koneksi Internet...");
 
   // Cek apakah benar-benar ada internet dengan resolve DNS server NTP
   IPAddress resolvedIP;
@@ -760,16 +768,16 @@ void syncRTCWithNTP(bool force) {
                      (WiFi.hostByName("time.google.com", resolvedIP) == 1);
 
   if (!hasInternet) {
-    Serial.println("ℹ️ [NTP-RTC] WiFi terhubung tetapi TIDAK ADA AKSES INTERNET (DNS gagal). Melewati sinkronisasi waktu NTP.");
+    Serial.println("[INFO] [NTP-RTC] WiFi terhubung tetapi TIDAK ADA AKSES INTERNET (DNS gagal). Melewati sinkronisasi waktu NTP.");
     return;
   }
 
-  Serial.println("⏱️ [NTP-RTC] Akses internet terkonfirmasi! Mengambil waktu dari server NTP (1x di awal)...");
+  Serial.println("[NTP-RTC] Akses internet terkonfirmasi! Mengambil waktu dari server NTP (1x di awal)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
 
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 4000)) { // Tunggu hingga 4 detik
-    Serial.println("⚠️ [NTP-RTC] Timeout mengambil waktu dari server NTP! Melewati proses sinkronisasi.");
+    Serial.println("[NTP-RTC] Timeout mengambil waktu dari server NTP! Melewati proses sinkronisasi.");
     return;
   }
 
@@ -781,7 +789,7 @@ void syncRTCWithNTP(bool force) {
   int sec = timeinfo.tm_sec;
 
   if (yr < 2024) {
-    Serial.printf("⚠️ [NTP-RTC] Tahun NTP belum valid (%d). Melewati proses sinkronisasi.\n", yr);
+    Serial.printf("[NTP-RTC] Tahun NTP belum valid (%d). Melewati proses sinkronisasi.\n", yr);
     return;
   }
 
@@ -789,9 +797,9 @@ void syncRTCWithNTP(bool force) {
     if (setRTC(yr, mon, day, hr, min, sec)) {
       readDS3231Time();
       rtcSyncedWithNTP = true;
-      Serial.printf("✅ [NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB (Sinkronisasi awal selesai)\n", rtcTimeString.c_str());
+      Serial.printf("[NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB (Sinkronisasi awal selesai)\n", rtcTimeString.c_str());
     } else {
-      Serial.println("❌ [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
+      Serial.println("[ERR] [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
     }
   } else {
     // Jika modul DS3231 fisik tidak ada, gunakan waktu NTP untuk waktu internal sistem
@@ -799,7 +807,7 @@ void syncRTCWithNTP(bool force) {
     snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hr, min, sec);
     rtcTimeString = String(timeBuf);
     rtcSyncedWithNTP = true;
-    Serial.printf("ℹ️ [NTP-RTC] DS3231 fisik tidak aktif. Waktu NTP disinkronkan ke sistem internal ESP32: %s WIB\n", rtcTimeString.c_str());
+    Serial.printf("[INFO] [NTP-RTC] DS3231 fisik tidak aktif. Waktu NTP disinkronkan ke sistem internal ESP32: %s WIB\n", rtcTimeString.c_str());
   }
 }
 
@@ -821,7 +829,7 @@ void initINA() {
       inaAvailable = true;
     } else {
       inaAvailable = false;
-      Serial.printf("⚠️ [INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Mengaktifkan fallback Pembagi Tegangan Resistor 11:4 pada GPIO %d...\n", activeInaSda, activeInaScl, PIN_BATTERY_DIVIDER);
+      Serial.printf("[INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Mengaktifkan fallback Pembagi Tegangan Resistor 11:4 pada GPIO %d...\n", activeInaSda, activeInaScl, PIN_BATTERY_DIVIDER);
       pinMode(PIN_BATTERY_DIVIDER, INPUT);
       return;
     }
@@ -840,7 +848,7 @@ void initINA() {
 
   if (cfg == 0x4127 || cfg == 0x4527) {
     isINA219 = false; // INA226
-    Serial.printf("✅ [INA226] Terdeteksi (SDA=%d, SCL=%d)\n", activeInaSda, activeInaScl);
+    Serial.printf("[INA226] Terdeteksi (SDA=%d, SCL=%d)\n", activeInaSda, activeInaScl);
   } else {
     isINA219 = true;  // INA219
     // Konfigurasi INA219: 32V Range, Gain 8, 12-bit ADC -> 0x399F
@@ -856,7 +864,7 @@ void initINA() {
     Wire.write(0x10);
     Wire.write(0x00);
     Wire.endTransmission();
-    Serial.printf("✅ [INA219] Berhasil terhubung & terkalibrasi 32V 2A (SDA=%d, SCL=%d)\n", activeInaSda, activeInaScl);
+    Serial.printf("[INA219] Berhasil terhubung & terkalibrasi 32V 2A (SDA=%d, SCL=%d)\n", activeInaSda, activeInaScl);
   }
 }
 
@@ -965,12 +973,12 @@ void initMPU6050() {
     Wire.endTransmission();
 
     mpuAvailable = true;
-    Serial.printf("✅ [MPU] MPU-6050 berhasil diinisialisasi (SDA=%d, SCL=%d)\n", PIN_MPU_SDA, PIN_MPU_SCL);
+    Serial.printf("[MPU] MPU-6050 berhasil diinisialisasi (SDA=%d, SCL=%d)\n", PIN_MPU_SDA, PIN_MPU_SCL);
     return;
   }
 
   mpuAvailable = false;
-  Serial.printf("⚠️ [MPU] MPU-6050 tidak merespons pada alamat 0x68 (Error: %d, SDA=%d, SCL=%d). Melanjutkan booting...\n", err, PIN_MPU_SDA, PIN_MPU_SCL);
+  Serial.printf("[MPU] MPU-6050 tidak merespons pada alamat 0x68 (Error: %d, SDA=%d, SCL=%d). Melanjutkan booting...\n", err, PIN_MPU_SDA, PIN_MPU_SCL);
 }
 
 void readInclinometer(float &pitch, float &roll) {
@@ -1003,7 +1011,7 @@ void readInclinometer(float &pitch, float &roll) {
 }
 
 // =============================================================================
-// 10. DRIVER & DETEKSI MICROSD CARD (SPI BUS) & AUTO-PRUNING FIFO
+// 10. DRIVER STORAGE HYBRID: MICROSD (SPI BUS) & FLASH INTERNAL (SPIFFS)
 // =============================================================================
 
 // Helper format timestamp cadangan jika RTC DS3231 belum tersinkron
@@ -1012,7 +1020,6 @@ String getLogTimeString() {
     return rtcTimeString;
   }
   unsigned long s = millis() / 1000;
-  unsigned long h = (s % 86400) / 3600;
   unsigned long m = (s % 3600) / 60;
   unsigned long sec = s % 60;
   char buf[32];
@@ -1020,7 +1027,7 @@ String getLogTimeString() {
   return String(buf);
 }
 
-// Pemeriksaan kapasitas MicroSD & pemangkasan otomatis data terlama (FIFO Auto-Pruning)
+// Auto-Pruning FIFO MicroSD: jika sisa ruang < 10MB atau file > 5MB
 void checkAndPruneSDCard() {
   if (!sdAvailable) return;
 
@@ -1028,7 +1035,6 @@ void checkAndPruneSDCard() {
   uint64_t usedBytes  = SD.usedBytes();
   uint64_t freeBytes  = (totalBytes > usedBytes) ? (totalBytes - usedBytes) : 0;
 
-  // Cek apakah memori hampir penuh (sisa < 10 MB) ATAU ukuran file log > 5 MB (~40.000 baris telemetri)
   bool isDiskLow = (totalBytes > 0 && freeBytes < 10485760ULL);
 
   File checkFile = SD.open("/ews_telemetry.csv", FILE_READ);
@@ -1037,7 +1043,7 @@ void checkAndPruneSDCard() {
   checkFile.close();
 
   if (fileSize > 5242880 || isDiskLow) {
-    Serial.println("⚠️ [SD CARD] Ruang memori SD hampir penuh atau file telemetri > 5MB. Menghapus data terlama (Auto-Prune FIFO)...");
+    Serial.println("[SD CARD] Memori MicroSD hampir penuh atau file telemetri > 5MB. Menghapus data terlama (Auto-Prune FIFO)...");
     File src = SD.open("/ews_telemetry.csv", FILE_READ);
     if (!src) return;
 
@@ -1049,7 +1055,6 @@ void checkAndPruneSDCard() {
 
     String header = src.readStringUntil('\n');
 
-    // Hapus 50% baris paling lama
     int linesToSkip = totalLines / 2;
     if (linesToSkip < 10) linesToSkip = 10;
 
@@ -1072,7 +1077,62 @@ void checkAndPruneSDCard() {
 
       SD.remove("/ews_telemetry.csv");
       SD.rename("/ews_telemetry.tmp", "/ews_telemetry.csv");
-      Serial.printf("✅ [SD CARD] Auto-Prune FIFO selesai! %d baris terlama dihapus. Ruang penyimpanan dipulihkan.\n", linesToSkip);
+      Serial.printf("[SD CARD] Auto-Prune FIFO selesai! %d baris terlama dihapus. Ruang penyimpanan dipulihkan.\n", linesToSkip);
+    } else {
+      src.close();
+    }
+  }
+}
+
+// Auto-Pruning FIFO Flash Internal (SPIFFS 1MB): jika sisa ruang < 100KB atau file > 400KB
+void checkAndPruneSPIFFS() {
+  if (!spiffsAvailable) return;
+
+  uint64_t total = SPIFFS.totalBytes();
+  uint64_t used  = SPIFFS.usedBytes();
+  uint64_t freeB = (total > used) ? (total - used) : 0;
+
+  File checkFile = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+  if (!checkFile) return;
+  size_t fileSize = checkFile.size();
+  checkFile.close();
+
+  if (fileSize > 409600 || freeB < 102400) {
+    Serial.println("[SPIFFS] Flash internal SPIFFS hampir penuh. Menghapus data terlama (Auto-Prune FIFO)...");
+    File src = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+    if (!src) return;
+
+    int totalLines = 0;
+    while (src.available()) {
+      if (src.read() == '\n') totalLines++;
+    }
+    src.seek(0);
+
+    String header = src.readStringUntil('\n');
+
+    int linesToSkip = totalLines / 2;
+    if (linesToSkip < 10) linesToSkip = 10;
+
+    int currentLine = 0;
+    while (src.available() && currentLine < linesToSkip) {
+      src.readStringUntil('\n');
+      currentLine++;
+    }
+
+    File dst = SPIFFS.open("/ews_telemetry.tmp", FILE_WRITE);
+    if (dst) {
+      dst.println(header);
+      uint8_t buffer[256];
+      while (src.available()) {
+        int bytesRead = src.read(buffer, sizeof(buffer));
+        dst.write(buffer, bytesRead);
+      }
+      dst.close();
+      src.close();
+
+      SPIFFS.remove("/ews_telemetry.csv");
+      SPIFFS.rename("/ews_telemetry.tmp", "/ews_telemetry.csv");
+      Serial.printf("[SPIFFS] Auto-Prune selesai! %d baris terlama dihapus dari flash internal.\n", linesToSkip);
     } else {
       src.close();
     }
@@ -1099,18 +1159,60 @@ void initMicroSD() {
         f.close();
       }
     }
+    Serial.printf("[SD] MicroSD terdeteksi dan aktif: %llu MB\n", sdCardSizeMB);
   } else {
     sdAvailable = false;
     sdCardSizeMB = 0;
+    Serial.println("[SD] MicroSD tidak terdeteksi. Mengaktifkan fallback Flash Internal (SPIFFS).");
   }
   if (acquired && sdMutex != NULL) xSemaphoreGive(sdMutex);
 }
 
-// Pencatatan kejadian abnormalitas lokal ke MicroSD (Berjalan tanpa WiFi/Internet)
+void initSPIFFS() {
+  if (SPIFFS.begin(true)) {
+    spiffsAvailable = true;
+    spiffsTotalBytes = SPIFFS.totalBytes();
+    spiffsUsedBytes  = SPIFFS.usedBytes();
+    if (!SPIFFS.exists("/ews_log.csv")) {
+      File f = SPIFFS.open("/ews_log.csv", FILE_WRITE);
+      if (f) {
+        f.println("Waktu,Status,Penyebab,Pitch,Roll,Hujan_mm,Tanah_Persen,Aki_V,Sirine,Strobo");
+        f.close();
+      }
+    }
+    if (!SPIFFS.exists("/ews_telemetry.csv")) {
+      File f = SPIFFS.open("/ews_telemetry.csv", FILE_WRITE);
+      if (f) {
+        f.println("Waktu,Device_ID,Status,Pitch,Roll,Hujan_Rate_mm_h,Hujan_Kumulatif_mm,Tips_Hujan,Tanah_Persen,Tanah_ADC,Getaran_g,Getaran_Pulsa,Aki_Volt,Aki_mA,Solar_mA,Sirine,Strobo,Penyebab");
+        f.close();
+      }
+    }
+    Serial.printf("[SPIFFS] Flash Internal Aktif: Total %llu KB, Terpakai %llu KB\n",
+                  spiffsTotalBytes / 1024, spiffsUsedBytes / 1024);
+  } else {
+    spiffsAvailable = false;
+    Serial.println("[SPIFFS] Gagal menginisialisasi partisi flash internal SPIFFS!");
+  }
+}
+
+// Pencatatan kejadian abnormalitas lokal (Hybrid: MicroSD jika ada, fallback Flash Internal SPIFFS)
 void logEventToSD(const char* status, const char* reason, float pitch, float roll, float rain, float soil, float batt) {
-  if (!sdAvailable) return;
-  if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-    File f = SD.open("/ews_log.csv", FILE_APPEND);
+  if (sdAvailable) {
+    if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+      File f = SD.open("/ews_log.csv", FILE_APPEND);
+      if (f) {
+        f.printf("%s,%s,\"%s\",%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
+                 getLogTimeString().c_str(),
+                 status ? status : "-",
+                 reason ? reason : "-",
+                 pitch, roll, rain, soil, batt,
+                 sirenActive ? 1 : 0, stroboActive ? 1 : 0);
+        f.close();
+      }
+      xSemaphoreGive(sdMutex);
+    }
+  } else if (spiffsAvailable) {
+    File f = SPIFFS.open("/ews_log.csv", FILE_APPEND);
     if (f) {
       f.printf("%s,%s,\"%s\",%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
                getLogTimeString().c_str(),
@@ -1120,20 +1222,40 @@ void logEventToSD(const char* status, const char* reason, float pitch, float rol
                sirenActive ? 1 : 0, stroboActive ? 1 : 0);
       f.close();
     }
-    xSemaphoreGive(sdMutex);
   }
 }
 
-// Perekaman telemetri berkala ke MicroSD setiap 5 menit
+// Perekaman telemetri berkala 5 menit (Hybrid: MicroSD jika ada, fallback Flash Internal SPIFFS)
 void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                               float rain, float rainCumu, unsigned long tips,
                               float vib, unsigned long vibPulses,
                               float batt, int battMa, int solar,
                               const char* status, const char* reason) {
-  if (!sdAvailable) return;
-  if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-    checkAndPruneSDCard();
-    File f = SD.open("/ews_telemetry.csv", FILE_APPEND);
+  if (sdAvailable) {
+    if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+      checkAndPruneSDCard();
+      File f = SD.open("/ews_telemetry.csv", FILE_APPEND);
+      if (f) {
+        f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.2f,%lu,%.1f,%d,%.2f,%lu,%.2f,%d,%d,%d,%d,\"%s\"\n",
+                 getLogTimeString().c_str(),
+                 ewsId.c_str(),
+                 status ? status : "aman",
+                 pitch, roll,
+                 rain, rainCumu, tips,
+                 soil, soilRaw,
+                 vib, vibPulses,
+                 batt, battMa, solar,
+                 sirenActive ? 1 : 0, stroboActive ? 1 : 0,
+                 reason ? reason : "-");
+        f.close();
+        Serial.printf("[SD CARD] Telemetri 5-menit berhasil direkam ke MicroSD (%s | Status: %s)\n",
+                      getLogTimeString().c_str(), status ? status : "aman");
+      }
+      xSemaphoreGive(sdMutex);
+    }
+  } else if (spiffsAvailable) {
+    checkAndPruneSPIFFS();
+    File f = SPIFFS.open("/ews_telemetry.csv", FILE_APPEND);
     if (f) {
       f.printf("%s,%s,%s,%.2f,%.2f,%.1f,%.2f,%lu,%.1f,%d,%.2f,%lu,%.2f,%d,%d,%d,%d,\"%s\"\n",
                getLogTimeString().c_str(),
@@ -1147,10 +1269,9 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                sirenActive ? 1 : 0, stroboActive ? 1 : 0,
                reason ? reason : "-");
       f.close();
-      Serial.printf("💾 [SD CARD] Telemetri 5-menit berhasil direkam ke /ews_telemetry.csv (%s | Status: %s)\n",
+      Serial.printf("[SPIFFS] SD Card tidak terdeteksi. Telemetri 5-menit direkam ke Flash Internal (%s | Status: %s)\n",
                     getLogTimeString().c_str(), status ? status : "aman");
     }
-    xSemaphoreGive(sdMutex);
   }
 }
 
@@ -1159,7 +1280,7 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
 // =============================================================================
 void initHardwareOnce() {
   Serial.println("\n================================================================================");
-  Serial.println("🔌 INISIALISASI PERANGKAT KERAS SATU KALI SAAT BOOTING...");
+  Serial.println("[INIT] INISIALISASI PERANGKAT KERAS SATU KALI SAAT BOOTING...");
   Serial.println("================================================================================");
 
   // 1. OLED Display (Coba SDA Utama GPIO 8, jika gagal otomatis coba SDA Cadangan GPIO 18)
@@ -1203,19 +1324,25 @@ void initHardwareOnce() {
   initDS3231();
   Serial.printf(" [RTC]  DS3231 RTC            : [%s] (SDA=%d, SCL=%d)\n", rtcAvailable ? "OK AKTIF" : "TIDAK ADA", activeRtcSda, activeRtcScl);
 
-  // 5. MicroSD Card Storage (SPI Bus)
+  // 5. Storage Hybrid: MicroSD Card (SPI Bus) & Flash Internal (SPIFFS)
   initMicroSD();
+  initSPIFFS();
   Serial.println("--------------------------------------------------------------------------------");
 
-  Serial.println("\n📋 STATUS MODUL NON-I2C & SENSOR:");
+  Serial.println("\n[STATUS] STATUS MODUL NON-I2C & SENSOR:");
   Serial.println("--------------------------------------------------------------------------------");
-  // MicroSD Card (SPI Bus)
+  // Storage Status (MicroSD & SPIFFS)
   if (sdAvailable) {
     Serial.printf(" [SD]   %-29s : [OK AKTIF] -> %llu MB (SPI CS: GPIO %d, MOSI: 4, MISO: 2, SCK: 5)\n",
                   "MicroSD Storage (SPI)", sdCardSizeMB, PIN_SD_CS);
   } else {
-    Serial.printf(" [SD]   %-29s : [TIDAK ADA / BELUM ADA KARTU] (SPI CS: GPIO %d)\n",
-                  "MicroSD Storage (SPI)", PIN_SD_CS);
+    Serial.printf(" [SD]   %-29s : [TIDAK ADA / KARTU KOSONG] (Fallback Flash Internal SPIFFS Aktif)\n",
+                  "MicroSD Storage (SPI)");
+  }
+  if (spiffsAvailable) {
+    uint64_t freeSpiffs = (spiffsTotalBytes > spiffsUsedBytes) ? (spiffsTotalBytes - spiffsUsedBytes) : 0;
+    Serial.printf(" [SPIFFS] %-27s : [OK AKTIF] -> Total %llu KB, Sisa %llu KB\n",
+                  "Flash Internal SPIFFS", spiffsTotalBytes / 1024, freeSpiffs / 1024);
   }
 
   // Sensor Hujan Digital (Tipping Bucket)
@@ -1350,7 +1477,7 @@ void updateRelayState() {
 void setRelaySirine(bool active) {
   sirenActive = active;
   updateRelayState();
-  Serial.printf("⚡ [RELAY ALARM / SIRINE] %s (GPIO %d, State: %s)\n",
+  Serial.printf("[RELAY SIRINE] %s (GPIO %d, State: %s)\n",
                 active ? "AKTIF (ON)" : "MATI (OFF)", PIN_RELAY_ALARM,
                 (sirenActive || stroboActive) ? "HIGH" : "LOW");
 }
@@ -1358,7 +1485,7 @@ void setRelaySirine(bool active) {
 void setRelayStrobo(bool active) {
   stroboActive = active;
   updateRelayState();
-  Serial.printf("💡 [RELAY ALARM / STROBO] %s (GPIO %d, State: %s)\n",
+  Serial.printf("[RELAY STROBO] %s (GPIO %d, State: %s)\n",
                 active ? "AKTIF (ON)" : "MATI (OFF)", PIN_RELAY_ALARM,
                 (sirenActive || stroboActive) ? "HIGH" : "LOW");
 }
@@ -1410,13 +1537,13 @@ void updateOledDisplay(float pitch, float roll, float soil, float rain, float ba
 void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_DISCONNECTED:
-      Serial.println("❌ [WS] Terputus dari WebSocket Server!");
+      Serial.println("[ERR] [WS] Terputus dari WebSocket Server!");
       isWsConnected = false;
       needSubscribe = false;
       break;
 
     case WStype_CONNECTED:
-      Serial.printf("✅ [WS] Berhasil terhubung ke %s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
+      Serial.printf("[WS] Berhasil terhubung ke %s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
       isWsConnected = true;
       needSubscribe = true; // Tandai agar subscribe dikirim di wsTask secara aman
       forceTelemetryPublish = true; // Langsung kirim paket telemetri awal saat baru terhubung
@@ -1429,7 +1556,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       for (size_t i = 0; i < length; i++) {
         msg += (char)payload[i];
       }
-      Serial.printf("📥 [WS Pesan]: %s\n", msg.c_str());
+      Serial.printf("[WS Pesan]: %s\n", msg.c_str());
 
       StaticJsonDocument<768> doc;
       DeserializationError err = deserializeJson(doc, payload, length);
@@ -1440,11 +1567,11 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
         // A. Perintah Standar EWS (ews/EWS-01/command)
         if (strlen(cmd) > 0 || String(topic) == TOPIC_COMMAND) {
-          Serial.printf("🕹️ [KONTROL] Menerima instruksi: %s\n", cmd);
+          Serial.printf("[KONTROL] Menerima instruksi: %s\n", cmd);
 
           if (strcmp(cmd, "TRIGGER_ALARM") == 0) {
             const char* type = doc["type"] | doc["payload"]["type"] | "bahaya";
-            Serial.printf("🚨 ALARM DIAKTIFKAN (%s)!\n", type);
+            Serial.printf("[ALARM DIAKTIFKAN] (%s)!\n", type);
             currentStatus = String(type);
 
             if (strcmp(type, "bahaya") == 0) {
@@ -1460,7 +1587,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             }
           }
           else if (strcmp(cmd, "RESET_ALARM") == 0) {
-            Serial.println("✅ Reset Alarm Diterima: Mematikan sirine & strobo serta mereset siklus alarm");
+            Serial.println("[OK] Reset Alarm Diterima: Mematikan sirine & strobo serta mereset siklus alarm");
             currentStatus = "aman";
             alarmCycleState = ALARM_STATE_IDLE;
             rainAlarmSoundedThisCycle = false;
@@ -1469,7 +1596,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             isBuzzerTesting = false;
           }
           else if (strcmp(cmd, "TEST_BUZZER") == 0) {
-            Serial.println("🔊 Uji Coba Sirine Lokal 2.5 Detik...");
+            Serial.println("[TEST] Uji Coba Sirine Lokal 2.5 Detik...");
             setRelaySirine(true);
             isBuzzerTesting = true;
             buzzerTestTimeout = millis() + 2500;
@@ -1484,15 +1611,15 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
           }
           else if (strcmp(cmd, "CLIENT_HEARTBEAT") == 0) {
             lastClientActivityTime = millis();
-            Serial.println("💓 [HEARTBEAT] Client web aktif membuka dashboard (Mode Realtime Live)");
+            Serial.println("[HEARTBEAT] Client web aktif membuka dashboard (Mode Realtime Live)");
           }
           else if (strcmp(cmd, "REQUEST_DATA") == 0 || strcmp(cmd, "REQUEST_TELEMETRY") == 0) {
             lastClientActivityTime = millis();
             forceTelemetryPublish = true;
-            Serial.println("📡 [REQUEST] Permintaan data sensor on-demand diterima dari Web");
+            Serial.println("[REQUEST] Permintaan data sensor on-demand diterima dari Web");
           }
           else if (strcmp(cmd, "SET_THRESHOLDS") == 0) {
-            Serial.println("⚙️ [KONTROL] Menerima konfigurasi ambang batas baru dari Web!");
+            Serial.println("[KONTROL] Menerima konfigurasi ambang batas baru dari Web!");
             JsonObject tObj;
             if (doc.containsKey("thresholds") && doc["thresholds"].is<JsonObject>()) {
               tObj = doc["thresholds"].as<JsonObject>();
@@ -1570,11 +1697,11 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
               serializeJson(ackDoc, ackStr);
               safeSendTXT(ackStr);
             } else {
-              Serial.println("⚠️ [KONTROL] Format 'thresholds' tidak ditemukan dalam pesan WebSocket.");
+              Serial.println("[KONTROL] Format 'thresholds' tidak ditemukan dalam pesan WebSocket.");
             }
           }
           else if (strcmp(cmd, "SET_ALARM_CONFIG") == 0) {
-            Serial.println("⏰ [KONTROL] Menerima konfigurasi siklus alarm dari Web!");
+            Serial.println(" [KONTROL] Menerima konfigurasi siklus alarm dari Web!");
             SensorThresholds newT = currentThresholds;
             if (doc.containsKey("alarmDuration")) newT.alarmDuration = doc["alarmDuration"].as<uint32_t>();
             else if (doc["payload"].containsKey("alarmDuration")) newT.alarmDuration = doc["payload"]["alarmDuration"].as<uint32_t>();
@@ -1601,7 +1728,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             safeSendTXT(ackStr);
           }
           else if (strcmp(cmd, "CALIBRATE_BASELINE") == 0) {
-            Serial.println("🎯 [KONTROL] Menerima perintah KALIBRASI TITIK AMAN SENSOR 1-KLIK!");
+            Serial.println("[KONTROL] Menerima perintah KALIBRASI TITIK AMAN SENSOR 1-KLIK!");
             SensorThresholds newT = currentThresholds;
             if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
               newT.safeTiltPitch    = sharedSensors.pitch;
@@ -1632,7 +1759,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             safeSendTXT(ackStr);
           }
           else if (strcmp(cmd, "SYNC_RTC") == 0) {
-            Serial.println("⏱️ [KONTROL] Permintaan sinkronisasi manual RTC ke NTP diterima!");
+            Serial.println(" [KONTROL] Permintaan sinkronisasi manual RTC ke NTP diterima!");
             syncRTCWithNTP(true);
 
             DynamicJsonDocument ackDoc(256);
@@ -1676,7 +1803,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 // TASK 1 (Core 0): Mengelola Koneksi & Loop WebSocket secara Terdedikasi
 void wsTask(void *pvParameters) {
-  Serial.println("🚀 [FreeRTOS] wsTask berjalan pada Core 0 (Dedicated Network)");
+  Serial.println("[FreeRTOS] wsTask berjalan pada Core 0 (Dedicated Network)");
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
       if (!ntpSyncAttempted) {
@@ -1690,7 +1817,7 @@ void wsTask(void *pvParameters) {
           needSubscribe = false;
           String subMsg = "{\"action\":\"subscribe\",\"topic\":\"" + TOPIC_COMMAND + "\"}";
           webSocket.sendTXT(subMsg.c_str());
-          Serial.printf("📡 [WS] Berhasil subscribe ke: %s\n", TOPIC_COMMAND.c_str());
+          Serial.printf("[WS] Berhasil subscribe ke: %s\n", TOPIC_COMMAND.c_str());
         }
 
 
@@ -1703,7 +1830,7 @@ void wsTask(void *pvParameters) {
 
 // TASK 2 (Core 1): Membaca Sensor & Memperbarui Layar OLED secara Berkala
 void sensorTask(void *pvParameters) {
-  Serial.println("🚀 [FreeRTOS] sensorTask berjalan pada Core 1 (Sensors & OLED)");
+  Serial.println("[FreeRTOS] sensorTask berjalan pada Core 1 (Sensors & OLED)");
   for (;;) {
     float pitch = 0.0, roll = 0.0;
     readInclinometer(pitch, roll);
@@ -1737,7 +1864,7 @@ void sensorTask(void *pvParameters) {
     // Jika sudah 20 menit tidak ada penambahan tip hujan, reset siklus hujan (hujan reda/selesai)
     if (rainAlarmSoundedThisCycle && (lastRainActivityTime > 0) && (millis() - lastRainActivityTime >= RAIN_CYCLE_IDLE_TIMEOUT_MS)) {
       rainAlarmSoundedThisCycle = false;
-      Serial.println("🌧️ [HUJAN] Tidak ada penambahan curah hujan selama 20 menit. Siklus hujan direset (hujan reda). Sirine siap berbunyi 1x jika hujan baru tiba.");
+      Serial.println("[HUJAN] Tidak ada penambahan curah hujan selama 20 menit. Siklus hujan direset (hujan reda). Sirine siap berbunyi 1x jika hujan baru tiba.");
     }
 
     unsigned long rawVibPulses = 0;
@@ -1854,7 +1981,7 @@ void sensorTask(void *pvParameters) {
     if (st == "bahaya") {
       if (currentStatus != "bahaya") {
         logEventToSD("BAHAYA", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("🚨 [ALARM BAHAYA] Penyebab: %s\n", reason.c_str());
+        Serial.printf("[ALARM BAHAYA] Penyebab: %s\n", reason.c_str());
       }
 
       unsigned long curMs = millis();
@@ -1870,7 +1997,7 @@ void sensorTask(void *pvParameters) {
           alarmCycleState = ALARM_STATE_SOUNDING;
           alarmSoundingStartTime = curMs;
           setRelaySirine(true);
-          Serial.printf("🚨 [ALARM TANAH] Gerakan tanah/gempa bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s). Penyebab: %s\n",
+          Serial.printf("[ALARM TANAH] Gerakan tanah/gempa bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s). Penyebab: %s\n",
                         thresh.alarmDuration, thresh.alarmPause, reason.c_str());
         }
         else if (alarmCycleState == ALARM_STATE_SOUNDING) {
@@ -1878,7 +2005,7 @@ void sensorTask(void *pvParameters) {
             alarmCycleState = ALARM_STATE_PAUSED;
             alarmPauseStartTime = curMs;
             setRelaySirine(false);
-            Serial.printf("⏳ [ALARM] Waktu bunyi habis (%u s). Mematikan sirine untuk jeda (%u s)...\n",
+            Serial.printf("[ALARM] Waktu bunyi habis (%u s). Mematikan sirine untuk jeda (%u s)...\n",
                           thresh.alarmDuration, thresh.alarmPause);
           } else {
             if (!sirenActive) setRelaySirine(true);
@@ -1889,7 +2016,7 @@ void sensorTask(void *pvParameters) {
             alarmCycleState = ALARM_STATE_SOUNDING;
             alarmSoundingStartTime = curMs;
             setRelaySirine(true);
-            Serial.println("🚨 [ALARM] Jeda selesai dan kondisi masih bahaya! Sirine menyala kembali.");
+            Serial.println("[ALARM] Jeda selesai dan kondisi masih bahaya! Sirine menyala kembali.");
           } else {
             if (sirenActive) setRelaySirine(false);
           }
@@ -1906,7 +2033,7 @@ void sensorTask(void *pvParameters) {
             alarmSoundingStartTime = curMs;
             setRelaySirine(true);
             setRelayStrobo(true);
-            Serial.printf("🌧️ [ALARM HUJAN] Curah hujan tinggi terdeteksi! Sirine dibunyikan 1x (Durasi: %u s). Penyebab: %s\n",
+            Serial.printf("[ALARM HUJAN] Curah hujan tinggi terdeteksi! Sirine dibunyikan 1x (Durasi: %u s). Penyebab: %s\n",
                           thresh.alarmDuration, reason.c_str());
           }
           else if (alarmCycleState == ALARM_STATE_SOUNDING) {
@@ -1915,7 +2042,7 @@ void sensorTask(void *pvParameters) {
               rainAlarmSoundedThisCycle = true;
               setRelaySirine(false);
               setRelayStrobo(false); // Pastikan relay GPIO 46 MATI agar sirine tidak berbunyi
-              Serial.printf("🔇 [ALARM HUJAN] Bunyi sirine 1x selesai (%u s). Sirine dimatikan untuk sisa siklus hujan ini. Pemantauan Web & Telegram tetap aktif.\n",
+              Serial.printf("[ALARM HUJAN] Bunyi sirine 1x selesai (%u s). Sirine dimatikan untuk sisa siklus hujan ini. Pemantauan Web & Telegram tetap aktif.\n",
                             thresh.alarmDuration);
             } else {
               if (!sirenActive) setRelaySirine(true);
@@ -1935,7 +2062,7 @@ void sensorTask(void *pvParameters) {
       if (stroboActive) setRelayStrobo(false);
       if (currentStatus != "siaga") {
         logEventToSD("SIAGA", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("⚠️ [ALARM SIAGA] %s -> Relay Lapangan MATI (Hanya Peringatan Web & Telegram)\n", reason.c_str());
+        Serial.printf("[ALARM SIAGA] %s -> Relay Lapangan MATI (Hanya Peringatan Web & Telegram)\n", reason.c_str());
       }
     } else if (st == "baterai_lemah") {
       alarmCycleState = ALARM_STATE_IDLE;
@@ -1944,7 +2071,7 @@ void sensorTask(void *pvParameters) {
       if (stroboActive) setRelayStrobo(false);
       if (currentStatus != "baterai_lemah") {
         logEventToSD("BATERAI_LEMAH", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("ℹ️ [WARNING WEB] %s -> Relay dipastikan MATI (OFF)\n", reason.c_str());
+        Serial.printf("[INFO] [WARNING WEB] %s -> Relay dipastikan MATI (OFF)\n", reason.c_str());
       }
     } else if (st == "aman") {
       alarmCycleState = ALARM_STATE_IDLE;
@@ -1952,7 +2079,7 @@ void sensorTask(void *pvParameters) {
       if (stroboActive) setRelayStrobo(false);
       if (currentStatus == "bahaya" || currentStatus == "siaga" || currentStatus == "baterai_lemah") {
         logEventToSD("AMAN_KEMBALI", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.println("✅ [SENSOR] Kondisi normal kembali. Sirine & strobo dinonaktifkan.");
+        Serial.println("[SENSOR] Kondisi normal kembali. Sirine & strobo dinonaktifkan.");
       }
     }
 
@@ -1994,9 +2121,9 @@ void sensorTask(void *pvParameters) {
     // Update layar OLED
     updateOledDisplay(pitch, roll, soil, rain, batt);
 
-    // Rekam Telemetri Berkala ke MicroSD setiap 5 menit (300.000 ms = 5 menit) jika modul SD terpasang
+    // Rekam Telemetri Berkala secara HYBRID (MicroSD / SPIFFS Internal) setiap 5 menit (300.000 ms)
     static unsigned long lastSdPeriodicLogTime = 0;
-    if (sdAvailable) {
+    if (sdAvailable || spiffsAvailable) {
       unsigned long nowMs = millis();
       if (lastSdPeriodicLogTime == 0 || (nowMs - lastSdPeriodicLogTime >= 300000UL)) {
         lastSdPeriodicLogTime = nowMs;
@@ -2014,7 +2141,7 @@ void sensorTask(void *pvParameters) {
 
 // TASK 3 (Core 1): Mengirimkan Telemetri ke WebSocket dengan Smart Pacing & Mutex
 void telemetryTask(void *pvParameters) {
-  Serial.println("🚀 [FreeRTOS] telemetryTask berjalan pada Core 1 (Telemetry Sender)");
+  Serial.println("[FreeRTOS] telemetryTask berjalan pada Core 1 (Telemetry Sender)");
   // Jeda awal 5 detik agar handshake WebSocket benar-benar selesai
   vTaskDelay(pdMS_TO_TICKS(5000));
 
@@ -2119,7 +2246,7 @@ void telemetryTask(void *pvParameters) {
         serializeJson(doc, jsonOutput);
 
         if (safeSendTXT(jsonOutput)) {
-          Serial.printf("📤 [TELEMETRI %s] IP:%s, Status:%s, Penyebab:%s, Aki:%.2fV (Relay:%s)\n",
+          Serial.printf("[TELEMETRI %s] IP:%s, Status:%s, Penyebab:%s, Aki:%.2fV (Relay:%s)\n",
                         isClientActive ? "REALTIME" : "HEMAT DAYA 5 MENIT",
                         ipStr.c_str(), data.status, data.alarmReason, data.batteryVoltage,
                         (sirenActive || stroboActive) ? "ON" : "OFF");
@@ -2217,7 +2344,7 @@ void setup() {
   loadDeviceConfigFromNVS();
 
   WiFi.mode(WIFI_AP_STA); // Mode ganda: siap melayani Web Server kalibrasi lokal (AP & STA)
-  Serial.printf("🔌 Menghubungkan ke WiFi: %s ", wifiSsidDefault.c_str());
+  Serial.printf("[WIFI] Menghubungkan ke WiFi: %s ", wifiSsidDefault.c_str());
 
 #if ENABLE_OLED
   if (oledAvailable) {
@@ -2251,8 +2378,8 @@ void setup() {
 
   // Jika gagal tersambung dalam 10 detik, picu Captive Portal WiFiManager
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n⚠️ Gagal terhubung ke WiFi dalam 10 detik!");
-    Serial.println("🌐 Mengaktifkan Access Point WiFiManager untuk konfigurasi SSID/Password...");
+    Serial.println("\n[WARN] Gagal terhubung ke WiFi dalam 10 detik!");
+    Serial.println("[WIFI] Mengaktifkan Access Point WiFiManager untuk konfigurasi SSID/Password...");
 
     String apSSID = String("EWS-Config-") + ewsId;
 
@@ -2288,7 +2415,7 @@ void setup() {
     bool portalRes = wm.startConfigPortal(apSSID.c_str());
 
     if (!portalRes) {
-      Serial.println("❌ WiFiManager timeout / konfigurasi batal. Melanjutkan sistem...");
+      Serial.println("[ERR] WiFiManager timeout / konfigurasi batal. Melanjutkan sistem...");
 #if ENABLE_OLED
       if (oledAvailable) {
         if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -2307,7 +2434,7 @@ void setup() {
       }
 #endif
     } else {
-      Serial.println("✅ WiFi berhasil dikonfigurasi melalui WiFiManager!");
+      Serial.println("[OK] WiFi berhasil dikonfigurasi melalui WiFiManager!");
       // Simpan SSID & Password baru hasil WiFiManager ke NVS Preferences
       wifiSsidDefault = WiFi.SSID();
       wifiPasswordDefault = WiFi.psk();
@@ -2316,7 +2443,7 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi Terhubung!");
+    Serial.println("\n[OK] WiFi Terhubung!");
     Serial.printf("   SSID       : %s\n", WiFi.SSID().c_str());
     Serial.printf("   IP Address : %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("   Signal RSSI: %d dBm\n", WiFi.RSSI());
@@ -2343,15 +2470,15 @@ void setup() {
     }
 #endif
   } else {
-    Serial.println("\n⚠️ Gagal koneksi WiFi, proses tetap berjalan...");
+    Serial.println("\n[WARN] Gagal koneksi WiFi, proses tetap berjalan...");
   }
 
   // Konfigurasi WebSocket Dinamis dari NVS
   if (wsUseSsl) {
-    Serial.printf("🌐 Menghubungkan ke WebSocket SSL: wss://%s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
+    Serial.printf("[WIFI] Menghubungkan ke WebSocket SSL: wss://%s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
     webSocket.beginSSL(wsHost.c_str(), wsPort, wsPath.c_str());
   } else {
-    Serial.printf("🌐 Menghubungkan ke WebSocket: ws://%s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
+    Serial.printf("[WIFI] Menghubungkan ke WebSocket: ws://%s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
     webSocket.begin(wsHost.c_str(), wsPort, wsPath.c_str());
   }
 
@@ -2379,7 +2506,7 @@ void loop() {
   // Buka portal WiFiManager jika diminta dari dashboard Web
   if (triggerWiFiManagerPortal) {
     triggerWiFiManagerPortal = false;
-    Serial.println("🌐 [WIFI] Membuka Portal WiFiManager sesuai permintaan dari Dashboard...");
+    Serial.println("[WIFI] Membuka Portal WiFiManager sesuai permintaan dari Dashboard...");
     String apName = String("EWS-Config-") + ewsId;
     WiFiManager wm;
     wm.setConfigPortalTimeout(120); // 2 menit timeout
@@ -2388,7 +2515,7 @@ void loop() {
       wifiSsidDefault = WiFi.SSID();
       wifiPasswordDefault = WiFi.psk();
       saveDeviceConfigToNVS(ewsId, wifiSsidDefault, wifiPasswordDefault, wsHost, wsPort, wsPath, wsUseSsl);
-      Serial.println("✅ [WIFI] WiFi baru berhasil disimpan dari portal WiFiManager!");
+      Serial.println("[WIFI] WiFi baru berhasil disimpan dari portal WiFiManager!");
     }
   }
 
@@ -2396,7 +2523,7 @@ void loop() {
   if (isBuzzerTesting && millis() >= buzzerTestTimeout) {
     isBuzzerTesting = false;
     setRelaySirine(false);
-    Serial.println("🔇 Uji sirine selesai (Sirine dimatikan)");
+    Serial.println("[INFO] Uji sirine selesai (Sirine dimatikan)");
   }
 
   vTaskDelay(pdMS_TO_TICKS(10));
@@ -2783,12 +2910,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <!-- PANEL MICROSD: PENYIMPANAN DATA OFFLINE & DOWNLOAD CSV -->
+  <!-- PANEL MICROSD: PENYIMPANAN DATA HYBRID & DOWNLOAD CSV -->
   <div class="card" style="margin-bottom: 1.5rem;">
-    <h2>💾 Penyimpanan Data MicroSD (Perekaman Otomatis Tiap 5 Menit)</h2>
+    <h2>💾 Penyimpanan Data Hybrid (MicroSD &amp; Flash Internal)</h2>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
       <div class="sensor-row" style="background: rgba(255,255,255,0.03); padding: 0.6rem 0.85rem; border-radius: 8px;">
-        <span class="sensor-name">Status MicroSD</span>
+        <span class="sensor-name">Media Aktif</span>
         <span class="sensor-val" id="valSdStatus" style="font-size:0.85rem; font-weight:700;">Memeriksa...</span>
       </div>
       <div class="sensor-row" style="background: rgba(255,255,255,0.03); padding: 0.6rem 0.85rem; border-radius: 8px;">
@@ -2796,21 +2923,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <span class="sensor-val" id="valSdFree" style="font-size:0.85rem;">-</span>
       </div>
       <div class="sensor-row" style="background: rgba(255,255,255,0.03); padding: 0.6rem 0.85rem; border-radius: 8px;">
-        <span class="sensor-name">Ukuran File Telemetri</span>
+        <span class="sensor-name">Ukuran Log Telemetri</span>
         <span class="sensor-val" id="valSdTelemetrySize" style="font-size:0.85rem;">-</span>
       </div>
     </div>
 
     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-      <a href="/download_telemetry" class="btn btn-primary" style="flex: 1; text-align: center; text-decoration: none; margin-top: 0; background: linear-gradient(135deg, #0284c7, #0369a1);" download>
-        📥 Unduh Data Telemetri 5-Menit (.CSV)
+      <a href="/download_telemetry" class="btn btn-primary" style="flex: 2; min-width: 200px; text-align: center; text-decoration: none; margin-top: 0; background: linear-gradient(135deg, #0284c7, #0369a1);" download>
+        📥 Unduh Data Telemetri (.CSV)
       </a>
-      <a href="/download_events" class="btn btn-secondary" style="flex: 1; text-align: center; text-decoration: none; border-color: var(--card-border);" download>
+      <a href="/download_events" class="btn btn-secondary" style="flex: 2; min-width: 200px; text-align: center; text-decoration: none; border-color: var(--card-border);" download>
         📥 Unduh Log Kejadian Alarm (.CSV)
       </a>
+      <button type="button" class="btn btn-secondary" style="flex: 1; min-width: 150px; border-color: #ef4444; color: #ef4444;" onclick="clearStorage()">
+        🗑️ Bersihkan Memori
+      </button>
     </div>
     <p class="helper-text" style="margin-top: 0.65rem;">
-      💡 Data sensor direkam otomatis setiap 5 menit ke kartu MicroSD. Jika memori hampir penuh, sistem cerdas akan otomatis membuang data terlama (FIFO Auto-Pruning) agar pemantauan terus berjalan tanpa henti.
+      💡 Data sensor otomatis direkam tiap 5 menit ke MicroSD. Bila MicroSD tidak ada/rusak, sistem otomatis beralih merekam ke Flash Internal (SPIFFS). Jika memori hampir penuh, sistem cerdas akan otomatis membuang data terlama (FIFO Auto-Pruning).
     </p>
   </div>
 
@@ -3024,8 +3154,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     });
   }
 
-  function updateSdInfo() {
-    fetch('/api/sd_info')
+  function updateStorageInfo() {
+    fetch('/api/storage_info')
       .then(res => res.json())
       .then(d => {
         const elStatus = document.getElementById('valSdStatus');
@@ -3033,26 +3163,48 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const elSize   = document.getElementById('valSdTelemetrySize');
         if (!elStatus || !elFree || !elSize) return;
 
-        if (d.sdAvailable) {
-          elStatus.innerHTML = '<span style="color:var(--accent-green);font-weight:700;">AKTIF (' + d.totalMB + ' MB)</span>';
+        if (d.activeStorage === "MicroSD") {
+          elStatus.innerHTML = '<span style="color:var(--accent-green);font-weight:700;">MicroSD (' + d.totalMB + ' MB)</span>';
           elFree.innerText   = d.freeMB + ' MB Bebas / ' + d.totalMB + ' MB';
           let kb = d.telemetryBytes ? (d.telemetryBytes / 1024).toFixed(1) : '0';
-          elSize.innerText   = kb + ' KB (/ews_telemetry.csv)';
+          elSize.innerText   = kb + ' KB (MicroSD)';
+        } else if (d.activeStorage === "Internal SPIFFS") {
+          elStatus.innerHTML = '<span style="color:var(--accent-yellow);font-weight:700;">Flash SPIFFS (' + d.totalKB + ' KB)</span>';
+          elFree.innerText   = d.freeKB + ' KB Bebas / ' + d.totalKB + ' KB';
+          let kb = d.telemetryBytes ? (d.telemetryBytes / 1024).toFixed(1) : '0';
+          elSize.innerText   = kb + ' KB (Flash Internal)';
         } else {
-          elStatus.innerHTML = '<span style="color:#ef4444;font-weight:700;">TIDAK TERPASANG</span>';
+          elStatus.innerHTML = '<span style="color:#ef4444;font-weight:700;">TIDAK TERSEDIA</span>';
           elFree.innerText   = '-';
           elSize.innerText   = '-';
         }
       })
-      .catch(e => console.error("SD info error:", e));
+      .catch(e => console.error("Storage info error:", e));
+  }
+
+  function clearStorage() {
+    if (!confirm("Peringatan: Apakah Anda yakin ingin mengosongkan rekaman log telemetri dan riwayat kejadian alarm di memori?")) {
+      return;
+    }
+    fetch('/api/clear_storage', {
+      method: 'POST'
+    })
+    .then(res => res.json())
+    .then(d => {
+      showToast(d.message || "Memori rekaman berhasil dibersihkan!");
+      updateStorageInfo();
+    })
+    .catch(e => {
+      showToast("Gagal membersihkan memori: " + e);
+    });
   }
 
   window.onload = function() {
     loadConfig();
     fetchLive();
-    updateSdInfo();
+    updateStorageInfo();
     setInterval(fetchLive, 1000); // Polling live data tiap 1 detik
-    setInterval(updateSdInfo, 10000); // Polling info MicroSD tiap 10 detik
+    setInterval(updateStorageInfo, 10000); // Polling info Storage tiap 10 detik
   };
 </script>
 
@@ -3212,75 +3364,94 @@ void handleApiSaveDevice() {
 }
 
 void handleDownloadTelemetry() {
-  if (!sdAvailable) {
-    localServer.send(404, "text/plain; charset=utf-8", "MicroSD Card tidak terdeteksi atau belum terpasang.");
+  File f;
+  bool isSd = false;
+
+  if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+    if (SD.exists("/ews_telemetry.csv")) {
+      f = SD.open("/ews_telemetry.csv", FILE_READ);
+      if (f) {
+        isSd = true;
+      } else {
+        xSemaphoreGive(sdMutex);
+      }
+    } else {
+      xSemaphoreGive(sdMutex);
+    }
+  }
+
+  if (!f && spiffsAvailable) {
+    if (SPIFFS.exists("/ews_telemetry.csv")) {
+      f = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+    }
+  }
+
+  if (!f) {
+    localServer.send(404, "text/plain; charset=utf-8", "Belum ada rekaman telemetri di MicroSD maupun Flash Internal (/ews_telemetry.csv).");
     return;
   }
 
-  if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
-    if (!SD.exists("/ews_telemetry.csv")) {
-      xSemaphoreGive(sdMutex);
-      localServer.send(404, "text/plain; charset=utf-8", "Belum ada rekaman telemetri di MicroSD (/ews_telemetry.csv).");
-      return;
-    }
-
-    File f = SD.open("/ews_telemetry.csv", FILE_READ);
-    if (!f) {
-      xSemaphoreGive(sdMutex);
-      localServer.send(500, "text/plain; charset=utf-8", "Gagal membuka file /ews_telemetry.csv dari MicroSD.");
-      return;
-    }
-
-    String filename = "telemetri_" + ewsId + ".csv";
-    localServer.sendHeader("Content-Type", "text/csv");
-    localServer.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-    localServer.sendHeader("Connection", "close");
-    size_t sent = localServer.streamFile(f, "text/csv");
-    f.close();
+  String filename = "telemetri_" + ewsId + ".csv";
+  localServer.sendHeader("Content-Type", "text/csv");
+  localServer.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+  localServer.sendHeader("Connection", "close");
+  size_t sent = localServer.streamFile(f, "text/csv");
+  f.close();
+  if (isSd && sdMutex != NULL) {
     xSemaphoreGive(sdMutex);
-    Serial.printf("📥 [WEB SERVER] File %s berhasil diunduh via Web Server WiFi (%u bytes)\n", filename.c_str(), sent);
-  } else {
-    localServer.send(503, "text/plain; charset=utf-8", "MicroSD sedang sibuk menulis data, silakan coba beberapa saat lagi.");
   }
+  Serial.printf("[WEB SERVER] File %s berhasil diunduh via Web Server (%s, %u bytes)\n",
+                filename.c_str(), isSd ? "MicroSD" : "SPIFFS", sent);
 }
 
 void handleDownloadEvents() {
-  if (!sdAvailable) {
-    localServer.send(404, "text/plain; charset=utf-8", "MicroSD Card tidak terdeteksi atau belum terpasang.");
+  File f;
+  bool isSd = false;
+
+  if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+    if (SD.exists("/ews_log.csv")) {
+      f = SD.open("/ews_log.csv", FILE_READ);
+      if (f) {
+        isSd = true;
+      } else {
+        xSemaphoreGive(sdMutex);
+      }
+    } else {
+      xSemaphoreGive(sdMutex);
+    }
+  }
+
+  if (!f && spiffsAvailable) {
+    if (SPIFFS.exists("/ews_log.csv")) {
+      f = SPIFFS.open("/ews_log.csv", FILE_READ);
+    }
+  }
+
+  if (!f) {
+    localServer.send(404, "text/plain; charset=utf-8", "Belum ada log kejadian di MicroSD maupun Flash Internal (/ews_log.csv).");
     return;
   }
 
-  if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
-    if (!SD.exists("/ews_log.csv")) {
-      xSemaphoreGive(sdMutex);
-      localServer.send(404, "text/plain; charset=utf-8", "Belum ada log kejadian di MicroSD (/ews_log.csv).");
-      return;
-    }
-
-    File f = SD.open("/ews_log.csv", FILE_READ);
-    if (!f) {
-      xSemaphoreGive(sdMutex);
-      localServer.send(500, "text/plain; charset=utf-8", "Gagal membuka file /ews_log.csv dari MicroSD.");
-      return;
-    }
-
-    String filename = "kejadian_alarm_" + ewsId + ".csv";
-    localServer.sendHeader("Content-Type", "text/csv");
-    localServer.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-    localServer.sendHeader("Connection", "close");
-    size_t sent = localServer.streamFile(f, "text/csv");
-    f.close();
+  String filename = "kejadian_alarm_" + ewsId + ".csv";
+  localServer.sendHeader("Content-Type", "text/csv");
+  localServer.sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+  localServer.sendHeader("Connection", "close");
+  size_t sent = localServer.streamFile(f, "text/csv");
+  f.close();
+  if (isSd && sdMutex != NULL) {
     xSemaphoreGive(sdMutex);
-    Serial.printf("📥 [WEB SERVER] File %s berhasil diunduh via Web Server WiFi (%u bytes)\n", filename.c_str(), sent);
-  } else {
-    localServer.send(503, "text/plain; charset=utf-8", "MicroSD sedang sibuk menulis data, silakan coba beberapa saat lagi.");
   }
+  Serial.printf("[WEB SERVER] File %s berhasil diunduh via Web Server (%s, %u bytes)\n",
+                filename.c_str(), isSd ? "MicroSD" : "SPIFFS", sent);
 }
 
-void handleApiSdInfo() {
-  StaticJsonDocument<384> doc;
-  doc["sdAvailable"] = sdAvailable;
+void handleApiStorageInfo() {
+  StaticJsonDocument<512> doc;
+
   if (sdAvailable) {
+    doc["activeStorage"] = "MicroSD";
+    doc["sdAvailable"] = true;
+    doc["spiffsAvailable"] = spiffsAvailable;
     uint64_t totalBytes = SD.totalBytes();
     uint64_t usedBytes  = SD.usedBytes();
     uint64_t freeBytes  = (totalBytes > usedBytes) ? (totalBytes - usedBytes) : 0;
@@ -3306,11 +3477,87 @@ void handleApiSdInfo() {
       }
       xSemaphoreGive(sdMutex);
     }
+  } else if (spiffsAvailable) {
+    doc["activeStorage"] = "Internal SPIFFS";
+    doc["sdAvailable"] = false;
+    doc["spiffsAvailable"] = true;
+    size_t totalBytes = SPIFFS.totalBytes();
+    size_t usedBytes  = SPIFFS.usedBytes();
+    size_t freeBytes  = (totalBytes > usedBytes) ? (totalBytes - usedBytes) : 0;
+
+    doc["totalKB"] = (unsigned long)(totalBytes / 1024);
+    doc["usedKB"]  = (unsigned long)(usedBytes / 1024);
+    doc["freeKB"]  = (unsigned long)(freeBytes / 1024);
+
+    if (SPIFFS.exists("/ews_telemetry.csv")) {
+      File f = SPIFFS.open("/ews_telemetry.csv", FILE_READ);
+      if (f) {
+        doc["telemetryBytes"] = (unsigned long)f.size();
+        f.close();
+      }
+    }
+    if (SPIFFS.exists("/ews_log.csv")) {
+      File f = SPIFFS.open("/ews_log.csv", FILE_READ);
+      if (f) {
+        doc["eventBytes"] = (unsigned long)f.size();
+        f.close();
+      }
+    }
+  } else {
+    doc["activeStorage"] = "None";
+    doc["sdAvailable"] = false;
+    doc["spiffsAvailable"] = false;
   }
 
   String res;
   serializeJson(doc, res);
   localServer.send(200, "application/json", res);
+}
+
+void handleApiClearStorage() {
+  bool clearedAny = false;
+
+  if (sdAvailable && sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+    if (SD.exists("/ews_telemetry.csv")) SD.remove("/ews_telemetry.csv");
+    if (SD.exists("/ews_log.csv")) SD.remove("/ews_log.csv");
+
+    File f = SD.open("/ews_telemetry.csv", FILE_WRITE);
+    if (f) {
+      f.println("Waktu,Device_ID,Status,Pitch,Roll,Hujan_Rate_mm_h,Hujan_Kumulatif_mm,Tips_Hujan,Tanah_Persen,Tanah_ADC,Getaran_g,Getaran_Pulsa,Aki_Volt,Aki_mA,Solar_mA,Sirine,Strobo,Penyebab");
+      f.close();
+    }
+    File fLog = SD.open("/ews_log.csv", FILE_WRITE);
+    if (fLog) {
+      fLog.println("Waktu,Status,Penyebab,Pitch,Roll,Hujan_mm,Tanah_Persen,Aki_V,Sirine,Strobo");
+      fLog.close();
+    }
+    xSemaphoreGive(sdMutex);
+    clearedAny = true;
+  }
+
+  if (spiffsAvailable) {
+    if (SPIFFS.exists("/ews_telemetry.csv")) SPIFFS.remove("/ews_telemetry.csv");
+    if (SPIFFS.exists("/ews_log.csv")) SPIFFS.remove("/ews_log.csv");
+
+    File f = SPIFFS.open("/ews_telemetry.csv", FILE_WRITE);
+    if (f) {
+      f.println("Waktu,Device_ID,Status,Pitch,Roll,Hujan_Rate_mm_h,Hujan_Kumulatif_mm,Tips_Hujan,Tanah_Persen,Tanah_ADC,Getaran_g,Getaran_Pulsa,Aki_Volt,Aki_mA,Solar_mA,Sirine,Strobo,Penyebab");
+      f.close();
+    }
+    File fLog = SPIFFS.open("/ews_log.csv", FILE_WRITE);
+    if (fLog) {
+      fLog.println("Waktu,Status,Penyebab,Pitch,Roll,Hujan_mm,Tanah_Persen,Aki_V,Sirine,Strobo");
+      fLog.close();
+    }
+    clearedAny = true;
+  }
+
+  if (clearedAny) {
+    Serial.println("[STORAGE] Memori rekaman telemetri dan log kejadian berhasil dibersihkan via Web Server.");
+    localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Memori rekaman data telemetri dan log kejadian berhasil dibersihkan!\"}");
+  } else {
+    localServer.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Media penyimpanan (SD/SPIFFS) tidak tersedia untuk dibersihkan.\"}");
+  }
 }
 
 void setupWebServer() {
@@ -3319,7 +3566,9 @@ void setupWebServer() {
   localServer.on("/api/config", HTTP_GET, handleApiConfig);
   localServer.on("/api/save_calibration", HTTP_POST, handleApiSaveCalibration);
   localServer.on("/api/save_device", HTTP_POST, handleApiSaveDevice);
-  localServer.on("/api/sd_info", HTTP_GET, handleApiSdInfo);
+  localServer.on("/api/storage_info", HTTP_GET, handleApiStorageInfo);
+  localServer.on("/api/sd_info", HTTP_GET, handleApiStorageInfo);
+  localServer.on("/api/clear_storage", HTTP_POST, handleApiClearStorage);
   localServer.on("/download_telemetry", HTTP_GET, handleDownloadTelemetry);
   localServer.on("/download-csv", HTTP_GET, handleDownloadTelemetry);
   localServer.on("/download_events", HTTP_GET, handleDownloadEvents);
@@ -3330,8 +3579,8 @@ void setupWebServer() {
   });
 
   localServer.begin();
-  Serial.println("🌐 [WEB SERVER] Web Server Kalibrasi & CSV Download Berhasil Dimulai pada Port 80!");
-  Serial.print("   👉 Akses dashboard via browser di IP: http://");
+  Serial.println("[WEB SERVER] Web Server Kalibrasi & CSV Download Berhasil Dimulai pada Port 80!");
+  Serial.print("   Akses dashboard via browser di IP: http://");
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println(WiFi.localIP().toString());
   } else {
