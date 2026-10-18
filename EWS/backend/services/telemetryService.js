@@ -106,14 +106,14 @@ class TelemetryService {
       alarmTriggered = true;
       triggerCause = sensorData.alarmReason || 'Kemiringan / Curah Hujan / Kelembapan Melebihi Batas Siaga';
       triggerValue = `Pitch: ${data.pitchAngle}°, Hujan: ${data.rainfallRate}mm/h, Kelembapan: ${data.soilMoisture}%`;
-    } else if (sensorData.inaAvailable === false || data.batteryVoltage <= 0.5) {
-      // Sensor arus/tegangan INA tidak terbaca atau 0V: BUKAN tanda bahaya bencana!
+    } else if (data.batteryVoltage <= 0.5) {
+      // Sensor arus/tegangan INA atau pembagi resistor tidak terbaca / 0V: BUKAN tanda bahaya bencana!
       // Relay sirine & strobo WAJIB OFF, hanya warning visual di web dashboard!
       newStatus = 'baterai_lemah';
       sirenActive = false;
       stroboActive = false;
       alarmTriggered = false;
-      triggerCause = sensorData.alarmReason || 'Sensor Arus/Tegangan INA Tidak Terdeteksi (0.00V) [Warning Web Saja, Relay OFF]';
+      triggerCause = sensorData.alarmReason || 'Tegangan Baterai / Sensor Daya Tidak Terdeteksi (0.00V) [Warning Web Saja, Relay OFF]';
       triggerValue = `${data.batteryVoltage} V`;
     } else if (data.batteryVoltage < thresholds.batteryLowVoltage) {
       newStatus = 'baterai_lemah';

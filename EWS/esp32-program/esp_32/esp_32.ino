@@ -140,6 +140,14 @@ volatile bool triggerWiFiManagerPortal = false;
 #define PIN_INA_SCL        13  // Pin SCL INA219 (GPIO 13)
 #define INA_I2C_ADDR         0x40
 
+// Fallback Pembagi Tegangan Resistor (Jika modul INA219/INA226 tidak terpasang)
+// Pin GPIO 14 (Jalur SDA pada Header J3 INA) dihubungkan ke titik tengah resistor pembagi tegangan
+// Resistor R1 = 11 ohm/k-ohm (ke kutub positif Aki) dan R2 = 4 ohm/k-ohm (ke GND)
+#define PIN_BATTERY_DIVIDER 14
+#define BATT_DIVIDER_R1     11.0f
+#define BATT_DIVIDER_R2     4.0f
+#define BATT_DIVIDER_DEFAULT_RATIO ((BATT_DIVIDER_R1 + BATT_DIVIDER_R2) / BATT_DIVIDER_R2) // 3.75f
+
 // Pin SPI Perangkat 4: Modul MicroSD Card (U5)
 #define PIN_SD_MOSI        4   // mosi -> GPIO 4
 #define PIN_SD_SCK         5   // sck  -> GPIO 5
@@ -207,6 +215,7 @@ struct SensorThresholds {
   
   float vibrationDanger;      // Default: 0.25 g / hitungan pulsa
   float batteryLowVoltage;    // Default: 11.8 V
+  float battDividerRatio;     // Rasio pembagi tegangan resistor (default: 3.75f)
   
   // Kalibrasi ADC Tanah (Raw ADC saat kering & saat basah)
   int soilAdcDry;             // Default 3300
@@ -264,6 +273,7 @@ SensorThresholds currentThresholds = {
   75.0f,  // soilMoistureWarning
   0.25f,  // vibrationDanger
   11.8f,  // batteryLowVoltage
+  3.75f,  // battDividerRatio ((11+4)/4 = 3.75f)
   3300,   // soilAdcDry
   1200,   // soilAdcWet
   0.70f,  // rainCalibPerTip
@@ -379,6 +389,7 @@ void loadThresholdsFromEEPROM() {
     currentThresholds.soilMoistureWarning   = prefs.getFloat("soilWarn", 75.0f);
     currentThresholds.vibrationDanger       = prefs.getFloat("vibDang", 0.25f);
     currentThresholds.batteryLowVoltage     = prefs.getFloat("battLow", 11.8f);
+    currentThresholds.battDividerRatio      = prefs.getFloat("battRatio", 3.75f);
     currentThresholds.soilAdcDry            = prefs.getInt("soilDry", 3300);
     currentThresholds.soilAdcWet            = prefs.getInt("soilWet", 1200);
     currentThresholds.rainCalibPerTip       = prefs.getFloat("rainCalib", 0.70f);
@@ -395,8 +406,8 @@ void loadThresholdsFromEEPROM() {
     Serial.printf("   - Tanah Aman / Tol      : %.1f%% (Tol: +-%.1f%%) | Siaga: >= %.1f%% (ADC %d-%d)\n", 
                   currentThresholds.safeSoilMoisture, currentThresholds.soilMoistureTolerance, 
                   currentThresholds.soilMoistureWarning, currentThresholds.soilAdcDry, currentThresholds.soilAdcWet);
-    Serial.printf("   - Getaran / Baterai Min : Bahaya >= %.2f | Baterai < %.2f V\n", 
-                  currentThresholds.vibrationDanger, currentThresholds.batteryLowVoltage);
+    Serial.printf("   - Getaran / Baterai Min : Bahaya >= %.2f | Baterai < %.2f V (Rasio Divider: %.2fx)\n", 
+                  currentThresholds.vibrationDanger, currentThresholds.batteryLowVoltage, currentThresholds.battDividerRatio);
     Serial.printf("   - Siklus Alarm Otomatis : Aktif %u s | Jeda %u s\n", 
                   currentThresholds.alarmDuration, currentThresholds.alarmPause);
   } else {
@@ -418,6 +429,7 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
     prefs.putFloat("soilWarn", newT.soilMoistureWarning);
     prefs.putFloat("vibDang", newT.vibrationDanger);
     prefs.putFloat("battLow", newT.batteryLowVoltage);
+    prefs.putFloat("battRatio", newT.battDividerRatio);
     prefs.putInt("soilDry", newT.soilAdcDry);
     prefs.putInt("soilWet", newT.soilAdcWet);
     prefs.putFloat("rainCalib", newT.rainCalibPerTip);
@@ -794,7 +806,8 @@ void initINA() {
       inaAvailable = true;
     } else {
       inaAvailable = false;
-      Serial.printf("⚠️ [INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Melanjutkan booting...\n", activeInaSda, activeInaScl);
+      Serial.printf("⚠️ [INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Mengaktifkan fallback Pembagi Tegangan Resistor 11:4 pada GPIO %d...\n", activeInaSda, activeInaScl, PIN_BATTERY_DIVIDER);
+      pinMode(PIN_BATTERY_DIVIDER, INPUT);
       return;
     }
   } else {
@@ -875,11 +888,30 @@ void readPowerMonitor(float &batteryVolt, int &solarCurrent, int &batteryCurrent
         batteryCurrent = 0;
       }
       xSemaphoreGive(i2cMutex);
-      return;
+      if (batteryVolt > 0.5f) {
+        return;
+      }
     }
   }
 
-  batteryVolt    = 0.0f;
+  // Fallback: Menggunakan Resistor Pembagi Tegangan 11:4 pada GPIO 14 (Jalur SDA Header J3)
+  pinMode(PIN_BATTERY_DIVIDER, INPUT);
+  long sumMv = 0;
+  for (int i = 0; i < 16; i++) {
+    sumMv += analogReadMilliVolts(PIN_BATTERY_DIVIDER);
+    delayMicroseconds(50);
+  }
+  float vAdc = (float)sumMv / (16.0f * 1000.0f);
+  if (sumMv == 0) {
+    long sum = 0;
+    for (int i = 0; i < 16; i++) {
+      sum += analogRead(PIN_BATTERY_DIVIDER);
+      delayMicroseconds(50);
+    }
+    vAdc = ((float)sum / 16.0f) * (3.3f / 4095.0f);
+  }
+  float ratio = (currentThresholds.battDividerRatio > 0.5f) ? currentThresholds.battDividerRatio : BATT_DIVIDER_DEFAULT_RATIO;
+  batteryVolt = vAdc * ratio;
   solarCurrent   = 0;
   batteryCurrent = 0;
 }
@@ -1025,7 +1057,13 @@ void initHardwareOnce() {
 
   // 3. INA219 Power Monitor (Hardware I2C Wire: GPIO 14 SDA, GPIO 13 SCL)
   initINA();
-  Serial.printf(" [INA]  INA219 Power Monitor  : [%s] (SDA=%d, SCL=%d)\n", inaAvailable ? "OK AKTIF" : "TIDAK ADA", activeInaSda, activeInaScl);
+  if (inaAvailable) {
+    Serial.printf(" [INA]  INA219 Power Monitor  : [OK AKTIF] (SDA=%d, SCL=%d)\n", activeInaSda, activeInaScl);
+  } else {
+    Serial.printf(" [INA]  INA219 Power Monitor  : [TIDAK ADA] -> Fallback Pembagi Resistor 11:4 (GPIO %d, Rasio %.2fx)\n",
+                  PIN_BATTERY_DIVIDER,
+                  currentThresholds.battDividerRatio > 0.5f ? currentThresholds.battDividerRatio : BATT_DIVIDER_DEFAULT_RATIO);
+  }
 
   // 4. DS3231 Real-Time Clock (Hardware I2C Wire: GPIO 15 SDA, GPIO 16 SCL)
   initDS3231();
@@ -1642,13 +1680,17 @@ void sensorTask(void *pvParameters) {
       st = "siaga";
       reason = "Kelembapan Tanah Melebihi Toleransi Aman (" + String(soil, 1) + "% > " + String(thresh.safeSoilMoisture + thresh.soilMoistureTolerance, 1) + "%)";
     }
-    // 3. Status Baterai & Sensor INA (HANYA WARNING DI WEB, BUKAN BAHAYA BENCANA, RELAY WAJIB OFF!)
-    else if (!inaAvailable || batt <= 0.5f) {
+    // 3. Status Baterai & Sensor INA/Divider (HANYA WARNING DI WEB, BUKAN BAHAYA BENCANA, RELAY WAJIB OFF!)
+    else if (batt <= 0.5f) {
       st = "baterai_lemah";
-      reason = "Sensor Arus/Tegangan INA Tidak Terdeteksi (0.00V) [Warning Web Saja, Relay OFF]";
+      reason = "Tegangan Baterai / Sensor Daya 0.00V [Warning Web Saja, Relay OFF]";
     } else if (batt < thresh.batteryLowVoltage) {
       st = "baterai_lemah";
-      reason = "Tegangan Baterai Lemah (" + String(batt, 2) + "V < " + String(thresh.batteryLowVoltage, 2) + "V) [Warning Web Saja, Relay OFF]";
+      if (inaAvailable) {
+        reason = "Tegangan Aki Lemah INA (" + String(batt, 2) + "V < " + String(thresh.batteryLowVoltage, 2) + "V) [Warning Web Saja, Relay OFF]";
+      } else {
+        reason = "Tegangan Aki Lemah Pembagi Resistor (" + String(batt, 2) + "V < " + String(thresh.batteryLowVoltage, 2) + "V) [Warning Web Saja, Relay OFF]";
+      }
     } else {
       st = "aman";
       reason = "Semua parameter sensor dalam batas aman";
@@ -1877,8 +1919,8 @@ void telemetryTask(void *pvParameters) {
         p["gsmStatus"]          = "online";
         p["uptimeHours"]        = data.uptimeHours;
         p["firmwareVersion"]    = FIRMWARE_VERSION;
-        p["inaType"]            = inaAvailable ? (isINA219 ? "INA219" : "INA226") : "NONE";
-        p["inaAvailable"]       = (inaAvailable && data.batteryVoltage > 0.5f);
+        p["inaType"]            = inaAvailable ? (isINA219 ? "INA219" : "INA226") : (data.batteryVoltage > 0.5f ? "DIVIDER_11_4" : "NONE");
+        p["inaAvailable"]       = (inaAvailable || data.batteryVoltage > 0.5f);
         p["status"]             = data.status;
         p["alarmReason"]        = data.alarmReason;
         p["relayAlarmState"]    = (sirenActive || stroboActive) ? "HIGH" : "LOW";
@@ -2834,7 +2876,8 @@ void handleApiLive() {
   doc["rtc"]      = snap.uptimeHours > 0 ? (rtcAvailable ? rtcTimeString : "Aktif") : (rtcAvailable ? rtcTimeString : "N/A");
   doc["status"]      = currentStatus;
   doc["alarmReason"] = currentAlarmReason;
-  doc["inaAvailable"] = (inaAvailable && snap.batteryVoltage > 0.5f);
+  doc["inaAvailable"] = (inaAvailable || snap.batteryVoltage > 0.5f);
+  doc["inaType"]      = inaAvailable ? (isINA219 ? "INA219" : "INA226") : (snap.batteryVoltage > 0.5f ? "DIVIDER_11_4" : "NONE");
   doc["relay"]       = (sirenActive || stroboActive) ? "ON" : "OFF";
 
   String res;
@@ -2875,6 +2918,7 @@ void handleApiConfig() {
   doc["soilDry"]   = thresh.soilAdcDry;
   doc["soilWet"]   = thresh.soilAdcWet;
   doc["battLow"]   = thresh.batteryLowVoltage;
+  doc["battRatio"] = thresh.battDividerRatio;
   doc["alarmDur"]  = thresh.alarmDuration;
   doc["alarmPau"]  = thresh.alarmPause;
 
@@ -2912,6 +2956,7 @@ void handleApiSaveCalibration() {
   if (doc.containsKey("soilDry"))   newT.soilAdcDry            = doc["soilDry"].as<int>();
   if (doc.containsKey("soilWet"))   newT.soilAdcWet            = doc["soilWet"].as<int>();
   if (doc.containsKey("battLow"))   newT.batteryLowVoltage     = doc["battLow"].as<float>();
+  if (doc.containsKey("battRatio")) newT.battDividerRatio      = doc["battRatio"].as<float>();
   if (doc.containsKey("alarmDur"))  newT.alarmDuration         = doc["alarmDur"].as<uint32_t>();
   if (doc.containsKey("alarmPau"))  newT.alarmPause            = doc["alarmPau"].as<uint32_t>();
 

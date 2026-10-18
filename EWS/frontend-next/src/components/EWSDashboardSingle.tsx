@@ -518,7 +518,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h4 className="text-sm font-bold text-orange-800 dark:text-orange-200">
-                  ℹ️ PERINGATAN DAYA / SENSOR ARUS INA (HANYA NOTIFIKASI WEB)
+                  ℹ️ PERINGATAN DAYA / TEGANGAN AKI (HANYA NOTIFIKASI WEB)
                 </h4>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-orange-600 text-white font-mono font-bold uppercase">
                   RELAY DIJAMIN MATI (OFF)
@@ -529,7 +529,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                 {ews.alarmReason ||
                   ews.sensorData?.alarmReason ||
                   (ews.sensorData.batteryVoltage <= 0.5
-                    ? 'Sensor Arus/Tegangan INA Tidak Terdeteksi (0.00V) [Bukan Tanda Bahaya, Relay OFF]'
+                    ? 'Tegangan Aki / Sensor Daya Tidak Terdeteksi (0.00V) [Bukan Tanda Bahaya, Relay OFF]'
                     : `Tegangan Baterai Lemah (${ews.sensorData.batteryVoltage}V < ${ews.thresholds.batteryLowVoltage}V) [Warning Web Saja, Relay OFF]`)}
               </p>
               <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-0.5">

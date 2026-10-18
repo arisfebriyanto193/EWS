@@ -72,9 +72,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
     sensorData.soilMoisture >= thresholds.soilMoistureWarning ||
     (soilTol > 0 && sensorData.soilMoisture > safeSoil + soilTol);
 
-  // 5. Analisis Baterai / INA
-  const isBattZeroOrDisconnected =
-    sensorData.inaAvailable === false || sensorData.batteryVoltage <= 0.5;
+  // 5. Analisis Baterai / INA / Pembagi Resistor
+  const isBattZeroOrDisconnected = sensorData.batteryVoltage <= 0.5;
   const isBattLow =
     !isBattZeroOrDisconnected &&
     sensorData.batteryVoltage < thresholds.batteryLowVoltage;
@@ -89,7 +88,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
       ? 'Parameter kemiringan tanah / curah hujan / kelembapan tanah telah melampaui batas toleransi siaga'
       : status === 'baterai_lemah'
       ? isBattZeroOrDisconnected
-        ? 'Sensor Arus/Tegangan INA Tidak Terdeteksi (0.00V) [Bukan Tanda Bahaya, Relay OFF]'
+        ? 'Tegangan Baterai / Sensor Daya 0.00V [Bukan Tanda Bahaya, Relay OFF]'
         : `Tegangan Aki Berada di Bawah Batas Aman (${sensorData.batteryVoltage}V < ${thresholds.batteryLowVoltage}V)`
       : 'Semua parameter sensor berada dalam batas normal dan aman');
 
@@ -398,7 +397,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                     <Battery className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    Catu Daya Aki (INA219/226)
+                    Catu Daya Aki {sensorData.inaAvailable ? '(INA219/226)' : '(Divider 11:4)'}
                   </span>
                   <span
                     className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
@@ -410,7 +409,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                     }`}
                   >
                     {isBattZeroOrDisconnected
-                      ? 'INA 0V / DISCONNECTED'
+                      ? '0.00V / TERPUTUS'
                       : isBattLow
                       ? 'BATERAI LEMAH'
                       : 'NORMAL'}
