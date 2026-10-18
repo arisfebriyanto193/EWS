@@ -68,6 +68,7 @@ void saveDeviceConfigToNVS(const String &newId, const String &newSsid, const Str
                            const String &newHost, int newPort, const String &newPath, bool newSsl);
 void loadDeviceConfigFromNVS();
 void syncRTCWithNTP(bool force = false);
+void setSystemTimeFromEpoch(time_t epoch);
 void checkAndPruneSDCard();
 void checkAndPruneSPIFFS();
 void initMicroSD();
@@ -640,7 +641,7 @@ bool tryReadDS3231(int sda, int scl, String &outTime) {
   }
 
   char timeBuf[32];
-  snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
+  snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d-%04d %02d:%02d:%02d", day, mon, yr, hour, min, sec);
   outTime = String(timeBuf);
   return true;
 }
@@ -692,7 +693,7 @@ void readDS3231Time() {
         uint16_t yr  = 2000 + bcd2dec(Wire.read());
         if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31 && hour <= 23 && min <= 59 && sec <= 59) {
           char timeBuf[32];
-          snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
+          snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d-%04d %02d:%02d:%02d", day, mon, yr, hour, min, sec);
           rtcTimeString = String(timeBuf);
         }
       }
@@ -705,8 +706,8 @@ void readDS3231Time() {
       int yr = timeinfo.tm_year + 1900;
       if (yr >= 2024) {
         char timeBuf[32];
-        snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
-                 yr, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+        snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d-%04d %02d:%02d:%02d",
+                 timeinfo.tm_mday, timeinfo.tm_mon + 1, yr,
                  timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         rtcTimeString = String(timeBuf);
       }
@@ -794,7 +795,7 @@ void syncRTCWithNTP(bool force) {
 
     if (yr >= 2024) {
       char timeBuf[32];
-      snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hr, min, sec);
+      snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d-%04d %02d:%02d:%02d", day, mon, yr, hr, min, sec);
       rtcTimeString = String(timeBuf);
       rtcSyncedWithNTP = true;
 
@@ -809,6 +810,38 @@ void syncRTCWithNTP(bool force) {
       }
     }
   }
+}
+
+// Sinkronisasi Waktu Langsung dari Client Web Browser / API
+void setSystemTimeFromEpoch(time_t epoch) {
+  setenv("TZ", "WIB-7", 1);
+  tzset();
+
+  struct timeval tv;
+  tv.tv_sec = epoch;
+  tv.tv_usec = 0;
+  settimeofday(&tv, NULL);
+
+  time_t now = epoch;
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  int yr  = timeinfo.tm_year + 1900;
+  int mon = timeinfo.tm_mon + 1;
+  int day = timeinfo.tm_mday;
+  int hr  = timeinfo.tm_hour;
+  int min = timeinfo.tm_min;
+  int sec = timeinfo.tm_sec;
+
+  char timeBuf[32];
+  snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d-%04d %02d:%02d:%02d", day, mon, yr, hr, min, sec);
+  rtcTimeString = String(timeBuf);
+  rtcSyncedWithNTP = true;
+
+  if (rtcAvailable) {
+    setRTC(yr, mon, day, hr, min, sec);
+  }
+  Serial.printf("[TIME] Waktu sistem disinkronkan dari browser/client: %s WIB\n", rtcTimeString.c_str());
 }
 
 // =============================================================================
@@ -1017,15 +1050,18 @@ void readInclinometer(float &pitch, float &roll) {
 // Helper format timestamp: prioritaskan RTC DS3231 / NTP, fallback waktu sejak boot
 String getLogTimeString() {
   if (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--" && rtcTimeString.length() >= 19) {
-    return rtcTimeString;
+    int yr = rtcTimeString.substring(6, 10).toInt();
+    if (yr >= 2024) {
+      return rtcTimeString;
+    }
   }
   struct tm timeinfo;
   if (getLocalTime(&timeinfo, 0)) {
     int yr = timeinfo.tm_year + 1900;
     if (yr >= 2024) {
       char buf[32];
-      snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
-               yr, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+      snprintf(buf, sizeof(buf), "%02d-%02d-%04d %02d:%02d:%02d",
+               timeinfo.tm_mday, timeinfo.tm_mon + 1, yr,
                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
       return String(buf);
     }
@@ -2158,10 +2194,10 @@ void sensorTask(void *pvParameters) {
     }
 
     // Rekam Telemetri Berkala secara HYBRID (MicroSD / SPIFFS Internal) setiap 5 menit (300.000 ms)
-    static unsigned long lastSdPeriodicLogTime = 0;
+    static unsigned long lastSdPeriodicLogTime = millis();
     if (sdAvailable || spiffsAvailable) {
       unsigned long nowMs = millis();
-      if (lastSdPeriodicLogTime == 0 || (nowMs - lastSdPeriodicLogTime >= 300000UL)) {
+      if (nowMs - lastSdPeriodicLogTime >= 300000UL) {
         lastSdPeriodicLogTime = nowMs;
         logPeriodicTelemetryToSD(pitch, roll, soil, soilRaw,
                                  rain, rainCumu, currentRainTips,
@@ -2346,6 +2382,11 @@ void setup() {
 
   // Muat Ambang Batas Sensor yang tersimpan di EEPROM (NVS Flash)
   loadThresholdsFromEEPROM();
+
+  // Konfigurasi Zona Waktu GMT+7 (WIB) & background SNTP
+  setenv("TZ", "WIB-7", 1);
+  tzset();
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
 
   // Inisialisasi Pin Relay (Sirine & Strobo 1 pin di GPIO 46, Active-HIGH)
   pinMode(PIN_RELAY_ALARM, OUTPUT);
@@ -2830,7 +2871,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <span class="sensor-val" id="valBatt">0.00<span class="unit">V</span> / <span id="valSolar">0</span><span class="unit">mA</span></span>
       </div>
       <div class="sensor-row">
-        <span class="sensor-name">Waktu RTC DS3231</span>
+        <span class="sensor-name">Waktu Sistem / RTC <button type="button" onclick="syncBrowserTime(true)" style="background:transparent;border:1px solid #475569;color:#94a3b8;font-size:0.65rem;border-radius:4px;padding:2px 6px;cursor:pointer;margin-left:5px;">Sinkron HP</button></span>
         <span class="sensor-val" style="font-size:0.85rem;" id="valRtc">--:--:--</span>
       </div>
     </div>
@@ -3237,7 +3278,25 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     });
   }
 
+  function syncBrowserTime(manual = false) {
+    const epoch = Math.floor(Date.now() / 1000);
+    fetch('/api/sync_time?epoch=' + epoch, { method: 'POST' })
+      .then(res => res.json())
+      .then(d => {
+        if (d.rtcTime) {
+          const el = document.getElementById('valRtc');
+          if (el) el.innerText = d.rtcTime;
+          if (manual) showToast("Waktu sinkron: " + d.rtcTime);
+        }
+      })
+      .catch(e => {
+        console.error("Sync time error:", e);
+        if (manual) showToast("Gagal sinkron waktu");
+      });
+  }
+
   window.onload = function() {
+    syncBrowserTime();
     loadConfig();
     fetchLive();
     updateStorageInfo();
@@ -3285,7 +3344,7 @@ void handleApiLive() {
   doc["vib"]      = raw.vibPulsesRaw;
   doc["batt"]     = round(snap.batteryVoltage * 100.0) / 100.0;
   doc["solar"]    = snap.solarCurrent;
-  doc["rtc"]      = (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--") ? rtcTimeString : getLogTimeString();
+  doc["rtc"]          = getLogTimeString();
   doc["status"]      = currentStatus;
   doc["alarmReason"] = currentAlarmReason;
   doc["alarmCode"]   = currentAlarmCode;
@@ -3611,6 +3670,17 @@ void setupWebServer() {
   localServer.on("/download_telemetry", HTTP_GET, handleDownloadTelemetry);
   localServer.on("/download-csv", HTTP_GET, handleDownloadTelemetry);
   localServer.on("/download_events", HTTP_GET, handleDownloadEvents);
+  localServer.on("/api/sync_time", HTTP_POST, []() {
+    if (localServer.hasArg("epoch")) {
+      time_t epoch = (time_t)localServer.arg("epoch").toInt();
+      if (epoch > 1700000000) {
+        setSystemTimeFromEpoch(epoch);
+        localServer.send(200, "application/json", "{\"status\":\"success\",\"rtcTime\":\"" + rtcTimeString + "\"}");
+        return;
+      }
+    }
+    localServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Epoch tidak valid\"}");
+  });
   localServer.on("/api/trigger_wifimanager", HTTP_POST, []() {
     localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Access Point WiFiManager diaktifkan! Hubungkan ke WiFi EWS-Config-" + ewsId + "\"}");
     delay(500);
