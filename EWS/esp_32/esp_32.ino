@@ -66,7 +66,7 @@ void loadThresholdsFromEEPROM();
 void saveDeviceConfigToNVS(const String &newId, const String &newSsid, const String &newPass,
                            const String &newHost, int newPort, const String &newPath, bool newSsl);
 void loadDeviceConfigFromNVS();
-void syncRTCWithNTP();
+void syncRTCWithNTP(bool force = false);
 
 // FreeRTOS Headers
 #include "freertos/FreeRTOS.h"
@@ -140,6 +140,14 @@ volatile bool triggerWiFiManagerPortal = false;
 #define PIN_INA_SCL        13  // Pin SCL INA219 (GPIO 13)
 #define INA_I2C_ADDR         0x40
 
+// Fallback Pembagi Tegangan Resistor (Jika modul INA219/INA226 tidak terpasang)
+// Pin GPIO 14 (Jalur SDA pada Header J3 INA) dihubungkan ke titik tengah resistor pembagi tegangan
+// Resistor R1 = 11 ohm/k-ohm (ke kutub positif Aki) dan R2 = 4 ohm/k-ohm (ke GND)
+#define PIN_BATTERY_DIVIDER 14
+#define BATT_DIVIDER_R1     11.0f
+#define BATT_DIVIDER_R2     4.0f
+#define BATT_DIVIDER_DEFAULT_RATIO ((BATT_DIVIDER_R1 + BATT_DIVIDER_R2) / BATT_DIVIDER_R2) // 3.75f
+
 // Pin SPI Perangkat 4: Modul MicroSD Card (U5)
 #define PIN_SD_MOSI        4   // mosi -> GPIO 4
 #define PIN_SD_SCK         5   // sck  -> GPIO 5
@@ -207,6 +215,7 @@ struct SensorThresholds {
   
   float vibrationDanger;      // Default: 0.25 g / hitungan pulsa
   float batteryLowVoltage;    // Default: 11.8 V
+  float battDividerRatio;     // Rasio pembagi tegangan resistor (default: 3.75f)
   
   // Kalibrasi ADC Tanah (Raw ADC saat kering & saat basah)
   int soilAdcDry;             // Default 3300
@@ -246,6 +255,7 @@ struct SensorDataSnapshot {
   int wifiRssi;
   unsigned long uptimeHours;
   char status[16];
+  char alarmReason[96];
 };
 
 // Objek Global, EEPROM / NVS & Mutex Handles
@@ -263,6 +273,7 @@ SensorThresholds currentThresholds = {
   75.0f,  // soilMoistureWarning
   0.25f,  // vibrationDanger
   11.8f,  // batteryLowVoltage
+  3.75f,  // battDividerRatio ((11+4)/4 = 3.75f)
   3300,   // soilAdcDry
   1200,   // soilAdcWet
   0.70f,  // rainCalibPerTip
@@ -275,8 +286,10 @@ SensorRawValues sharedRawSensors;
 WebSocketsClient webSocket;
 SemaphoreHandle_t wsMutex   = NULL; // Mutex untuk proteksi webSocket.loop() & sendTXT()
 SemaphoreHandle_t dataMutex = NULL; // Mutex untuk proteksi pembacaan data sensor & thresholds
+SemaphoreHandle_t i2cMutex  = NULL; // Mutex untuk proteksi transaksi hardware I2C Wire multi-pin
 
 SensorDataSnapshot sharedSensors;
+String currentAlarmReason = "Semua parameter sensor dalam batas aman";
 
 // Critical Section untuk ISR Sensor Getaran Digital 801S
 portMUX_TYPE vibMux = portMUX_INITIALIZER_UNLOCKED;
@@ -376,6 +389,7 @@ void loadThresholdsFromEEPROM() {
     currentThresholds.soilMoistureWarning   = prefs.getFloat("soilWarn", 75.0f);
     currentThresholds.vibrationDanger       = prefs.getFloat("vibDang", 0.25f);
     currentThresholds.batteryLowVoltage     = prefs.getFloat("battLow", 11.8f);
+    currentThresholds.battDividerRatio      = prefs.getFloat("battRatio", 3.75f);
     currentThresholds.soilAdcDry            = prefs.getInt("soilDry", 3300);
     currentThresholds.soilAdcWet            = prefs.getInt("soilWet", 1200);
     currentThresholds.rainCalibPerTip       = prefs.getFloat("rainCalib", 0.70f);
@@ -392,8 +406,8 @@ void loadThresholdsFromEEPROM() {
     Serial.printf("   - Tanah Aman / Tol      : %.1f%% (Tol: +-%.1f%%) | Siaga: >= %.1f%% (ADC %d-%d)\n", 
                   currentThresholds.safeSoilMoisture, currentThresholds.soilMoistureTolerance, 
                   currentThresholds.soilMoistureWarning, currentThresholds.soilAdcDry, currentThresholds.soilAdcWet);
-    Serial.printf("   - Getaran / Baterai Min : Bahaya >= %.2f | Baterai < %.2f V\n", 
-                  currentThresholds.vibrationDanger, currentThresholds.batteryLowVoltage);
+    Serial.printf("   - Getaran / Baterai Min : Bahaya >= %.2f | Baterai < %.2f V (Rasio Divider: %.2fx)\n", 
+                  currentThresholds.vibrationDanger, currentThresholds.batteryLowVoltage, currentThresholds.battDividerRatio);
     Serial.printf("   - Siklus Alarm Otomatis : Aktif %u s | Jeda %u s\n", 
                   currentThresholds.alarmDuration, currentThresholds.alarmPause);
   } else {
@@ -415,6 +429,7 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
     prefs.putFloat("soilWarn", newT.soilMoistureWarning);
     prefs.putFloat("vibDang", newT.vibrationDanger);
     prefs.putFloat("battLow", newT.batteryLowVoltage);
+    prefs.putFloat("battRatio", newT.battDividerRatio);
     prefs.putInt("soilDry", newT.soilAdcDry);
     prefs.putInt("soilWet", newT.soilAdcWet);
     prefs.putFloat("rainCalib", newT.rainCalibPerTip);
@@ -453,6 +468,12 @@ enum AlarmCycleState {
 AlarmCycleState alarmCycleState = ALARM_STATE_IDLE;
 unsigned long alarmSoundingStartTime = 0;
 unsigned long alarmPauseStartTime = 0;
+
+// Manajemen Siklus Alarm Khusus Hujan (Hanya 1x Sirine per Siklus Hujan jika tanpa anomali tanah)
+const unsigned long RAIN_CYCLE_IDLE_TIMEOUT_MS = 20UL * 60UL * 1000UL; // 20 menit tanpa penambahan tip hujan = hujan reda/siklus selesai
+unsigned long lastRainActivityTime = 0;
+unsigned long lastObservedRainTips = 0;
+bool rainAlarmSoundedThisCycle = false;
 
 // Konfigurasi Interval Telemetri Cerdas & Hemat Daya
 const unsigned long REALTIME_TELEMETRY_INTERVAL   = 3000;    // 3 detik saat Web dibuka (Client Aktif)
@@ -543,82 +564,159 @@ uint8_t dec2bcd(uint8_t val) { return ((val / 10 * 16) + (val % 10)); }
 // =============================================================================
 // 7. DRIVER & DETEKSI REAL-TIME CLOCK DS3231 (VIA WIRE PADA GPIO 15 & 16)
 // =============================================================================
-void initDS3231() {
-  selectI2CBus(activeRtcSda, activeRtcScl, 100000);
-  Wire.beginTransmission(DS3231_ADDR);
-  byte err = Wire.endTransmission();
-
-  if (err != 0) {
-    // Coba pin terbalik (GPIO 16 SDA, GPIO 15 SCL) jika belum terdeteksi
-    selectI2CBus(PIN_RTC_SCL, PIN_RTC_SDA, 100000);
-    Wire.beginTransmission(DS3231_ADDR);
-    if (Wire.endTransmission() == 0) {
-      activeRtcSda = PIN_RTC_SCL;
-      activeRtcScl = PIN_RTC_SDA;
-      rtcAvailable = true;
-    } else {
-      rtcAvailable = false;
-      rtcTimeString = "TIDAK TERDETEKSI";
-      Serial.printf("⚠️ [DS3231] Tidak merespons pada alamat 0x68 (SDA=%d, SCL=%d). Melanjutkan booting...\n", activeRtcSda, activeRtcScl);
-      return;
-    }
-  } else {
-    rtcAvailable = true;
+void i2cBusRecovery(int sda, int scl) {
+  pinMode(sda, INPUT_PULLUP);
+  pinMode(scl, OUTPUT);
+  for (int i = 0; i < 9; i++) {
+    digitalWrite(scl, LOW);
+    delayMicroseconds(5);
+    digitalWrite(scl, HIGH);
+    delayMicroseconds(5);
   }
+  pinMode(sda, OUTPUT);
+  digitalWrite(sda, LOW);
+  delayMicroseconds(5);
+  digitalWrite(scl, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(sda, HIGH);
+  delayMicroseconds(5);
+  pinMode(sda, INPUT_PULLUP);
+  pinMode(scl, INPUT_PULLUP);
+}
+
+bool tryReadDS3231(int sda, int scl, String &outTime) {
+  selectI2CBus(sda, scl, 100000);
+  delay(10);
 
   Wire.beginTransmission(DS3231_ADDR);
   Wire.write(0x00);
-  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)7) == 7) {
-    uint8_t sec  = bcd2dec(Wire.read() & 0x7F);
-    uint8_t min  = bcd2dec(Wire.read());
-    uint8_t hour = bcd2dec(Wire.read() & 0x3F);
-    uint8_t dow  = bcd2dec(Wire.read());
-    uint8_t day  = bcd2dec(Wire.read());
-    uint8_t mon  = bcd2dec(Wire.read() & 0x1F);
-    uint16_t yr  = 2000 + bcd2dec(Wire.read());
-    char timeBuf[32];
-    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
-    rtcTimeString = String(timeBuf);
-    Serial.printf("✅ [DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", timeBuf, activeRtcSda, activeRtcScl);
+  byte txErr = Wire.endTransmission();
+  if (txErr != 0) {
+    return false;
   }
+
+  uint8_t count = Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)7);
+  if (count != 7) {
+    return false;
+  }
+
+  uint8_t sec  = bcd2dec(Wire.read() & 0x7F);
+  uint8_t min  = bcd2dec(Wire.read());
+  uint8_t hour = bcd2dec(Wire.read() & 0x3F);
+  uint8_t dow  = bcd2dec(Wire.read());
+  uint8_t day  = bcd2dec(Wire.read());
+  uint8_t mon  = bcd2dec(Wire.read() & 0x1F);
+  uint16_t yr  = 2000 + bcd2dec(Wire.read());
+
+  // Validasi nilai waktu DS3231: Bulan (1-12), Tanggal (1-31), Jam (0-23), Menit (0-59), Detik (0-59)
+  // Menghilangkan deteksi palsu akibat pin mengambang atau short yang membaca 0x00 atau 0xFF
+  if (mon < 1 || mon > 12 || day < 1 || day > 31 || hour > 23 || min > 59 || sec > 59) {
+    return false;
+  }
+
+  char timeBuf[32];
+  snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
+  outTime = String(timeBuf);
+  return true;
+}
+
+void initDS3231() {
+  String timeResult = "";
+
+  // 1. Coba pin bawaan skematik (GPIO 15 SDA, GPIO 16 SCL)
+  i2cBusRecovery(PIN_RTC_SDA, PIN_RTC_SCL);
+  if (tryReadDS3231(PIN_RTC_SDA, PIN_RTC_SCL, timeResult)) {
+    activeRtcSda = PIN_RTC_SDA;
+    activeRtcScl = PIN_RTC_SCL;
+    rtcAvailable = true;
+    rtcTimeString = timeResult;
+    Serial.printf("✅ [DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", rtcTimeString.c_str(), activeRtcSda, activeRtcScl);
+    return;
+  }
+
+  // 2. Coba pin alternatif terbalik (GPIO 16 SDA, GPIO 15 SCL) jika jalur PCB tertukar
+  i2cBusRecovery(PIN_RTC_SCL, PIN_RTC_SDA);
+  if (tryReadDS3231(PIN_RTC_SCL, PIN_RTC_SDA, timeResult)) {
+    activeRtcSda = PIN_RTC_SCL;
+    activeRtcScl = PIN_RTC_SDA;
+    rtcAvailable = true;
+    rtcTimeString = timeResult;
+    Serial.printf("✅ [DS3231] RTC terdeteksi: %s (SDA=%d, SCL=%d)\n", rtcTimeString.c_str(), activeRtcSda, activeRtcScl);
+    return;
+  }
+
+  // 3. Jika kedua konfigurasi pin gagal membaca register waktu DS3231 nyata
+  rtcAvailable = false;
+  rtcTimeString = "TIDAK TERDETEKSI";
+  Serial.printf("⚠️ [DS3231] Modul RTC tidak terdeteksi pada pin SDA 15/16. Melanjutkan booting...\n");
 }
 
 void readDS3231Time() {
   if (!rtcAvailable) return;
-  selectI2CBus(activeRtcSda, activeRtcScl, 100000);
-  Wire.beginTransmission(DS3231_ADDR);
-  Wire.write(0x00);
-  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)7) == 7) {
-    uint8_t sec  = bcd2dec(Wire.read() & 0x7F);
-    uint8_t min  = bcd2dec(Wire.read());
-    uint8_t hour = bcd2dec(Wire.read() & 0x3F);
-    uint8_t dow  = bcd2dec(Wire.read());
-    uint8_t day  = bcd2dec(Wire.read());
-    uint8_t mon  = bcd2dec(Wire.read() & 0x1F);
-    uint16_t yr  = 2000 + bcd2dec(Wire.read());
-    char timeBuf[32];
-    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
-    rtcTimeString = String(timeBuf);
+  if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    selectI2CBus(activeRtcSda, activeRtcScl, 100000);
+    Wire.beginTransmission(DS3231_ADDR);
+    Wire.write(0x00);
+    if (Wire.endTransmission() == 0 && Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)7) == 7) {
+      uint8_t sec  = bcd2dec(Wire.read() & 0x7F);
+      uint8_t min  = bcd2dec(Wire.read());
+      uint8_t hour = bcd2dec(Wire.read() & 0x3F);
+      uint8_t dow  = bcd2dec(Wire.read());
+      uint8_t day  = bcd2dec(Wire.read());
+      uint8_t mon  = bcd2dec(Wire.read() & 0x1F);
+      uint16_t yr  = 2000 + bcd2dec(Wire.read());
+      if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31 && hour <= 23 && min <= 59 && sec <= 59) {
+        char timeBuf[32];
+        snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hour, min, sec);
+        rtcTimeString = String(timeBuf);
+      }
+    }
+    xSemaphoreGive(i2cMutex);
   }
 }
 
 bool setRTC(int year, int month, int day, int hour, int minute, int second) {
   if (!rtcAvailable) return false;
-  selectI2CBus(activeRtcSda, activeRtcScl, 100000);
-  Wire.beginTransmission(DS3231_ADDR);
-  Wire.write(0x00);
-  Wire.write(dec2bcd(second));
-  Wire.write(dec2bcd(minute));
-  Wire.write(dec2bcd(hour));
-  Wire.write(dec2bcd(1));
-  Wire.write(dec2bcd(day));
-  Wire.write(dec2bcd(month));
-  Wire.write(dec2bcd(year % 100));
-  return (Wire.endTransmission() == 0);
+  bool success = false;
+
+  if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+    selectI2CBus(activeRtcSda, activeRtcScl, 100000);
+    delay(5);
+
+    Wire.beginTransmission(DS3231_ADDR);
+    Wire.write(0x00);
+    Wire.write(dec2bcd(second));
+    Wire.write(dec2bcd(minute));
+    Wire.write(dec2bcd(hour));
+    Wire.write(dec2bcd(1)); // Day of week (1-7)
+    Wire.write(dec2bcd(day));
+    Wire.write(dec2bcd(month));
+    Wire.write(dec2bcd(year % 100));
+    byte txErr = Wire.endTransmission();
+
+    if (txErr == 0) {
+      // Pastikan OSF (Oscillator Stop Flag) di register 0x0F dibersihkan agar osilator aktif
+      Wire.beginTransmission(DS3231_ADDR);
+      Wire.write(0x0F);
+      Wire.endTransmission();
+      if (Wire.requestFrom((uint8_t)DS3231_ADDR, (size_t)1) == 1) {
+        uint8_t stat = Wire.read() & ~0x80;
+        Wire.beginTransmission(DS3231_ADDR);
+        Wire.write(0x0F);
+        Wire.write(stat);
+        Wire.endTransmission();
+      }
+      success = true;
+    } else {
+      Serial.printf("❌ [DS3231] Gagal menulis register I2C (Error code: %d)\n", txErr);
+    }
+    xSemaphoreGive(i2cMutex);
+  }
+  return success;
 }
 
 // -----------------------------------------------------------------------------
-// SINKRONISASI WAKTU RTC DS3231 DENGAN NTP (HANYA SEKALI SAAT TERSAMBUNG JARINGAN)
+// SINKRONISASI WAKTU RTC DS3231 DENGAN NTP (HANYA SEKALI SAAT TERSAMBUNG INTERNET)
 // -----------------------------------------------------------------------------
 const long  gmtOffset_sec     = 7 * 3600; // GMT+7 (WIB / Waktu Indonesia Barat)
 const int   daylightOffset_sec = 0;       // Tidak ada DST di Indonesia
@@ -626,42 +724,67 @@ const char* ntpServer1        = "pool.ntp.org";
 const char* ntpServer2        = "id.pool.ntp.org";
 const char* ntpServer3        = "time.google.com";
 
-volatile bool rtcSyncedWithNTP = false;
+volatile bool ntpSyncAttempted = false; // Flag apakah sinkronisasi awal sudah dijalankan
+volatile bool rtcSyncedWithNTP = false; // Flag apakah RTC berhasil disinkronkan ke NTP
 
-void syncRTCWithNTP() {
-  // Hanya jalankan sekali saja di awal saat tersambung jaringan
-  if (rtcSyncedWithNTP) return;
+void syncRTCWithNTP(bool force) {
+  // Hanya jalankan 1x di awal saat tersambung jaringan & ada internet (kecuali force=true dari command manual)
+  if (!force && ntpSyncAttempted) return;
   if (WiFi.status() != WL_CONNECTED) return;
-  if (!rtcAvailable) {
-    rtcSyncedWithNTP = true; // Tandai selesai agar tidak polling jika modul fisik tidak ada
+
+  // Tandai sudah dicoba agar tidak diulang-ulang di loop sensorTask
+  if (!force) {
+    ntpSyncAttempted = true;
+  }
+
+  Serial.println("⏱️ [NTP-RTC] Jaringan WiFi terhubung. Memeriksa ketersediaan koneksi Internet...");
+
+  // Cek apakah benar-benar ada internet dengan resolve DNS server NTP
+  IPAddress resolvedIP;
+  bool hasInternet = (WiFi.hostByName("pool.ntp.org", resolvedIP) == 1) ||
+                     (WiFi.hostByName("time.google.com", resolvedIP) == 1);
+
+  if (!hasInternet) {
+    Serial.println("ℹ️ [NTP-RTC] WiFi terhubung tetapi TIDAK ADA AKSES INTERNET (DNS gagal). Melewati sinkronisasi waktu NTP.");
     return;
   }
 
-  Serial.println("⏱️ [NTP-RTC] Jaringan WiFi tersambung! Sinkronisasi waktu NTP ke DS3231 (1x di awal)...");
+  Serial.println("⏱️ [NTP-RTC] Akses internet terkonfirmasi! Mengambil waktu dari server NTP (1x di awal)...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
 
   struct tm timeinfo;
-  if (getLocalTime(&timeinfo, 5000)) { // Tunggu hingga 5 detik agar paket NTP diterima
-    int yr  = timeinfo.tm_year + 1900;
-    int mon = timeinfo.tm_mon + 1;
-    int day = timeinfo.tm_mday;
-    int hr  = timeinfo.tm_hour;
-    int min = timeinfo.tm_min;
-    int sec = timeinfo.tm_sec;
+  if (!getLocalTime(&timeinfo, 4000)) { // Tunggu hingga 4 detik
+    Serial.println("⚠️ [NTP-RTC] Timeout mengambil waktu dari server NTP! Melewati proses sinkronisasi.");
+    return;
+  }
 
-    if (yr >= 2024) {
-      if (setRTC(yr, mon, day, hr, min, sec)) {
-        readDS3231Time();
-        rtcSyncedWithNTP = true;
-        Serial.printf("✅ [NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB (Sinkronisasi awal selesai)\n", rtcTimeString.c_str());
-      } else {
-        Serial.println("❌ [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
-      }
+  int yr  = timeinfo.tm_year + 1900;
+  int mon = timeinfo.tm_mon + 1;
+  int day = timeinfo.tm_mday;
+  int hr  = timeinfo.tm_hour;
+  int min = timeinfo.tm_min;
+  int sec = timeinfo.tm_sec;
+
+  if (yr < 2024) {
+    Serial.printf("⚠️ [NTP-RTC] Tahun NTP belum valid (%d). Melewati proses sinkronisasi.\n", yr);
+    return;
+  }
+
+  if (rtcAvailable) {
+    if (setRTC(yr, mon, day, hr, min, sec)) {
+      readDS3231Time();
+      rtcSyncedWithNTP = true;
+      Serial.printf("✅ [NTP-RTC] DS3231 BERHASIL DISINKRONKAN: %s WIB (Sinkronisasi awal selesai)\n", rtcTimeString.c_str());
     } else {
-      Serial.printf("⚠️ [NTP-RTC] Tahun NTP belum valid (%d), akan dicoba lagi saat jaringan siap.\n", yr);
+      Serial.println("❌ [NTP-RTC] Gagal menulis register waktu baru ke DS3231!");
     }
   } else {
-    Serial.println("⚠️ [NTP-RTC] Timeout mengambil waktu dari server NTP!");
+    // Jika modul DS3231 fisik tidak ada, gunakan waktu NTP untuk waktu internal sistem
+    char timeBuf[32];
+    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d", yr, mon, day, hr, min, sec);
+    rtcTimeString = String(timeBuf);
+    rtcSyncedWithNTP = true;
+    Serial.printf("ℹ️ [NTP-RTC] DS3231 fisik tidak aktif. Waktu NTP disinkronkan ke sistem internal ESP32: %s WIB\n", rtcTimeString.c_str());
   }
 }
 
@@ -683,7 +806,8 @@ void initINA() {
       inaAvailable = true;
     } else {
       inaAvailable = false;
-      Serial.printf("⚠️ [INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Melanjutkan booting...\n", activeInaSda, activeInaScl);
+      Serial.printf("⚠️ [INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Mengaktifkan fallback Pembagi Tegangan Resistor 11:4 pada GPIO %d...\n", activeInaSda, activeInaScl, PIN_BATTERY_DIVIDER);
+      pinMode(PIN_BATTERY_DIVIDER, INPUT);
       return;
     }
   } else {
@@ -727,45 +851,67 @@ void initINA226() {
 
 void readPowerMonitor(float &batteryVolt, int &solarCurrent, int &batteryCurrent) {
   if (inaAvailable) {
-    selectI2CBus(activeInaSda, activeInaScl, 100000);
-    uint16_t rawBus = 0;
-    uint16_t rawShunt = 0;
+    if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      selectI2CBus(activeInaSda, activeInaScl, 100000);
+      uint16_t rawBus = 0;
+      uint16_t rawShunt = 0;
 
-    Wire.beginTransmission(INA_I2C_ADDR);
-    Wire.write(0x02);
-    if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)INA_I2C_ADDR, (size_t)2) == 2) {
-      rawBus = (Wire.read() << 8) | Wire.read();
-      if (isINA219) {
-        batteryVolt = (float)((rawBus >> 3) * 4) * 0.001f;
+      Wire.beginTransmission(INA_I2C_ADDR);
+      Wire.write(0x02);
+      if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)INA_I2C_ADDR, (size_t)2) == 2) {
+        rawBus = (Wire.read() << 8) | Wire.read();
+        if (isINA219) {
+          batteryVolt = (float)((rawBus >> 3) * 4) * 0.001f;
+        } else {
+          batteryVolt = (float)rawBus * 0.00125f;
+        }
       } else {
-        batteryVolt = (float)rawBus * 0.00125f;
+        batteryVolt = 0.0f;
       }
-    } else {
-      batteryVolt = 0.0f;
-    }
 
-    Wire.beginTransmission(INA_I2C_ADDR);
-    Wire.write(0x01);
-    if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)INA_I2C_ADDR, (size_t)2) == 2) {
-      rawShunt = (Wire.read() << 8) | Wire.read();
-      int16_t sVal = (int16_t)rawShunt;
-      if (isINA219) {
-        float currentMa = (float)sVal * 0.1f;
-        solarCurrent   = abs((int)currentMa);
-        batteryCurrent = solarCurrent;
+      Wire.beginTransmission(INA_I2C_ADDR);
+      Wire.write(0x01);
+      if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)INA_I2C_ADDR, (size_t)2) == 2) {
+        rawShunt = (Wire.read() << 8) | Wire.read();
+        int16_t sVal = (int16_t)rawShunt;
+        if (isINA219) {
+          float currentMa = (float)sVal * 0.1f;
+          solarCurrent   = abs((int)currentMa);
+          batteryCurrent = solarCurrent;
+        } else {
+          float currentMa = (float)sVal * 0.25f;
+          solarCurrent   = abs((int)currentMa);
+          batteryCurrent = solarCurrent;
+        }
       } else {
-        float currentMa = (float)sVal * 0.25f;
-        solarCurrent   = abs((int)currentMa);
-        batteryCurrent = solarCurrent;
+        solarCurrent = 0;
+        batteryCurrent = 0;
       }
-    } else {
-      solarCurrent = 0;
-      batteryCurrent = 0;
+      xSemaphoreGive(i2cMutex);
+      if (batteryVolt > 0.5f) {
+        return;
+      }
     }
-    return;
   }
 
-  batteryVolt    = 0.0f;
+  // Fallback: Menggunakan Resistor Pembagi Tegangan 11:4 pada GPIO 14 (Jalur SDA Header J3)
+  pinMode(PIN_BATTERY_DIVIDER, INPUT);
+  long sumMv = 0;
+  for (int i = 0; i < 16; i++) {
+    sumMv += analogReadMilliVolts(PIN_BATTERY_DIVIDER);
+    delayMicroseconds(50);
+  }
+  float vAdc = (float)sumMv / (16.0f * 1000.0f);
+  if (sumMv == 0) {
+    long sum = 0;
+    for (int i = 0; i < 16; i++) {
+      sum += analogRead(PIN_BATTERY_DIVIDER);
+      delayMicroseconds(50);
+    }
+    vAdc = ((float)sum / 16.0f) * (3.3f / 4095.0f);
+  }
+  float ratio = (currentThresholds.battDividerRatio > 0.5f) ? currentThresholds.battDividerRatio : BATT_DIVIDER_DEFAULT_RATIO;
+  batteryVolt = vAdc * ratio;
   solarCurrent   = 0;
   batteryCurrent = 0;
 }
@@ -814,22 +960,26 @@ void initMPU6050() {
 
 void readInclinometer(float &pitch, float &roll) {
   if (mpuAvailable) {
-    selectI2CBus(PIN_MPU_SDA, PIN_MPU_SCL, 100000);
-    Wire.beginTransmission(MPU6050_ADDR);
-    Wire.write(0x3B);
-    if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)MPU6050_ADDR, (size_t)6) == 6) {
-      int16_t rawAx = (Wire.read() << 8) | Wire.read();
-      int16_t rawAy = (Wire.read() << 8) | Wire.read();
-      int16_t rawAz = (Wire.read() << 8) | Wire.read();
+    if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      selectI2CBus(PIN_MPU_SDA, PIN_MPU_SCL, 100000);
+      Wire.beginTransmission(MPU6050_ADDR);
+      Wire.write(0x3B);
+      if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)MPU6050_ADDR, (size_t)6) == 6) {
+        int16_t rawAx = (Wire.read() << 8) | Wire.read();
+        int16_t rawAy = (Wire.read() << 8) | Wire.read();
+        int16_t rawAz = (Wire.read() << 8) | Wire.read();
 
-      float ax_g = (float)rawAx / 4096.0f;
-      float ay_g = (float)rawAy / 4096.0f;
-      float az_g = (float)rawAz / 4096.0f;
+        float ax_g = (float)rawAx / 4096.0f;
+        float ay_g = (float)rawAy / 4096.0f;
+        float az_g = (float)rawAz / 4096.0f;
 
-      // Kalkulasi kemiringan persis sesuai folder debug/mpu6050
-      roll  = atan2(ay_g, az_g) * 180.0 / PI;
-      pitch = atan2(-ax_g, sqrt(ay_g * ay_g + az_g * az_g)) * 180.0 / PI;
-      return;
+        // Kalkulasi kemiringan persis sesuai folder debug/mpu6050
+        roll  = atan2(ay_g, az_g) * 180.0 / PI;
+        pitch = atan2(-ax_g, sqrt(ay_g * ay_g + az_g * az_g)) * 180.0 / PI;
+        xSemaphoreGive(i2cMutex);
+        return;
+      }
+      xSemaphoreGive(i2cMutex);
     }
   }
 
@@ -859,13 +1009,13 @@ void initMicroSD() {
 }
 
 // Pencatatan kejadian abnormalitas lokal ke MicroSD (Berjalan tanpa WiFi/Internet)
-void logEventToSD(const char* status, float pitch, float roll, float rain, float soil, float batt) {
+void logEventToSD(const char* status, const char* reason, float pitch, float roll, float rain, float soil, float batt) {
   if (!sdAvailable) return;
   File f = SD.open("/ews_log.csv", FILE_APPEND);
   if (f) {
-    f.printf("%s,%s,%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
+    f.printf("%s,%s,\"%s\",%.2f,%.2f,%.1f,%.1f,%.2f,%d,%d\n",
              rtcAvailable ? rtcTimeString.c_str() : "NO_RTC",
-             status, pitch, roll, rain, soil, batt, sirenActive ? 1 : 0, stroboActive ? 1 : 0);
+             status, reason ? reason : "-", pitch, roll, rain, soil, batt, sirenActive ? 1 : 0, stroboActive ? 1 : 0);
     f.close();
   }
 }
@@ -907,7 +1057,13 @@ void initHardwareOnce() {
 
   // 3. INA219 Power Monitor (Hardware I2C Wire: GPIO 14 SDA, GPIO 13 SCL)
   initINA();
-  Serial.printf(" [INA]  INA219 Power Monitor  : [%s] (SDA=%d, SCL=%d)\n", inaAvailable ? "OK AKTIF" : "TIDAK ADA", activeInaSda, activeInaScl);
+  if (inaAvailable) {
+    Serial.printf(" [INA]  INA219 Power Monitor  : [OK AKTIF] (SDA=%d, SCL=%d)\n", activeInaSda, activeInaScl);
+  } else {
+    Serial.printf(" [INA]  INA219 Power Monitor  : [TIDAK ADA] -> Fallback Pembagi Resistor 11:4 (GPIO %d, Rasio %.2fx)\n",
+                  PIN_BATTERY_DIVIDER,
+                  currentThresholds.battDividerRatio > 0.5f ? currentThresholds.battDividerRatio : BATT_DIVIDER_DEFAULT_RATIO);
+  }
 
   // 4. DS3231 Real-Time Clock (Hardware I2C Wire: GPIO 15 SDA, GPIO 16 SCL)
   initDS3231();
@@ -1075,34 +1231,37 @@ void updateOledDisplay(float pitch, float roll, float soil, float rain, float ba
   if (!oledAvailable) return;
 
   if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SH110X_WHITE);
+    if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(SH110X_WHITE);
 
-    display.setCursor(0, 0);
-    display.printf("[%s] %s", ewsId.c_str(), currentStatus.c_str());
-    display.drawLine(0, 10, 127, 10, SH110X_WHITE);
+      display.setCursor(0, 0);
+      display.printf("[%s] %s", ewsId.c_str(), currentStatus.c_str());
+      display.drawLine(0, 10, 127, 10, SH110X_WHITE);
 
-    display.setCursor(0, 14);
-    display.printf("P:%.2f  R:%.2f", pitch, roll);
+      display.setCursor(0, 14);
+      display.printf("P:%.2f  R:%.2f", pitch, roll);
 
-    display.setCursor(0, 26);
-    display.printf("Tanah:%.1f%% Hjn:%.1f", soil, rain);
+      display.setCursor(0, 26);
+      display.printf("Tanah:%.1f%% Hjn:%.1f", soil, rain);
 
-    display.setCursor(0, 38);
-    display.printf("Aki:%.2fV  Relay:%s%s", batt, sirenActive ? "S" : "-", stroboActive ? "L" : "-");
+      display.setCursor(0, 38);
+      display.printf("Aki:%.2fV  Relay:%s%s", batt, sirenActive ? "S" : "-", stroboActive ? "L" : "-");
 
-    display.setCursor(0, 52);
-    if (isWsConnected) {
-      display.print("NET: Online (WS OK)");
-    } else if (WiFi.status() == WL_CONNECTED) {
-      display.print("NET: WiFi OK | WS...");
-    } else {
-      display.print("NET: OFFLINE (LOKAL)");
+      display.setCursor(0, 52);
+      if (isWsConnected) {
+        display.print("NET: Online (WS OK)");
+      } else if (WiFi.status() == WL_CONNECTED) {
+        display.print("NET: WiFi OK | WS...");
+      } else {
+        display.print("NET: OFFLINE (LOKAL)");
+      }
+
+      display.display();
+      xSemaphoreGive(i2cMutex);
     }
-
-    display.display();
     xSemaphoreGive(oledMutex);
   }
 #endif
@@ -1157,15 +1316,17 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
               setRelaySirine(true);
               setRelayStrobo(true);
             } else {
+              // Status "siaga" atau lainnya: Relay Lapangan TIDAK DINYALAKAN (OFF)
               alarmCycleState = ALARM_STATE_IDLE;
               setRelaySirine(false);
-              setRelayStrobo(true);
+              setRelayStrobo(false);
             }
           }
           else if (strcmp(cmd, "RESET_ALARM") == 0) {
-            Serial.println("✅ Reset Alarm Diterima: Mematikan sirine & strobo");
+            Serial.println("✅ Reset Alarm Diterima: Mematikan sirine & strobo serta mereset siklus alarm");
             currentStatus = "aman";
             alarmCycleState = ALARM_STATE_IDLE;
+            rainAlarmSoundedThisCycle = false;
             setRelaySirine(false);
             setRelayStrobo(false);
             isBuzzerTesting = false;
@@ -1335,8 +1496,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
           }
           else if (strcmp(cmd, "SYNC_RTC") == 0) {
             Serial.println("⏱️ [KONTROL] Permintaan sinkronisasi manual RTC ke NTP diterima!");
-            rtcSyncedWithNTP = false; // Reset flag agar diizinkan sinkronisasi ulang
-            syncRTCWithNTP();
+            syncRTCWithNTP(true);
 
             DynamicJsonDocument ackDoc(256);
             ackDoc["action"] = "publish";
@@ -1382,6 +1542,9 @@ void wsTask(void *pvParameters) {
   Serial.println("🚀 [FreeRTOS] wsTask berjalan pada Core 0 (Dedicated Network)");
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
+      if (!ntpSyncAttempted) {
+        syncRTCWithNTP();
+      }
       if (wsMutex != NULL && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         webSocket.loop();
 
@@ -1428,6 +1591,18 @@ void sensorTask(void *pvParameters) {
       Serial.println(digitalRead(PIN_RAIN_DIGITAL) == HIGH ? "HIGH (Diam/Siaga)" : "LOW (Kontak)");
     }
 
+    // Deteksi penambahan curah hujan untuk pelacakan siklus hujan
+    if (currentRainTips > lastObservedRainTips) {
+      lastObservedRainTips = currentRainTips;
+      lastRainActivityTime = millis();
+    }
+
+    // Jika sudah 20 menit tidak ada penambahan tip hujan, reset siklus hujan (hujan reda/selesai)
+    if (rainAlarmSoundedThisCycle && (lastRainActivityTime > 0) && (millis() - lastRainActivityTime >= RAIN_CYCLE_IDLE_TIMEOUT_MS)) {
+      rainAlarmSoundedThisCycle = false;
+      Serial.println("🌧️ [HUJAN] Tidak ada penambahan curah hujan selama 20 menit. Siklus hujan direset (hujan reda). Sirine siap berbunyi 1x jika hujan baru tiba.");
+    }
+
     unsigned long rawVibPulses = 0;
     float vib = readVibrationLevel(rawVibPulses);
 
@@ -1435,11 +1610,6 @@ void sensorTask(void *pvParameters) {
     int solar = 0, battMa = 0;
     readPowerMonitor(batt, solar, battMa);
     readDS3231Time();
-
-    // Sinkronisasi waktu RTC DS3231 dengan NTP (hanya sekali saja di awal saat tersambung jaringan)
-    if (!rtcSyncedWithNTP && WiFi.status() == WL_CONNECTED) {
-      syncRTCWithNTP();
-    }
 
     // Ambil ambang batas dari memori yang sinkron
     SensorThresholds thresh;
@@ -1455,8 +1625,9 @@ void sensorTask(void *pvParameters) {
     float rollDev  = fabs(roll - thresh.safeTiltRoll);
     float soilDev  = fabs(soil - thresh.safeSoilMoisture);
 
-    // Evaluasi status berdasarkan ambang batas & toleransi EEPROM
+    // Evaluasi status & deskripsi pemicu alarm berdasarkan ambang batas EEPROM
     String st = "aman";
+    String reason = "Semua parameter sensor dalam batas aman";
     bool isVibDanger = false;
     if (thresh.vibrationDanger > 0.0f) {
       if (thresh.vibrationDanger >= 1.0f) {
@@ -1466,79 +1637,166 @@ void sensorTask(void *pvParameters) {
       }
     }
 
-    // Kondisi Bahaya: Simpangan melebihi batas bahaya ATAU hujan bahaya ATAU getaran bahaya
-    if (pitchDev >= thresh.tiltDanger || rollDev >= thresh.tiltDanger || rain >= thresh.rainDanger || isVibDanger) {
+    // 1. Prioritas Utama: Evaluasi Bahaya Imminent (Longsor / Banjir Bandang / Gempa)
+    if (pitchDev >= thresh.tiltDanger || rollDev >= thresh.tiltDanger) {
       st = "bahaya";
+      if (pitchDev >= thresh.tiltDanger && rollDev >= thresh.tiltDanger) {
+        reason = "Kemiringan Pitch & Roll Ekstrem (P:" + String(pitchDev, 1) + "°, R:" + String(rollDev, 1) + "° >= " + String(thresh.tiltDanger, 1) + "°)";
+      } else if (pitchDev >= thresh.tiltDanger) {
+        reason = "Kemiringan Pitch Ekstrem (Simpangan " + String(pitchDev, 1) + "° >= Batas " + String(thresh.tiltDanger, 1) + "°)";
+      } else {
+        reason = "Kemiringan Roll Ekstrem (Simpangan " + String(rollDev, 1) + "° >= Batas " + String(thresh.tiltDanger, 1) + "°)";
+      }
+    } else if (rain >= thresh.rainDanger) {
+      st = "bahaya";
+      reason = "Curah Hujan Ekstrem Bahaya (" + String(rain, 1) + " mm/jam >= Batas " + String(thresh.rainDanger, 1) + " mm/jam)";
+    } else if (isVibDanger) {
+      st = "bahaya";
+      reason = "Getaran Gempa / Pergerakan Tanah Bahaya (" + String(rawVibPulses) + " pulsa)";
     }
-    // Kondisi Siaga: Melebihi toleransi aman (+- tolerance) atau batas siaga
-    else if (pitchDev >= thresh.tiltTolerance || rollDev >= thresh.tiltTolerance ||
-             pitchDev >= thresh.tiltWarning   || rollDev >= thresh.tiltWarning   ||
-             rain >= thresh.rainWarning       || soilDev >= thresh.soilMoistureTolerance ||
-             soil >= thresh.soilMoistureWarning) {
+    // 2. Prioritas Kedua: Evaluasi Kondisi Siaga (Pergeseran Awal / Hujan Lebat / Tanah Jenuh)
+    else if (pitchDev >= thresh.tiltWarning || rollDev >= thresh.tiltWarning) {
       st = "siaga";
+      if (pitchDev >= thresh.tiltWarning && rollDev >= thresh.tiltWarning) {
+        reason = "Kemiringan Pitch & Roll Siaga (P:" + String(pitchDev, 1) + "°, R:" + String(rollDev, 1) + "° >= " + String(thresh.tiltWarning, 1) + "°)";
+      } else if (pitchDev >= thresh.tiltWarning) {
+        reason = "Kemiringan Pitch Siaga (Simpangan " + String(pitchDev, 1) + "° >= Batas " + String(thresh.tiltWarning, 1) + "°)";
+      } else {
+        reason = "Kemiringan Roll Siaga (Simpangan " + String(rollDev, 1) + "° >= Batas " + String(thresh.tiltWarning, 1) + "°)";
+      }
+    } else if (rain >= thresh.rainWarning) {
+      st = "siaga";
+      reason = "Curah Hujan Lebat Siaga (" + String(rain, 1) + " mm/jam >= Batas " + String(thresh.rainWarning, 1) + " mm/jam)";
+    } else if (soil >= thresh.soilMoistureWarning) {
+      st = "siaga";
+      reason = "Kelembapan Tanah Kritis / Jenuh Air (" + String(soil, 1) + "% >= Batas " + String(thresh.soilMoistureWarning, 1) + "%)";
+    } else if (thresh.soilMoistureTolerance > 0.0f && soil > (thresh.safeSoilMoisture + thresh.soilMoistureTolerance)) {
+      st = "siaga";
+      reason = "Kelembapan Tanah Melebihi Toleransi Aman (" + String(soil, 1) + "% > " + String(thresh.safeSoilMoisture + thresh.soilMoistureTolerance, 1) + "%)";
     }
-    else if (batt < thresh.batteryLowVoltage) {
+    // 3. Status Baterai & Sensor INA/Divider (HANYA WARNING DI WEB, BUKAN BAHAYA BENCANA, RELAY WAJIB OFF!)
+    else if (batt <= 0.5f) {
       st = "baterai_lemah";
+      reason = "Tegangan Baterai / Sensor Daya 0.00V [Warning Web Saja, Relay OFF]";
+    } else if (batt < thresh.batteryLowVoltage) {
+      st = "baterai_lemah";
+      if (inaAvailable) {
+        reason = "Tegangan Aki Lemah INA (" + String(batt, 2) + "V < " + String(thresh.batteryLowVoltage, 2) + "V) [Warning Web Saja, Relay OFF]";
+      } else {
+        reason = "Tegangan Aki Lemah Pembagi Resistor (" + String(batt, 2) + "V < " + String(thresh.batteryLowVoltage, 2) + "V) [Warning Web Saja, Relay OFF]";
+      }
+    } else {
+      st = "aman";
+      reason = "Semua parameter sensor dalam batas aman";
     }
+
+    // Cek apakah bahaya melibatkan pergerakan tanah ekstrem / getaran gempa (Bencana Lereng Nyata)
+    bool isGroundDisaster = (pitchDev >= thresh.tiltDanger || rollDev >= thresh.tiltDanger || isVibDanger);
+    bool isOnlyRainDanger = (rain >= thresh.rainDanger) && !isGroundDisaster;
 
     // Kontrol relay otomatis berdasarkan status sensor & siklus timer sirine (Autonomous Offline Protection)
     if (st == "bahaya") {
       if (currentStatus != "bahaya") {
-        logEventToSD("BAHAYA", pitch, roll, rain, soil, batt);
+        logEventToSD("BAHAYA", reason.c_str(), pitch, roll, rain, soil, batt);
+        Serial.printf("🚨 [ALARM BAHAYA] Penyebab: %s\n", reason.c_str());
       }
 
-      // Selalu aktifkan lampu strobo tanda bahaya
-      if (!stroboActive) setRelayStrobo(true);
-
-      // Mesin Status Siklus Sirine (Durasi Bunyi -> Jeda/Snooze -> Bunyi Kembali)
       unsigned long curMs = millis();
       unsigned long durationMs = (unsigned long)thresh.alarmDuration * 1000UL;
       unsigned long pauseMs    = (unsigned long)thresh.alarmPause * 1000UL;
 
-      if (alarmCycleState == ALARM_STATE_IDLE) {
-        alarmCycleState = ALARM_STATE_SOUNDING;
-        alarmSoundingStartTime = curMs;
-        setRelaySirine(true);
-        Serial.printf("🚨 [ALARM] Anomali Bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s)\n",
-                      thresh.alarmDuration, thresh.alarmPause);
-      }
-      else if (alarmCycleState == ALARM_STATE_SOUNDING) {
-        if (durationMs > 0 && (curMs - alarmSoundingStartTime >= durationMs)) {
-          // Durasi bunyi telah habis -> Matikan sirine dan masuk periode jeda
-          alarmCycleState = ALARM_STATE_PAUSED;
-          alarmPauseStartTime = curMs;
-          setRelaySirine(false);
-          Serial.printf("⏳ [ALARM] Waktu bunyi habis (%u s). Mematikan sirine untuk jeda (%u s)...\n",
-                        thresh.alarmDuration, thresh.alarmPause);
-        } else {
-          if (!sirenActive) setRelaySirine(true);
-        }
-      }
-      else if (alarmCycleState == ALARM_STATE_PAUSED) {
-        if (curMs - alarmPauseStartTime >= pauseMs) {
-          // Jeda selesai dan status masih bahaya -> Nyalakan sirine kembali
+      if (isGroundDisaster) {
+        // KASUS 1: Bencana Pergerakan Tanah Nyata (Kemiringan Ekstrem atau Getaran Gempa)
+        // Sirine & strobo aktif berputar periodik (Bunyi -> Jeda -> Bunyi) untuk keselamatan evakuasi warga
+        if (!stroboActive) setRelayStrobo(true);
+
+        if (alarmCycleState == ALARM_STATE_IDLE) {
           alarmCycleState = ALARM_STATE_SOUNDING;
           alarmSoundingStartTime = curMs;
           setRelaySirine(true);
-          Serial.println("🚨 [ALARM] Jeda selesai dan kondisi masih bahaya! Sirine menyala kembali.");
+          Serial.printf("🚨 [ALARM TANAH] Gerakan tanah/gempa bahaya! Sirine mulai berbunyi (Durasi: %u s, Jeda: %u s). Penyebab: %s\n",
+                        thresh.alarmDuration, thresh.alarmPause, reason.c_str());
+        }
+        else if (alarmCycleState == ALARM_STATE_SOUNDING) {
+          if (durationMs > 0 && (curMs - alarmSoundingStartTime >= durationMs)) {
+            alarmCycleState = ALARM_STATE_PAUSED;
+            alarmPauseStartTime = curMs;
+            setRelaySirine(false);
+            Serial.printf("⏳ [ALARM] Waktu bunyi habis (%u s). Mematikan sirine untuk jeda (%u s)...\n",
+                          thresh.alarmDuration, thresh.alarmPause);
+          } else {
+            if (!sirenActive) setRelaySirine(true);
+          }
+        }
+        else if (alarmCycleState == ALARM_STATE_PAUSED) {
+          if (curMs - alarmPauseStartTime >= pauseMs) {
+            alarmCycleState = ALARM_STATE_SOUNDING;
+            alarmSoundingStartTime = curMs;
+            setRelaySirine(true);
+            Serial.println("🚨 [ALARM] Jeda selesai dan kondisi masih bahaya! Sirine menyala kembali.");
+          } else {
+            if (sirenActive) setRelaySirine(false);
+          }
+        }
+      }
+      else if (isOnlyRainDanger) {
+        // KASUS 2: Hanya Curah Hujan Tinggi (Tanpa Bahaya Gerakan Tanah/Gempa)
+        // Sesuai permintaan: Hanya bunyikan sirine 1x saja dalam 1 siklus hujan selama alarmDuration.
+        // Setelah durasi selesai, sirine & strobo dimatikan agar warga tidak terganggu suara berulang.
+        // Peringatan telemetri di Web & Telegram tetap aktif.
+        if (!rainAlarmSoundedThisCycle) {
+          if (alarmCycleState == ALARM_STATE_IDLE) {
+            alarmCycleState = ALARM_STATE_SOUNDING;
+            alarmSoundingStartTime = curMs;
+            setRelaySirine(true);
+            setRelayStrobo(true);
+            Serial.printf("🌧️ [ALARM HUJAN] Curah hujan tinggi terdeteksi! Sirine dibunyikan 1x (Durasi: %u s). Penyebab: %s\n",
+                          thresh.alarmDuration, reason.c_str());
+          }
+          else if (alarmCycleState == ALARM_STATE_SOUNDING) {
+            if (durationMs > 0 && (curMs - alarmSoundingStartTime >= durationMs)) {
+              alarmCycleState = ALARM_STATE_IDLE;
+              rainAlarmSoundedThisCycle = true;
+              setRelaySirine(false);
+              setRelayStrobo(false); // Pastikan relay GPIO 46 MATI agar sirine tidak berbunyi
+              Serial.printf("🔇 [ALARM HUJAN] Bunyi sirine 1x selesai (%u s). Sirine dimatikan untuk sisa siklus hujan ini. Pemantauan Web & Telegram tetap aktif.\n",
+                            thresh.alarmDuration);
+            } else {
+              if (!sirenActive) setRelaySirine(true);
+            }
+          }
         } else {
+          // Sirine sudah berbunyi 1x pada siklus hujan ini -> Pastikan sirine & strobo tetap MATI (OFF)
+          alarmCycleState = ALARM_STATE_IDLE;
           if (sirenActive) setRelaySirine(false);
+          if (stroboActive) setRelayStrobo(false);
         }
       }
     } else if (st == "siaga") {
       alarmCycleState = ALARM_STATE_IDLE;
+      // Permintaan Pengguna: Kalau siaga tidak usah nyalakan relay (Relay Sirine & Strobo GPIO 46 WAJIB MATI/OFF)
       if (sirenActive) setRelaySirine(false);
-      if (!stroboActive) setRelayStrobo(true);
+      if (stroboActive) setRelayStrobo(false);
       if (currentStatus != "siaga") {
-        logEventToSD("SIAGA", pitch, roll, rain, soil, batt);
+        logEventToSD("SIAGA", reason.c_str(), pitch, roll, rain, soil, batt);
+        Serial.printf("⚠️ [ALARM SIAGA] %s -> Relay Lapangan MATI (Hanya Peringatan Web & Telegram)\n", reason.c_str());
+      }
+    } else if (st == "baterai_lemah") {
+      alarmCycleState = ALARM_STATE_IDLE;
+      // Sensor INA tidak terbaca / nilai 0V BUKAN tanda bahaya -> Relay TIDAK PERLU ON (Sirine & Strobo OFF)
+      if (sirenActive) setRelaySirine(false);
+      if (stroboActive) setRelayStrobo(false);
+      if (currentStatus != "baterai_lemah") {
+        logEventToSD("BATERAI_LEMAH", reason.c_str(), pitch, roll, rain, soil, batt);
+        Serial.printf("ℹ️ [WARNING WEB] %s -> Relay dipastikan MATI (OFF)\n", reason.c_str());
       }
     } else if (st == "aman") {
-      if (currentStatus == "bahaya" || currentStatus == "siaga" || sirenActive || stroboActive) {
-        alarmCycleState = ALARM_STATE_IDLE;
-        if (sirenActive) setRelaySirine(false);
-        if (stroboActive) setRelayStrobo(false);
-        logEventToSD("AMAN_KEMBALI", pitch, roll, rain, soil, batt);
-        Serial.println("✅ [SENSOR] Kondisi kembali aman. Sirine & strobo dinonaktifkan.");
+      alarmCycleState = ALARM_STATE_IDLE;
+      if (sirenActive) setRelaySirine(false);
+      if (stroboActive) setRelayStrobo(false);
+      if (currentStatus == "bahaya" || currentStatus == "siaga" || currentStatus == "baterai_lemah") {
+        logEventToSD("AMAN_KEMBALI", reason.c_str(), pitch, roll, rain, soil, batt);
+        Serial.println("✅ [SENSOR] Kondisi normal kembali. Sirine & strobo dinonaktifkan.");
       }
     }
 
@@ -1559,7 +1817,9 @@ void sensorTask(void *pvParameters) {
       sharedSensors.wifiRssi = WiFi.RSSI();
       sharedSensors.uptimeHours = millis() / 3600000;
       strncpy(sharedSensors.status, st.c_str(), sizeof(sharedSensors.status) - 1);
+      strncpy(sharedSensors.alarmReason, reason.c_str(), sizeof(sharedSensors.alarmReason) - 1);
       currentStatus = st;
+      currentAlarmReason = reason;
 
       // Update nilai mentah sensor untuk Web Server Kalibrasi
       sharedRawSensors.pitchRaw        = pitch;
@@ -1628,7 +1888,7 @@ void telemetryTask(void *pvParameters) {
         int rssiVal = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -99;
 
         // 1. JSON Telemetri Bundle Lengkap
-        DynamicJsonDocument doc(1024);
+        DynamicJsonDocument doc(2048);
         doc["action"] = "publish";
         doc["topic"]  = TOPIC_TELEMETRY;
 
@@ -1649,9 +1909,33 @@ void telemetryTask(void *pvParameters) {
         p["gsmStatus"]          = "online";
         p["uptimeHours"]        = data.uptimeHours;
         p["firmwareVersion"]    = FIRMWARE_VERSION;
-        p["inaType"]            = inaAvailable ? (isINA219 ? "INA219" : "INA226") : "NONE";
+        p["inaType"]            = inaAvailable ? (isINA219 ? "INA219" : "INA226") : (data.batteryVoltage > 0.5f ? "DIVIDER_11_4" : "NONE");
+        p["inaAvailable"]       = (inaAvailable || data.batteryVoltage > 0.5f);
+        p["status"]             = data.status;
+        p["alarmReason"]        = data.alarmReason;
+        p["relayAlarmState"]    = (sirenActive || stroboActive) ? "HIGH" : "LOW";
         p["rtcTime"]            = rtcAvailable ? rtcTimeString : "N/A";
         p["sdCard"]             = sdAvailable ? "OK" : "NONE";
+
+        // Konfigurasi Ambang Batas & Titik Aman EEPROM ESP32
+        JsonObject th = p.createNestedObject("thresholds");
+        th["safeTiltPitch"]         = thresh.safeTiltPitch;
+        th["safeTiltRoll"]          = thresh.safeTiltRoll;
+        th["tiltTolerance"]         = thresh.tiltTolerance;
+        th["tiltWarning"]           = thresh.tiltWarning;
+        th["tiltDanger"]            = thresh.tiltDanger;
+        th["rainWarning"]           = thresh.rainWarning;
+        th["rainDanger"]            = thresh.rainDanger;
+        th["rainCalibPerTip"]       = thresh.rainCalibPerTip;
+        th["safeSoilMoisture"]      = thresh.safeSoilMoisture;
+        th["soilMoistureTolerance"] = thresh.soilMoistureTolerance;
+        th["soilMoistureWarning"]   = thresh.soilMoistureWarning;
+        th["soilAdcDry"]            = thresh.soilAdcDry;
+        th["soilAdcWet"]            = thresh.soilAdcWet;
+        th["vibrationDanger"]       = thresh.vibrationDanger;
+        th["batteryLowVoltage"]     = thresh.batteryLowVoltage;
+        th["alarmDuration"]         = thresh.alarmDuration;
+        th["alarmPause"]            = thresh.alarmPause;
 
         // Tambahan info jaringan & siklus alarm untuk website
         p["ipAddress"]          = ipStr;
@@ -1665,9 +1949,10 @@ void telemetryTask(void *pvParameters) {
         serializeJson(doc, jsonOutput);
 
         if (safeSendTXT(jsonOutput)) {
-          Serial.printf("📤 [TELEMETRI %s] IP:%s, SSID:%s, Pitch:%.2f, Roll:%.2f, Tanah:%.1f, Aki:%.2fV\n",
+          Serial.printf("📤 [TELEMETRI %s] IP:%s, Status:%s, Penyebab:%s, Aki:%.2fV (Relay:%s)\n",
                         isClientActive ? "REALTIME" : "HEMAT DAYA 5 MENIT",
-                        ipStr.c_str(), ssidStr.c_str(), data.pitch, data.roll, data.soilMoisture, data.batteryVoltage);
+                        ipStr.c_str(), data.status, data.alarmReason, data.batteryVoltage,
+                        (sirenActive || stroboActive) ? "ON" : "OFF");
         }
 
         // Pacing 40ms antar frame agar buffer SSL TCP tidak meluap
@@ -1734,6 +2019,7 @@ void setup() {
   // Inisialisasi Mutex
   wsMutex   = xSemaphoreCreateMutex();
   dataMutex = xSemaphoreCreateMutex();
+  i2cMutex  = xSemaphoreCreateMutex();
 #if ENABLE_OLED
   oledMutex = xSemaphoreCreateMutex();
 #endif
@@ -1780,15 +2066,18 @@ void setup() {
 #if ENABLE_OLED
   if (oledAvailable) {
     if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-      selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setTextColor(SH110X_WHITE);
-      display.setCursor(0, 10);
-      display.println("Koneksi WiFi...");
-      display.printf("SSID: %s\n", wifiSsidDefault.c_str());
-      display.println("Timeout: 10 detik");
-      display.display();
+      if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SH110X_WHITE);
+        display.setCursor(0, 10);
+        display.println("Koneksi WiFi...");
+        display.printf("SSID: %s\n", wifiSsidDefault.c_str());
+        display.println("Timeout: 10 detik");
+        display.display();
+        xSemaphoreGive(i2cMutex);
+      }
       xSemaphoreGive(oledMutex);
     }
   }
@@ -1814,20 +2103,23 @@ void setup() {
 #if ENABLE_OLED
     if (oledAvailable) {
       if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setTextColor(SH110X_WHITE);
-        display.setCursor(0, 0);
-        display.println("WIFI TIMEOUT (10s)!");
-        display.drawLine(0, 10, 127, 10, SH110X_WHITE);
-        display.setCursor(0, 14);
-        display.println("Buka Hotspot AP:");
-        display.printf("SSID: %s\n", apSSID.c_str());
-        display.setCursor(0, 36);
-        display.println("Web Config Portal:");
-        display.println("IP: 192.168.4.1 (30s)");
-        display.display();
+        if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
+          display.clearDisplay();
+          display.setTextSize(1);
+          display.setTextColor(SH110X_WHITE);
+          display.setCursor(0, 0);
+          display.println("WIFI TIMEOUT (10s)!");
+          display.drawLine(0, 10, 127, 10, SH110X_WHITE);
+          display.setCursor(0, 14);
+          display.println("Buka Hotspot AP:");
+          display.printf("SSID: %s\n", apSSID.c_str());
+          display.setCursor(0, 36);
+          display.println("Web Config Portal:");
+          display.println("IP: 192.168.4.1 (30s)");
+          display.display();
+          xSemaphoreGive(i2cMutex);
+        }
         xSemaphoreGive(oledMutex);
       }
     }
@@ -1844,12 +2136,15 @@ void setup() {
 #if ENABLE_OLED
       if (oledAvailable) {
         if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-          selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
-          display.clearDisplay();
-          display.setCursor(0, 15);
-          display.println("WiFi Portal Timeout");
-          display.println("Sistem Mode Offline");
-          display.display();
+          if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
+            display.clearDisplay();
+            display.setCursor(0, 15);
+            display.println("WiFi Portal Timeout");
+            display.println("Sistem Mode Offline");
+            display.display();
+            xSemaphoreGive(i2cMutex);
+          }
           xSemaphoreGive(oledMutex);
         }
         delay(1500);
@@ -1876,13 +2171,16 @@ void setup() {
 #if ENABLE_OLED
     if (oledAvailable) {
       if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
-        display.clearDisplay();
-        display.setCursor(0, 10);
-        display.println("WIFI TERHUBUNG!");
-        display.printf("SSID: %s\n", WiFi.SSID().c_str());
-        display.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-        display.display();
+        if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
+          display.clearDisplay();
+          display.setCursor(0, 10);
+          display.println("WIFI TERHUBUNG!");
+          display.printf("SSID: %s\n", WiFi.SSID().c_str());
+          display.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+          display.display();
+          xSemaphoreGive(i2cMutex);
+        }
         xSemaphoreGive(oledMutex);
       }
       delay(1500);
@@ -2586,7 +2884,11 @@ void handleApiLive() {
   doc["batt"]     = round(snap.batteryVoltage * 100.0) / 100.0;
   doc["solar"]    = snap.solarCurrent;
   doc["rtc"]      = snap.uptimeHours > 0 ? (rtcAvailable ? rtcTimeString : "Aktif") : (rtcAvailable ? rtcTimeString : "N/A");
-  doc["status"]   = currentStatus;
+  doc["status"]      = currentStatus;
+  doc["alarmReason"] = currentAlarmReason;
+  doc["inaAvailable"] = (inaAvailable || snap.batteryVoltage > 0.5f);
+  doc["inaType"]      = inaAvailable ? (isINA219 ? "INA219" : "INA226") : (snap.batteryVoltage > 0.5f ? "DIVIDER_11_4" : "NONE");
+  doc["relay"]       = (sirenActive || stroboActive) ? "ON" : "OFF";
 
   String res;
   serializeJson(doc, res);
@@ -2626,6 +2928,7 @@ void handleApiConfig() {
   doc["soilDry"]   = thresh.soilAdcDry;
   doc["soilWet"]   = thresh.soilAdcWet;
   doc["battLow"]   = thresh.batteryLowVoltage;
+  doc["battRatio"] = thresh.battDividerRatio;
   doc["alarmDur"]  = thresh.alarmDuration;
   doc["alarmPau"]  = thresh.alarmPause;
 
@@ -2663,6 +2966,7 @@ void handleApiSaveCalibration() {
   if (doc.containsKey("soilDry"))   newT.soilAdcDry            = doc["soilDry"].as<int>();
   if (doc.containsKey("soilWet"))   newT.soilAdcWet            = doc["soilWet"].as<int>();
   if (doc.containsKey("battLow"))   newT.batteryLowVoltage     = doc["battLow"].as<float>();
+  if (doc.containsKey("battRatio")) newT.battDividerRatio      = doc["battRatio"].as<float>();
   if (doc.containsKey("alarmDur"))  newT.alarmDuration         = doc["alarmDur"].as<uint32_t>();
   if (doc.containsKey("alarmPau"))  newT.alarmPause            = doc["alarmPau"].as<uint32_t>();
 

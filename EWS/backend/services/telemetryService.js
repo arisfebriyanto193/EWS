@@ -46,13 +46,23 @@ class TelemetryService {
     };
 
     let thresholds = {
-      tiltWarning: 1.5,
-      tiltDanger: 3.0,
+      safeTiltPitch: 0.0,
+      safeTiltRoll: 0.0,
+      tiltTolerance: 2.0,
+      tiltWarning: 5.0,
+      tiltDanger: 10.0,
       rainWarning: 20.0,
       rainDanger: 50.0,
+      rainCalibPerTip: 0.70,
+      safeSoilMoisture: 50.0,
+      soilMoistureTolerance: 15.0,
       soilMoistureWarning: 75.0,
+      soilAdcDry: 3300,
+      soilAdcWet: 1200,
       vibrationDanger: 0.25,
       batteryLowVoltage: 11.8,
+      alarmDuration: 60,
+      alarmPause: 30,
     };
 
     let currentNode = null;
@@ -63,13 +73,23 @@ class TelemetryService {
         if (nodes.length > 0) {
           currentNode = nodes[0];
           thresholds = {
-            tiltWarning: parseFloat(currentNode.tilt_warning),
-            tiltDanger: parseFloat(currentNode.tilt_danger),
-            rainWarning: parseFloat(currentNode.rain_warning),
-            rainDanger: parseFloat(currentNode.rain_danger),
-            soilMoistureWarning: parseFloat(currentNode.soil_moisture_warning),
-            vibrationDanger: parseFloat(currentNode.vibration_danger),
-            batteryLowVoltage: parseFloat(currentNode.battery_low_voltage),
+            safeTiltPitch: parseFloat(currentNode.safe_pitch ?? 0.0),
+            safeTiltRoll: parseFloat(currentNode.safe_roll ?? 0.0),
+            tiltTolerance: parseFloat(currentNode.tilt_tolerance ?? 2.0),
+            tiltWarning: parseFloat(currentNode.tilt_warning ?? 5.0),
+            tiltDanger: parseFloat(currentNode.tilt_danger ?? 10.0),
+            rainWarning: parseFloat(currentNode.rain_warning ?? 20.0),
+            rainDanger: parseFloat(currentNode.rain_danger ?? 50.0),
+            rainCalibPerTip: parseFloat(currentNode.rain_calib_per_tip ?? 0.70),
+            safeSoilMoisture: parseFloat(currentNode.safe_soil_moisture ?? 50.0),
+            soilMoistureTolerance: parseFloat(currentNode.soil_moisture_tolerance ?? 15.0),
+            soilMoistureWarning: parseFloat(currentNode.soil_moisture_warning ?? 75.0),
+            soilAdcDry: parseInt(currentNode.soil_adc_dry ?? 3300, 10),
+            soilAdcWet: parseInt(currentNode.soil_adc_wet ?? 1200, 10),
+            vibrationDanger: parseFloat(currentNode.vibration_danger ?? 0.25),
+            batteryLowVoltage: parseFloat(currentNode.battery_low_voltage ?? 11.8),
+            alarmDuration: parseInt(currentNode.alarm_duration ?? 60, 10),
+            alarmPause: parseInt(currentNode.alarm_pause ?? 30, 10),
           };
         }
       } catch (err) {
@@ -77,7 +97,67 @@ class TelemetryService {
       }
     }
 
-    // Evaluasi Status Berdasarkan Batas Ambang (Thresholds)
+    // Jika ESP32 mengirimkan konfigurasi ambang batas / titik aman lokalnya
+    if (sensorData.thresholds && typeof sensorData.thresholds === 'object') {
+      const incomingT = sensorData.thresholds;
+      if (incomingT.safeTiltPitch !== undefined || incomingT.safePitch !== undefined)
+        thresholds.safeTiltPitch = parseFloat(incomingT.safeTiltPitch ?? incomingT.safePitch);
+      if (incomingT.safeTiltRoll !== undefined || incomingT.safeRoll !== undefined)
+        thresholds.safeTiltRoll = parseFloat(incomingT.safeTiltRoll ?? incomingT.safeRoll);
+      if (incomingT.tiltTolerance !== undefined || incomingT.tiltTol !== undefined)
+        thresholds.tiltTolerance = parseFloat(incomingT.tiltTolerance ?? incomingT.tiltTol);
+      if (incomingT.tiltWarning !== undefined || incomingT.tiltWarn !== undefined)
+        thresholds.tiltWarning = parseFloat(incomingT.tiltWarning ?? incomingT.tiltWarn);
+      if (incomingT.tiltDanger !== undefined || incomingT.tiltDang !== undefined)
+        thresholds.tiltDanger = parseFloat(incomingT.tiltDanger ?? incomingT.tiltDang);
+      if (incomingT.rainWarning !== undefined || incomingT.rainWarn !== undefined)
+        thresholds.rainWarning = parseFloat(incomingT.rainWarning ?? incomingT.rainWarn);
+      if (incomingT.rainDanger !== undefined || incomingT.rainDang !== undefined)
+        thresholds.rainDanger = parseFloat(incomingT.rainDanger ?? incomingT.rainDang);
+      if (incomingT.rainCalibPerTip !== undefined || incomingT.rainCalib !== undefined)
+        thresholds.rainCalibPerTip = parseFloat(incomingT.rainCalibPerTip ?? incomingT.rainCalib);
+      if (incomingT.safeSoilMoisture !== undefined || incomingT.safeSoil !== undefined)
+        thresholds.safeSoilMoisture = parseFloat(incomingT.safeSoilMoisture ?? incomingT.safeSoil);
+      if (incomingT.soilMoistureTolerance !== undefined || incomingT.soilTol !== undefined)
+        thresholds.soilMoistureTolerance = parseFloat(incomingT.soilMoistureTolerance ?? incomingT.soilTol);
+      if (incomingT.soilMoistureWarning !== undefined || incomingT.soilWarn !== undefined)
+        thresholds.soilMoistureWarning = parseFloat(incomingT.soilMoistureWarning ?? incomingT.soilWarn);
+      if (incomingT.soilAdcDry !== undefined)
+        thresholds.soilAdcDry = parseInt(incomingT.soilAdcDry, 10);
+      if (incomingT.soilAdcWet !== undefined)
+        thresholds.soilAdcWet = parseInt(incomingT.soilAdcWet, 10);
+      if (incomingT.vibrationDanger !== undefined || incomingT.vibDang !== undefined)
+        thresholds.vibrationDanger = parseFloat(incomingT.vibrationDanger ?? incomingT.vibDang);
+      if (incomingT.batteryLowVoltage !== undefined || incomingT.battLow !== undefined)
+        thresholds.batteryLowVoltage = parseFloat(incomingT.batteryLowVoltage ?? incomingT.battLow);
+      if (incomingT.alarmDuration !== undefined || incomingT.alarmDur !== undefined)
+        thresholds.alarmDuration = parseInt(incomingT.alarmDuration ?? incomingT.alarmDur, 10);
+      if (incomingT.alarmPause !== undefined || incomingT.alarmPau !== undefined)
+        thresholds.alarmPause = parseInt(incomingT.alarmPause ?? incomingT.alarmPau, 10);
+
+      // Sinkronkan ke database ews_nodes secara asinkron
+      if (isDbConnected && pool) {
+        pool.query(
+          `UPDATE ews_nodes SET
+            safe_pitch = ?, safe_roll = ?, tilt_tolerance = ?, tilt_warning = ?, tilt_danger = ?,
+            rain_warning = ?, rain_danger = ?, rain_calib_per_tip = ?,
+            safe_soil_moisture = ?, soil_moisture_tolerance = ?, soil_moisture_warning = ?,
+            soil_adc_dry = ?, soil_adc_wet = ?, vibration_danger = ?, battery_low_voltage = ?,
+            alarm_duration = ?, alarm_pause = ?
+           WHERE id = ?`,
+          [
+            thresholds.safeTiltPitch, thresholds.safeTiltRoll, thresholds.tiltTolerance, thresholds.tiltWarning, thresholds.tiltDanger,
+            thresholds.rainWarning, thresholds.rainDanger, thresholds.rainCalibPerTip,
+            thresholds.safeSoilMoisture, thresholds.soilMoistureTolerance, thresholds.soilMoistureWarning,
+            thresholds.soilAdcDry, thresholds.soilAdcWet, thresholds.vibrationDanger, thresholds.batteryLowVoltage,
+            thresholds.alarmDuration, thresholds.alarmPause,
+            ewsId
+          ]
+        ).catch((err) => console.error('Error syncing ESP32 thresholds to ews_nodes:', err.message));
+      }
+    }
+
+    // Evaluasi Status Berdasarkan Batas Ambang (Thresholds) & Titik Acuan Aman
     let newStatus = 'aman';
     let sirenActive = false;
     let stroboActive = false;
@@ -85,12 +165,14 @@ class TelemetryService {
     let triggerCause = sensorData.alarmReason || 'Semua parameter sensor dalam batas aman';
     let triggerValue = 'Normal';
 
-    const absPitch = Math.abs(data.pitchAngle);
-    const absRoll = Math.abs(data.rollAngle);
+    const safePitch = parseFloat(thresholds.safeTiltPitch ?? 0.0);
+    const safeRoll = parseFloat(thresholds.safeTiltRoll ?? 0.0);
+    const pitchDev = Math.abs(data.pitchAngle - safePitch);
+    const rollDev = Math.abs(data.rollAngle - safeRoll);
 
     if (
-      absPitch >= thresholds.tiltDanger ||
-      absRoll >= thresholds.tiltDanger ||
+      pitchDev >= thresholds.tiltDanger ||
+      rollDev >= thresholds.tiltDanger ||
       data.rainfallRate >= thresholds.rainDanger ||
       data.vibrationLevel >= thresholds.vibrationDanger
     ) {
@@ -101,8 +183,8 @@ class TelemetryService {
       triggerCause = sensorData.alarmReason || 'Kemiringan Tanah Ekstrem / Curah Hujan Bahaya / Getaran Gempa';
       triggerValue = `Pitch: ${data.pitchAngle}°, Roll: ${data.rollAngle}°, Hujan: ${data.rainfallRate}mm/h, Getaran: ${data.vibrationLevel}g`;
     } else if (
-      absPitch >= thresholds.tiltWarning ||
-      absRoll >= thresholds.tiltWarning ||
+      pitchDev >= thresholds.tiltWarning ||
+      rollDev >= thresholds.tiltWarning ||
       data.rainfallRate >= thresholds.rainWarning ||
       data.soilMoisture >= thresholds.soilMoistureWarning
     ) {
@@ -336,6 +418,7 @@ class TelemetryService {
         alarmReason: triggerCause,
         inaAvailable: sensorData.inaAvailable !== undefined ? Boolean(sensorData.inaAvailable) : (data.batteryVoltage > 0.5),
       },
+      thresholds,
       timestamp: new Date().toISOString(),
     };
   }

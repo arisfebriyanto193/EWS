@@ -75,12 +75,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
   const isRollDanger = rollDev >= thresholds.tiltDanger;
   const isTiltDanger = isPitchDanger || isRollDanger;
 
-  const isPitchWarning =
-    !isPitchDanger &&
-    (pitchDev >= thresholds.tiltWarning || pitchDev >= (thresholds.tiltTolerance ?? 2));
-  const isRollWarning =
-    !isRollDanger &&
-    (rollDev >= thresholds.tiltWarning || rollDev >= (thresholds.tiltTolerance ?? 2));
+  const isPitchWarning = !isPitchDanger && pitchDev >= thresholds.tiltWarning;
+  const isRollWarning = !isRollDanger && rollDev >= thresholds.tiltWarning;
   const isTiltWarning = !isTiltDanger && (isPitchWarning || isRollWarning);
 
   // 2. Analisis Hujan
@@ -306,7 +302,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Aman: {safePitch}° &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
+                  Aman: {safePitch > 0 ? `+${safePitch}` : safePitch}° (±{thresholds.tiltTolerance ?? 2}°) &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
                 </div>
               </div>
 
@@ -350,7 +346,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Aman: {safeRoll}° &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
+                  Aman: {safeRoll > 0 ? `+${safeRoll}` : safeRoll}° (±{thresholds.tiltTolerance ?? 2}°) &bull; Siaga: {thresholds.tiltWarning}° &bull; Bahaya: {thresholds.tiltDanger}°
                 </div>
               </div>
 
@@ -433,7 +429,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </div>
 
                 <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
-                  Aman: {safeSoil}% &bull; Batas Jenuh: {thresholds.soilMoistureWarning}%
+                  Aman: {safeSoil}% (±{soilTol}%) &bull; Batas Jenuh: {thresholds.soilMoistureWarning}%
                 </div>
               </div>
 

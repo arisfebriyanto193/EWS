@@ -153,6 +153,7 @@ export default function App() {
               alarmReason: incomingReason,
               sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
+              thresholds: payload.thresholds ? { ...e.thresholds, ...payload.thresholds } : e.thresholds,
               sensorData: {
                 ...e.sensorData,
                 ...(payload.sensorData || {}),
@@ -273,12 +274,19 @@ export default function App() {
         prev.map((e) => {
           if (e.id === payload.ewsId) {
             const isOffline = payload.status === 'offline';
+            const updatedThresholds = { ...e.thresholds };
+            if (payload.safePitch !== undefined) updatedThresholds.safeTiltPitch = payload.safePitch;
+            if (payload.safeRoll !== undefined) updatedThresholds.safeTiltRoll = payload.safeRoll;
+            if (payload.safeSoil !== undefined) updatedThresholds.safeSoilMoisture = payload.safeSoil;
+            if (payload.thresholds) Object.assign(updatedThresholds, payload.thresholds);
+
             return {
               ...e,
               status: payload.status !== undefined ? payload.status : e.status,
               sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
               muted: payload.muted !== undefined ? payload.muted : e.muted,
+              thresholds: updatedThresholds,
               sensorData: {
                 ...e.sensorData,
                 gsmStatus: payload.gsmStatus || (isOffline ? 'offline' : e.sensorData.gsmStatus),

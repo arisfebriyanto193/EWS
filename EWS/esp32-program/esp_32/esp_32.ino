@@ -1664,13 +1664,6 @@ void sensorTask(void *pvParameters) {
       } else {
         reason = "Kemiringan Roll Siaga (Simpangan " + String(rollDev, 1) + "° >= Batas " + String(thresh.tiltWarning, 1) + "°)";
       }
-    } else if (pitchDev >= thresh.tiltTolerance || rollDev >= thresh.tiltTolerance) {
-      st = "siaga";
-      if (pitchDev >= thresh.tiltTolerance) {
-        reason = "Simpangan Pitch Melebihi Toleransi (" + String(pitchDev, 1) + "° >= " + String(thresh.tiltTolerance, 1) + "°)";
-      } else {
-        reason = "Simpangan Roll Melebihi Toleransi (" + String(rollDev, 1) + "° >= " + String(thresh.tiltTolerance, 1) + "°)";
-      }
     } else if (rain >= thresh.rainWarning) {
       st = "siaga";
       reason = "Curah Hujan Lebat Siaga (" + String(rain, 1) + " mm/jam >= Batas " + String(thresh.rainWarning, 1) + " mm/jam)";
@@ -1895,7 +1888,7 @@ void telemetryTask(void *pvParameters) {
         int rssiVal = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -99;
 
         // 1. JSON Telemetri Bundle Lengkap
-        DynamicJsonDocument doc(1024);
+        DynamicJsonDocument doc(2048);
         doc["action"] = "publish";
         doc["topic"]  = TOPIC_TELEMETRY;
 
@@ -1923,6 +1916,26 @@ void telemetryTask(void *pvParameters) {
         p["relayAlarmState"]    = (sirenActive || stroboActive) ? "HIGH" : "LOW";
         p["rtcTime"]            = rtcAvailable ? rtcTimeString : "N/A";
         p["sdCard"]             = sdAvailable ? "OK" : "NONE";
+
+        // Konfigurasi Ambang Batas & Titik Aman EEPROM ESP32
+        JsonObject th = p.createNestedObject("thresholds");
+        th["safeTiltPitch"]         = thresh.safeTiltPitch;
+        th["safeTiltRoll"]          = thresh.safeTiltRoll;
+        th["tiltTolerance"]         = thresh.tiltTolerance;
+        th["tiltWarning"]           = thresh.tiltWarning;
+        th["tiltDanger"]            = thresh.tiltDanger;
+        th["rainWarning"]           = thresh.rainWarning;
+        th["rainDanger"]            = thresh.rainDanger;
+        th["rainCalibPerTip"]       = thresh.rainCalibPerTip;
+        th["safeSoilMoisture"]      = thresh.safeSoilMoisture;
+        th["soilMoistureTolerance"] = thresh.soilMoistureTolerance;
+        th["soilMoistureWarning"]   = thresh.soilMoistureWarning;
+        th["soilAdcDry"]            = thresh.soilAdcDry;
+        th["soilAdcWet"]            = thresh.soilAdcWet;
+        th["vibrationDanger"]       = thresh.vibrationDanger;
+        th["batteryLowVoltage"]     = thresh.batteryLowVoltage;
+        th["alarmDuration"]         = thresh.alarmDuration;
+        th["alarmPause"]            = thresh.alarmPause;
 
         // Tambahan info jaringan & siklus alarm untuk website
         p["ipAddress"]          = ipStr;
