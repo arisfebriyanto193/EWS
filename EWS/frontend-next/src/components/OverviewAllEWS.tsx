@@ -361,8 +361,14 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                           <Battery className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           Baterai VRLA
                         </span>
-                        <div className="text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white mt-1">
-                          {ews.sensorData.batteryVoltage} <span className="text-[10px] font-normal text-slate-500">V</span>
+                        <div className={`text-xs sm:text-sm font-mono font-bold mt-1 ${
+                          (ews.sensorData.batteryVoltage ?? 0) <= 0.5
+                            ? 'text-orange-600 dark:text-orange-400'
+                            : (ews.sensorData.batteryVoltage ?? 0) < (ews.thresholds?.batteryLowVoltage ?? 11.8)
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-slate-900 dark:text-white'
+                        }`}>
+                          {(ews.sensorData.batteryVoltage ?? 0).toFixed(2)} <span className="text-[10px] font-normal text-slate-500">V</span>
                         </div>
                       </div>
                     </div>

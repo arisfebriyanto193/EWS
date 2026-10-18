@@ -511,8 +511,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
                       {sensorData.batteryVoltage.toFixed(2)} V
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
-                      Arus: {sensorData.batteryCurrent ?? 0} mA
+                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70 font-sans">
+                      {sensorData.batteryVoltage <= 0.5 ? 'Terputus / 0V' : 'Catu Daya Siaga'}
                     </span>
                   </div>
                 </div>

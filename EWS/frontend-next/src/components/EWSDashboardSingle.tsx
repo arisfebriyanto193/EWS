@@ -747,44 +747,78 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
           </div>
         </div>
 
-        {/* Sensor 5: Sistem Daya Surya & Baterai */}
-        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 shadow-xs transition-colors">
+        {/* Sensor 5: Monitoring Catu Daya & Tegangan Aki */}
+        <div className={`bg-white dark:bg-[#141122] border rounded-xl p-5 shadow-xs transition-colors ${
+          ews.sensorData.batteryVoltage <= 0.5
+            ? 'border-orange-300 dark:border-orange-900/50'
+            : ews.sensorData.batteryVoltage < ews.thresholds.batteryLowVoltage
+            ? 'border-amber-300 dark:border-amber-900/50'
+            : 'border-slate-200 dark:border-purple-900/30'
+        }`}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 flex items-center justify-center">
-                <Sun className="w-4 h-4" />
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+                ews.sensorData.batteryVoltage <= 0.5
+                  ? 'bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800'
+                  : ews.sensorData.batteryVoltage < ews.thresholds.batteryLowVoltage
+                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                  : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+              }`}>
+                <Battery className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200">Panel Surya 30Wp &amp; Aki</h4>
-                <p className="text-[10px] text-slate-500 dark:text-purple-300/70 font-mono">INA219 &amp; PWM SCC 10A</p>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200">Catu Daya &amp; Tegangan Aki</h4>
+                <p className="text-[10px] text-slate-500 dark:text-purple-300/70 font-mono">
+                  {ews.sensorData.inaAvailable ? 'Sensor INA219 (VRLA 12V 20Ah)' : 'Resistor Pembagi Tegangan 11:4'}
+                </p>
               </div>
             </div>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              Charging
+            {ews.sensorData.batteryVoltage <= 0.5 ? (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300 border border-orange-200 dark:border-orange-800 font-semibold">
+                0.00V / Terputus
+              </span>
+            ) : ews.sensorData.batteryVoltage < ews.thresholds.batteryLowVoltage ? (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-semibold">
+                Baterai Lemah
+              </span>
+            ) : (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-semibold">
+                Normal (Aman)
+              </span>
+            )}
+          </div>
+
+          <div className="bg-slate-50 dark:bg-[#1a162b] p-3.5 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center my-3">
+            <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block">
+              Tegangan Aki Real-time
+            </span>
+            <div className={`text-2xl sm:text-3xl font-bold font-mono mt-0.5 ${
+              ews.sensorData.batteryVoltage <= 0.5
+                ? 'text-orange-600 dark:text-orange-400'
+                : ews.sensorData.batteryVoltage < ews.thresholds.batteryLowVoltage
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {ews.sensorData.batteryVoltage.toFixed(2)} <span className="text-sm font-normal">V</span>
+            </div>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-1 block">
+              {ews.sensorData.batteryVoltage <= 0.5
+                ? '⚠️ Tegangan 0.00V: Relay diproteksi OFF (Hanya Peringatan Web)'
+                : `Ambang Batas Siaga: ${ews.thresholds.batteryLowVoltage} V`}
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 my-3">
-            <div className="bg-slate-50 dark:bg-[#1a162b] p-3 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
-              <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70">Tegangan Aki</span>
-              <div className="text-xl sm:text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
-                {ews.sensorData.batteryVoltage} <span className="text-xs font-normal">V</span>
-              </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">VRLA 12V 20Ah</span>
-            </div>
-
-            <div className="bg-slate-50 dark:bg-[#1a162b] p-3 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
-              <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70">Arus Solar 30Wp</span>
-              <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
-                {ews.sensorData.solarCurrent} <span className="text-xs font-normal">mA</span>
-              </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Beban: {ews.sensorData.batteryCurrent}mA</span>
-            </div>
-          </div>
-
           <div className="mt-2 pt-2 border-t border-slate-200 dark:border-purple-900/30 flex items-center justify-between text-xs text-slate-500 dark:text-purple-300/70">
-            <span>Cut-off Proteksi: <strong className="text-slate-700 dark:text-slate-300 font-mono">11.8 V</strong></span>
-            <span className="font-mono">Stepdown 12V&rarr;5V 5A</span>
+            <span>Cut-off Proteksi: <strong className="text-slate-700 dark:text-slate-300 font-mono">{ews.thresholds.batteryLowVoltage} V</strong></span>
+            <span className={`font-mono font-medium ${
+              ews.sensorData.batteryVoltage <= ews.thresholds.batteryLowVoltage
+                ? 'text-orange-600 dark:text-orange-400'
+                : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {ews.sensorData.batteryVoltage <= ews.thresholds.batteryLowVoltage
+                ? 'Relay Lapangan: MATI (OFF)'
+                : 'Relay Lapangan: SIAGA NORMAL'}
+            </span>
           </div>
         </div>
 

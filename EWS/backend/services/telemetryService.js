@@ -22,9 +22,15 @@ class TelemetryService {
       rainfallRate: parseFloat(sensorData.rainfallRate || sensorData.rain || 0),
       rainfallCumulative: parseFloat(sensorData.rainfallCumulative || 0),
       vibrationLevel: parseFloat(sensorData.vibrationLevel || sensorData.vib || 0),
-      batteryVoltage: parseFloat(sensorData.batteryVoltage || sensorData.batt || 12.8),
-      batteryCurrent: parseInt(sensorData.batteryCurrent || 400, 10),
-      solarCurrent: parseInt(sensorData.solarCurrent || 1800, 10),
+      batteryVoltage: (sensorData.batteryVoltage !== undefined && sensorData.batteryVoltage !== null && !isNaN(Number(sensorData.batteryVoltage)))
+        ? Number(sensorData.batteryVoltage)
+        : (sensorData.batt !== undefined && sensorData.batt !== null && !isNaN(Number(sensorData.batt)) ? Number(sensorData.batt) : 0),
+      batteryCurrent: (sensorData.batteryCurrent !== undefined && sensorData.batteryCurrent !== null && !isNaN(Number(sensorData.batteryCurrent)))
+        ? parseInt(sensorData.batteryCurrent, 10)
+        : 0,
+      solarCurrent: (sensorData.solarCurrent !== undefined && sensorData.solarCurrent !== null && !isNaN(Number(sensorData.solarCurrent)))
+        ? parseInt(sensorData.solarCurrent, 10)
+        : 0,
       gsmSignalDbm: parseInt(sensorData.gsmSignalDbm || -70, 10),
       gsmStatus: sensorData.gsmStatus || 'online',
       ipAddress: sensorData.ipAddress || sensorData.ip || null,
@@ -504,7 +510,7 @@ class TelemetryService {
               parseFloat(currentNode.last_vibration || 0),
               batt,
               parseInt(currentNode.last_battery_current || 0, 10),
-              parseInt(currentNode.last_solar_current || 1800, 10),
+              parseInt(currentNode.last_solar_current || 0, 10),
               parseInt(currentNode.last_gsm_signal || -70, 10),
               currentNode.last_gsm_status || 'online',
               parseInt(currentNode.uptime_hours || 0, 10),
@@ -529,7 +535,7 @@ class TelemetryService {
               vibrationLevel: parseFloat(currentNode.last_vibration || 0),
               batteryVoltage: batt,
               batteryCurrent: parseInt(currentNode.last_battery_current || 0, 10),
-              solarCurrent: parseInt(currentNode.last_solar_current || 1800, 10),
+              solarCurrent: parseInt(currentNode.last_solar_current || 0, 10),
               gsmSignalDbm: parseInt(currentNode.last_gsm_signal || -70, 10),
               uptimeHours: parseInt(currentNode.uptime_hours || 0, 10),
               alarmReason: triggerCause,

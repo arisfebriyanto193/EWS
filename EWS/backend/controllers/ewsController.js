@@ -25,9 +25,15 @@ function formatEwsNode(node, telegram, telkomsel) {
       rainfallRate: parseFloat(node.last_rainfall_rate || 0),
       rainfallCumulative: parseFloat(node.last_rainfall_cumulative || 0),
       vibrationLevel: parseFloat(node.last_vibration || 0),
-      batteryVoltage: parseFloat(node.last_battery_voltage || 12.8),
-      batteryCurrent: parseInt(node.last_battery_current || 400, 10),
-      solarCurrent: parseInt(node.last_solar_current || 1800, 10),
+      batteryVoltage: (node.last_battery_voltage !== null && node.last_battery_voltage !== undefined && !isNaN(Number(node.last_battery_voltage)))
+        ? parseFloat(node.last_battery_voltage)
+        : 0,
+      batteryCurrent: (node.last_battery_current !== null && node.last_battery_current !== undefined && !isNaN(Number(node.last_battery_current)))
+        ? parseInt(node.last_battery_current, 10)
+        : 0,
+      solarCurrent: (node.last_solar_current !== null && node.last_solar_current !== undefined && !isNaN(Number(node.last_solar_current)))
+        ? parseInt(node.last_solar_current, 10)
+        : 0,
       gsmSignalDbm: parseInt(node.last_gsm_signal || -70, 10),
       gsmStatus: node.last_gsm_status || 'online',
       ipAddress: node.ip_address || '192.168.1.1',
