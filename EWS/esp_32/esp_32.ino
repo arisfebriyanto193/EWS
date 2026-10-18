@@ -80,6 +80,9 @@ void logPeriodicTelemetryToSD(float pitch, float roll, float soil, int soilRaw,
                               const char* status, const char* reason);
 void logEventToSD(const char* status, const char* reason, float pitch, float roll, float rain, float soil, float batt);
 void checkDailyRainReset();
+void saveDailyRainToEEPROM();
+void checkAndRestoreDailyRain();
+bool getCurrentDateParts(int &day, int &mon, int &yr, int &hr, int &min);
 
 // FreeRTOS Headers
 #include "freertos/FreeRTOS.h"
@@ -1537,32 +1540,110 @@ void readRainSensor(float &rainfallRate, float &cumulative, unsigned long &total
   rainfallRate = (float)tipsInLastHour * curahFactor;
 }
 
-// Fungsi pengecekan pergantian hari (00:00 WIB) untuk reset akumulasi curah hujan harian ke 0.0 mm
-void checkDailyRainReset() {
-  int currentDay = -1;
-  int currentYear = 0;
-  int currentHour = -1;
-  int currentMinute = -1;
-
+// Helper mengambil komponen tanggal & jam dari RTC DS3231 / NTP / Jam Sistem
+bool getCurrentDateParts(int &day, int &mon, int &yr, int &hr, int &min) {
   if (rtcTimeString != "TIDAK TERDETEKSI" && rtcTimeString != "--:--:--" && rtcTimeString.length() >= 19) {
-    // Format standar: "DD-MM-YYYY HH:MM:SS"
-    currentDay    = rtcTimeString.substring(0, 2).toInt();
-    currentYear   = rtcTimeString.substring(6, 10).toInt();
-    currentHour   = rtcTimeString.substring(11, 13).toInt();
-    currentMinute = rtcTimeString.substring(14, 16).toInt();
-  } else {
-    struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 0)) {
-      currentYear   = timeinfo.tm_year + 1900;
-      currentDay    = timeinfo.tm_mday;
-      currentHour   = timeinfo.tm_hour;
-      currentMinute = timeinfo.tm_min;
+    day = rtcTimeString.substring(0, 2).toInt();
+    mon = rtcTimeString.substring(3, 5).toInt();
+    yr  = rtcTimeString.substring(6, 10).toInt();
+    hr  = rtcTimeString.substring(11, 13).toInt();
+    min = rtcTimeString.substring(14, 16).toInt();
+    if (yr >= 2024 && day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
+      return true;
     }
   }
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo, 0)) {
+    yr  = timeinfo.tm_year + 1900;
+    mon = timeinfo.tm_mon + 1;
+    day = timeinfo.tm_mday;
+    hr  = timeinfo.tm_hour;
+    min = timeinfo.tm_min;
+    if (yr >= 2024 && day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
+      return true;
+    }
+  }
+  return false;
+}
 
-  // Hanya proses jika tanggal/jam sudah terverifikasi valid (tahun >= 2024)
-  if (currentYear < 2024 || currentDay < 1 || currentDay > 31) {
+// Simpan akumulasi tip curah hujan harian ke NVS (EEPROM Flash ESP32)
+void saveDailyRainToEEPROM() {
+  int d, m, y, hr, min;
+  if (!getCurrentDateParts(d, m, y, hr, min)) return;
+
+  noInterrupts();
+  unsigned long currentTips = tipCount;
+  interrupts();
+
+  Preferences rainPrefs;
+  if (rainPrefs.begin("ews_rain", false)) {
+    rainPrefs.putUInt("tips", (uint32_t)currentTips);
+    rainPrefs.putUChar("day", (uint8_t)d);
+    rainPrefs.putUChar("mon", (uint8_t)m);
+    rainPrefs.putUShort("yr", (uint16_t)y);
+    rainPrefs.end();
+  }
+}
+
+static bool rainRestoredFromNVS = false;
+
+// Periksa dan pulihkan data akumulasi curah hujan hari ini jika alat baru saja reboot/restart
+void checkAndRestoreDailyRain() {
+  if (rainRestoredFromNVS) return;
+
+  int d, m, y, hr, min;
+  if (!getCurrentDateParts(d, m, y, hr, min)) return; // Menunggu jam & tanggal valid
+
+  Preferences rainPrefs;
+  if (rainPrefs.begin("ews_rain", false)) {
+    uint32_t savedTips = rainPrefs.getUInt("tips", 0);
+    uint8_t  savedDay  = rainPrefs.getUChar("day", 0);
+    uint8_t  savedMon  = rainPrefs.getUChar("mon", 0);
+    uint16_t savedYr   = rainPrefs.getUShort("yr", 0);
+
+    if (savedYr == (uint16_t)y && savedMon == (uint8_t)m && savedDay == (uint8_t)d) {
+      // Masih pada hari yang sama: LANJUTKAN perhitungan dari akumulasi sebelum restart!
+      noInterrupts();
+      tipCount = savedTips;
+      interrupts();
+
+      lastObservedRainTips = savedTips;
+      rainLastRecordedTips = savedTips;
+
+      float curahFactor = currentThresholds.rainCalibPerTip > 0.0f ? currentThresholds.rainCalibPerTip : CURAH_PER_TIP;
+      Serial.printf("[NVS-HUJAN] Melanjutkan data curah hujan hari ini (%02d-%02d-%04d): %lu tip (%.2f mm)\n",
+                    d, m, y, (unsigned long)savedTips, (float)savedTips * curahFactor);
+    } else {
+      // Tanggal berbeda: Reset curah hujan hari baru ke 0.0 mm
+      noInterrupts();
+      tipCount = 0;
+      interrupts();
+
+      lastObservedRainTips = 0;
+      rainLastRecordedTips = 0;
+
+      rainPrefs.putUInt("tips", 0);
+      rainPrefs.putUChar("day", (uint8_t)d);
+      rainPrefs.putUChar("mon", (uint8_t)m);
+      rainPrefs.putUShort("yr", (uint16_t)y);
+
+      Serial.printf("[NVS-HUJAN] Hari/tanggal baru (%02d-%02d-%04d). Akumulasi curah hujan harian direset ke 0.0 mm.\n", d, m, y);
+    }
+    rainPrefs.end();
+    rainRestoredFromNVS = true;
+  }
+}
+
+// Fungsi pengecekan pergantian hari (00:00 WIB) untuk reset akumulasi curah hujan harian ke 0.0 mm
+void checkDailyRainReset() {
+  int currentDay = -1, currentMonth = -1, currentYear = 0, currentHour = -1, currentMinute = -1;
+  if (!getCurrentDateParts(currentDay, currentMonth, currentYear, currentHour, currentMinute)) {
     return;
+  }
+
+  // Jika belum dipulihkan dari NVS setelah boot, pulihkan sekarang saat tanggal telah valid
+  if (!rainRestoredFromNVS) {
+    checkAndRestoreDailyRain();
   }
 
   static int lastDayRecorded = -1;
@@ -1582,7 +1663,18 @@ void checkDailyRainReset() {
     interrupts();
 
     lastObservedRainTips = 0;
+    rainLastRecordedTips = 0;
     rainAlarmSoundedThisCycle = false;
+
+    // Simpan nilai 0 ke NVS untuk hari baru
+    Preferences rainPrefs;
+    if (rainPrefs.begin("ews_rain", false)) {
+      rainPrefs.putUInt("tips", 0);
+      rainPrefs.putUChar("day", (uint8_t)currentDay);
+      rainPrefs.putUChar("mon", (uint8_t)currentMonth);
+      rainPrefs.putUShort("yr", (uint16_t)currentYear);
+      rainPrefs.end();
+    }
 
     Serial.printf("[HUJAN] Pergantian hari terdeteksi (%02d:%02d WIB, Tanggal %02d). Akumulasi curah hujan harian otomatis direset ke 0.0 mm.\n",
                   currentHour, currentMinute, currentDay);
@@ -1916,6 +2008,27 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             serializeJson(ackDoc, ackStr);
             safeSendTXT(ackStr);
           }
+          else if (strcmp(cmd, "RESTART_DEVICE") == 0 || strcmp(cmd, "REBOOT") == 0 || strcmp(cmd, "RESTART") == 0) {
+            Serial.println("[KONTROL] Menerima instruksi RESTART dari Web! Menyimpan data dan memulai ulang ESP32...");
+
+            // Simpan data curah hujan harian ke EEPROM / NVS sebelum reboot
+            saveDailyRainToEEPROM();
+
+            DynamicJsonDocument ackDoc(256);
+            ackDoc["action"] = "publish";
+            ackDoc["topic"]  = TOPIC_STATUS;
+            JsonObject ackPayload = ackDoc.createNestedObject("payload");
+            ackPayload["event"]   = "RESTARTING";
+            ackPayload["status"]  = "OK";
+            ackPayload["ewsId"]   = ewsId;
+            ackPayload["message"] = "ESP32 sedang memulai ulang (reboot)...";
+            String ackStr;
+            serializeJson(ackDoc, ackStr);
+            safeSendTXT(ackStr);
+
+            delay(600);
+            ESP.restart();
+          }
         }
 
         // B. Perintah Direct Payload Relay ({"topic":..., "payload": 1/0})
@@ -1996,10 +2109,20 @@ void sensorTask(void *pvParameters) {
                     digitalRead(PIN_RAIN_DIGITAL) == HIGH ? "HIGH (Diam/Siaga)" : "LOW (Kontak)");
     }
 
-    // Deteksi penambahan curah hujan untuk pelacakan siklus hujan
+    // Deteksi penambahan curah hujan untuk pelacakan siklus hujan & penyimpanan berkala ke NVS
+    static unsigned long lastSavedTipCount = 0;
+    static unsigned long lastTipChangeTime = 0;
+
     if (currentRainTips > lastObservedRainTips) {
       lastObservedRainTips = currentRainTips;
       lastRainActivityTime = millis();
+      lastTipChangeTime = millis();
+    }
+
+    // Simpan ke EEPROM / NVS dengan jeda 5 detik setelah tip terakhir (menghemat write cycles flash)
+    if (rainRestoredFromNVS && (currentRainTips != lastSavedTipCount) && (millis() - lastTipChangeTime >= 5000)) {
+      lastSavedTipCount = currentRainTips;
+      saveDailyRainToEEPROM();
     }
 
     // Jika sudah 20 menit tidak ada penambahan tip hujan, reset siklus hujan (hujan reda/selesai)
@@ -3860,6 +3983,12 @@ void setupWebServer() {
     localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Access Point WiFiManager diaktifkan! Hubungkan ke WiFi EWS-Config-" + ewsId + "\"}");
     delay(500);
     triggerWiFiManagerPortal = true;
+  });
+  localServer.on("/api/restart", HTTP_POST, []() {
+    saveDailyRainToEEPROM();
+    localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Perangkat ESP32 sedang memulai ulang...\"}");
+    delay(600);
+    ESP.restart();
   });
 
   localServer.begin();

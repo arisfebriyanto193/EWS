@@ -22,6 +22,7 @@ import {
   Volume2,
   VolumeX,
   Wifi,
+  RotateCcw,
 } from 'lucide-react';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
@@ -172,6 +173,25 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         stroboActive: ews.status === 'bahaya' || ews.status === 'siaga',
       });
     }, 4000);
+  };
+
+  const [isRestarting, setIsRestarting] = useState(false);
+
+  const handleRestartEsp = async () => {
+    const confirmRestart = window.confirm(
+      `Apakah Anda yakin ingin me-restart mikrokontroler ESP32 (${ews.name} [${ews.id}])?\n\nSistem akan menyimpan data curah hujan harian ke EEPROM dan memulai ulang perangkat secara otomatis.`
+    );
+    if (!confirmRestart) return;
+
+    setIsRestarting(true);
+    try {
+      await api.controlEws(ews.id, { command: 'RESTART_DEVICE' });
+      alert(`Instruksi restart telah dikirim ke ${ews.id}. Perangkat ESP32 sedang melakukan reboot.`);
+    } catch (err: any) {
+      alert(`Gagal mengirim instruksi restart: ${err.message || 'Terjadi kesalahan'}`);
+    } finally {
+      setTimeout(() => setIsRestarting(false), 5000);
+    }
   };
 
   // Status badges & styling
@@ -403,6 +423,17 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                     <span>Reset Alarm</span>
                   </button>
                 )}
+
+                {/* Tombol Restart ESP32 */}
+                <button
+                  onClick={handleRestartEsp}
+                  disabled={isRestarting}
+                  className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                  title="Mulai ulang (reboot) ESP32 dari jarak jauh"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 text-red-600 dark:text-red-400 ${isRestarting ? 'animate-spin' : ''}`} />
+                  <span>{isRestarting ? 'Merestart...' : 'Restart ESP32'}</span>
+                </button>
               </>
             )}
           </div>

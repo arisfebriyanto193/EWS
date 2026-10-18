@@ -97,7 +97,7 @@ export const api = {
     }
   },
 
-  async controlEws(id: string, payload: { command: string; type?: string; siren?: boolean; strobo?: boolean; mute?: boolean }): Promise<void> {
+  async controlEws(id: string, payload: { command: string; type?: string; siren?: boolean; strobo?: boolean; mute?: boolean; [key: string]: any }): Promise<void> {
     const res = await fetch(`${API_BASE}/ews/${id}/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
