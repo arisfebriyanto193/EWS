@@ -483,18 +483,18 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200">
-                  ⚠️ STATUS SIAGA - LAMPU STROBO AKTIF (SIRINE OFF)
+                  ⚠️ STATUS SIAGA - RELAY LAPANGAN MATI (OFF)
                 </h4>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-white font-mono font-bold uppercase">
-                  WARNING
+                  RELAY OFF
                 </span>
               </div>
               <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mt-1">
                 <strong>Penyebab Pemicu:</strong>{' '}
-                {ews.alarmReason || ews.sensorData?.alarmReason || 'Kemiringan Tanah / Curah Hujan / Kelembapan Melebihi Ambang Siaga'}
+                {ews.alarmReason || ews.sensorData?.alarmReason || 'Kemiringan Tanah / Curah Hujan / Kelembapan Melebihi Ambang Siaga [Relay OFF]'}
               </p>
               <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-                Telah terjadi anomali awal pada lereng. Lampu strobo menyala sebagai peringatan visual, sirine tetap dimatikan.
+                Telah terjadi anomali awal pada lereng. Relay di lapangan tetap <strong>MATI (OFF)</strong>, sirine &amp; strobo tidak menyala. Peringatan dini difokuskan pada Web Dashboard &amp; Notifikasi Telegram.
               </p>
             </div>
           </div>

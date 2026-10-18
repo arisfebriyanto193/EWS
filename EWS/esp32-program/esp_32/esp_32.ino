@@ -1316,9 +1316,10 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
               setRelaySirine(true);
               setRelayStrobo(true);
             } else {
+              // Status "siaga" atau lainnya: Relay Lapangan TIDAK DINYALAKAN (OFF)
               alarmCycleState = ALARM_STATE_IDLE;
               setRelaySirine(false);
-              setRelayStrobo(true);
+              setRelayStrobo(false);
             }
           }
           else if (strcmp(cmd, "RESET_ALARM") == 0) {
@@ -1780,16 +1781,12 @@ void sensorTask(void *pvParameters) {
       }
     } else if (st == "siaga") {
       alarmCycleState = ALARM_STATE_IDLE;
+      // Permintaan Pengguna: Kalau siaga tidak usah nyalakan relay (Relay Sirine & Strobo GPIO 46 WAJIB MATI/OFF)
       if (sirenActive) setRelaySirine(false);
-      // Jika siaga karena hujan biasa, matikan strobo agar relay tunggal GPIO 46 tidak memicu sirine
-      if (isOnlyRainDanger || rain >= thresh.rainWarning) {
-        if (stroboActive) setRelayStrobo(false);
-      } else {
-        if (!stroboActive) setRelayStrobo(true);
-      }
+      if (stroboActive) setRelayStrobo(false);
       if (currentStatus != "siaga") {
         logEventToSD("SIAGA", reason.c_str(), pitch, roll, rain, soil, batt);
-        Serial.printf("⚠️ [ALARM SIAGA] Penyebab: %s\n", reason.c_str());
+        Serial.printf("⚠️ [ALARM SIAGA] %s -> Relay Lapangan MATI (Hanya Peringatan Web & Telegram)\n", reason.c_str());
       }
     } else if (st == "baterai_lemah") {
       alarmCycleState = ALARM_STATE_IDLE;

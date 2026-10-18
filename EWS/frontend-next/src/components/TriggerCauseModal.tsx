@@ -228,7 +228,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </span>
               ) : status === 'siaga' ? (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
-                  Relay Strobo: AKTIF (ON) | Sirine: MATI
+                  Relay Lapangan: MATI (OFF) - Peringatan Dini Saja
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">

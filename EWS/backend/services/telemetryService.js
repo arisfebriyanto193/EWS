@@ -108,9 +108,9 @@ class TelemetryService {
     ) {
       newStatus = 'siaga';
       sirenActive = false;
-      stroboActive = true;
+      stroboActive = false;
       alarmTriggered = true;
-      triggerCause = sensorData.alarmReason || 'Kemiringan / Curah Hujan / Kelembapan Melebihi Batas Siaga';
+      triggerCause = sensorData.alarmReason || 'Kemiringan / Curah Hujan / Kelembapan Melebihi Batas Siaga [Relay Lapangan OFF]';
       triggerValue = `Pitch: ${data.pitchAngle}°, Hujan: ${data.rainfallRate}mm/h, Kelembapan: ${data.soilMoisture}%`;
     } else if (data.batteryVoltage <= 0.5) {
       // Sensor arus/tegangan INA atau pembagi resistor tidak terbaca / 0V: BUKAN tanda bahaya bencana!
@@ -138,8 +138,9 @@ class TelemetryService {
         stroboActive = true;
         alarmTriggered = true;
       } else if (newStatus === 'siaga') {
+        // Status siaga: Relay Lapangan dipastikan MATI (OFF), hanya peringatan web & telegram
         sirenActive = false;
-        stroboActive = true;
+        stroboActive = false;
         alarmTriggered = true;
       } else {
         // 'aman' atau 'baterai_lemah': sirine dan strobo dipastikan MATI
@@ -438,8 +439,8 @@ class TelemetryService {
           } else if (pitch >= tiltWarning || roll >= tiltWarning || rain >= rainWarning || soilM >= soilMoistureWarning) {
             newStatus = 'siaga';
             sirenActive = false;
-            stroboActive = true;
-            triggerCause = currentNode.alarm_reason || `Pemicu ${sensorKey} (${numVal}) melebihi ambang batas SIAGA`;
+            stroboActive = false;
+            triggerCause = currentNode.alarm_reason || `Pemicu ${sensorKey} (${numVal}) melebihi ambang batas SIAGA [Relay Lapangan OFF]`;
           } else if (batt <= 0.5) {
             // Sensor arus/tegangan INA tidak terbaca / 0V: BUKAN bahaya bencana, relay wajib OFF
             newStatus = 'baterai_lemah';

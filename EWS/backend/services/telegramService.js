@@ -194,13 +194,19 @@ Koneksi Bot Telegram <b>BERHASIL TERHUBUNG</b>. Notifikasi darurat bencana, peri
 
     const isBahaya = alarmType === 'bahaya';
     const icon = isBahaya ? '🚨🚨 [STATUS: BAHAYA LONGSOR]' : '⚠️⚠️ [STATUS: SIAGA 1 WASPADA]';
-    const sirenNote = isBahaya ? '🔊 SIRINE LOKAL 110dB & STROBO MERAH DIAKTIFKAN!' : '💡 STROBO KUNING AKTIF (SIRINE OFF)';
+    const sirenNote = isBahaya
+      ? '🔊 SIRINE LOKAL 110dB & STROBO AKTIF (RELAY ON) Sesuai Siklus'
+      : '🛡️ RELAY LAPANGAN MATI (OFF) - Sirine & Strobo Tidak Dinyalakan';
 
     const timeStr = new Date().toLocaleString('id-ID', {
       timeZone: 'Asia/Jakarta',
       dateStyle: 'full',
       timeStyle: 'medium',
     });
+
+    const recommendations = isBahaya
+      ? `1. Segera evakuasi warga pada radius rawan lereng.\n2. Tim Reaksi Cepat (TRC) BPBD menuju titik lokasi.\n3. Pantau terus grafik telemetri melalui Dashboard Pusat.`
+      : `1. Waspadai anomali pergerakan lereng / curah hujan yang meningkat.\n2. Tim operator pantau terus telemetri via Dashboard EWS.\n3. Relay sirine lapangan dipastikan MATI (OFF) agar tidak memicu kepanikan warga.`;
 
     const htmlMessage = `
 ${icon}
@@ -219,9 +225,7 @@ ${icon}
 ${sirenNote}
 
 🚨 <b>Tindakan Yang Direkomendasikan:</b>
-1. Segera evakuasi warga pada radius rawan lereng.
-2. Tim Reaksi Cepat (TRC) BPBD menuju titik lokasi.
-3. Pantau terus grafik telemetri melalui Dashboard Pusat.
+${recommendations}
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <i>Pesan otomatis dikirim oleh Gateway IoT EWS BPBD</i>
 `.trim();
