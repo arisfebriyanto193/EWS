@@ -1226,30 +1226,44 @@ void initMicroSD() {
 }
 
 void initSPIFFS() {
-  if (SPIFFS.begin(true)) {
-    spiffsAvailable = true;
-    spiffsTotalBytes = SPIFFS.totalBytes();
-    spiffsUsedBytes  = SPIFFS.usedBytes();
-    if (!SPIFFS.exists("/ews_log.csv")) {
-      File f = SPIFFS.open("/ews_log.csv", FILE_WRITE);
-      if (f) {
-        f.println("Waktu,Status,Penyebab,Pitch,Roll,Hujan_mm,Tanah_Persen,Aki_V,Sirine,Strobo");
-        f.close();
-      }
+  Serial.println("[SPIFFS] Menghubungkan partisi flash internal...");
+  // Coba mount tanpa format terlebih dahulu
+  if (!SPIFFS.begin(false)) {
+    Serial.println("[SPIFFS] Partisi flash internal belum terformat (Board ESP32 Baru).");
+    Serial.println("[SPIFFS] Memulai pemformatan otomatis partisi flash 6MB...");
+    Serial.println("         (Proses format ini HANYA terjadi 1x seumur hidup board, butuh waktu ~1-2 menit, mohon tunggu)...");
+    if (!SPIFFS.format()) {
+      Serial.println("[SPIFFS] Format gagal! Pastikan Partition Scheme 'Custom' dan Flash Size sesuai kapasitas chip.");
+      spiffsAvailable = false;
+      return;
     }
-    if (!SPIFFS.exists("/ews_telemetry.csv")) {
-      File f = SPIFFS.open("/ews_telemetry.csv", FILE_WRITE);
-      if (f) {
-        f.println("Waktu,Device_ID,Status,Pitch,Roll,Hujan_Rate_mm_h,Hujan_Kumulatif_mm,Tips_Hujan,Tanah_Persen,Tanah_ADC,Getaran_g,Getaran_Pulsa,Aki_Volt,Aki_mA,Solar_mA,Sirine,Strobo,Penyebab");
-        f.close();
-      }
+    Serial.println("[SPIFFS] Pemformatan flash internal berhasil! Membuka sistem file...");
+    if (!SPIFFS.begin(false)) {
+      Serial.println("[SPIFFS] Gagal me-mount SPIFFS setelah diformat!");
+      spiffsAvailable = false;
+      return;
     }
-    Serial.printf("[SPIFFS] Flash Internal Aktif: Total %llu KB, Terpakai %llu KB\n",
-                  spiffsTotalBytes / 1024, spiffsUsedBytes / 1024);
-  } else {
-    spiffsAvailable = false;
-    Serial.println("[SPIFFS] Gagal menginisialisasi partisi flash internal SPIFFS!");
   }
+
+  spiffsAvailable = true;
+  spiffsTotalBytes = SPIFFS.totalBytes();
+  spiffsUsedBytes  = SPIFFS.usedBytes();
+  if (!SPIFFS.exists("/ews_log.csv")) {
+    File f = SPIFFS.open("/ews_log.csv", FILE_WRITE);
+    if (f) {
+      f.println("Waktu,Status,Penyebab,Pitch,Roll,Hujan_mm,Tanah_Persen,Aki_V,Sirine,Strobo");
+      f.close();
+    }
+  }
+  if (!SPIFFS.exists("/ews_telemetry.csv")) {
+    File f = SPIFFS.open("/ews_telemetry.csv", FILE_WRITE);
+    if (f) {
+      f.println("Waktu,Device_ID,Status,Pitch,Roll,Hujan_Rate_mm_h,Hujan_Kumulatif_mm,Tips_Hujan,Tanah_Persen,Tanah_ADC,Getaran_g,Getaran_Pulsa,Aki_Volt,Aki_mA,Solar_mA,Sirine,Strobo,Penyebab");
+      f.close();
+    }
+  }
+  Serial.printf("[SPIFFS] Flash Internal Aktif: Total %llu KB, Terpakai %llu KB\n",
+                spiffsTotalBytes / 1024, spiffsUsedBytes / 1024);
 }
 
 // Pencatatan kejadian abnormalitas lokal (Hybrid: MicroSD jika ada, fallback Flash Internal SPIFFS)
