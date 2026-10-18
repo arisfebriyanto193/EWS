@@ -76,8 +76,8 @@ class TelemetryService {
     let sirenActive = false;
     let stroboActive = false;
     let alarmTriggered = false;
-    let triggerCause = '';
-    let triggerValue = '';
+    let triggerCause = sensorData.alarmReason || 'Semua parameter sensor dalam batas aman';
+    let triggerValue = 'Normal';
 
     const absPitch = Math.abs(data.pitchAngle);
     const absRoll = Math.abs(data.rollAngle);
@@ -92,7 +92,7 @@ class TelemetryService {
       sirenActive = true;
       stroboActive = true;
       alarmTriggered = true;
-      triggerCause = 'Kemiringan Tanah Ekstrem / Curah Hujan Bahaya / Getaran Gempa';
+      triggerCause = sensorData.alarmReason || 'Kemiringan Tanah Ekstrem / Curah Hujan Bahaya / Getaran Gempa';
       triggerValue = `Pitch: ${data.pitchAngle}°, Roll: ${data.rollAngle}°, Hujan: ${data.rainfallRate}mm/h, Getaran: ${data.vibrationLevel}g`;
     } else if (
       absPitch >= thresholds.tiltWarning ||
@@ -104,13 +104,46 @@ class TelemetryService {
       sirenActive = false;
       stroboActive = true;
       alarmTriggered = true;
-      triggerCause = 'Kemiringan / Curah Hujan / Kelembapan Melebihi Batas Siaga';
+      triggerCause = sensorData.alarmReason || 'Kemiringan / Curah Hujan / Kelembapan Melebihi Batas Siaga';
       triggerValue = `Pitch: ${data.pitchAngle}°, Hujan: ${data.rainfallRate}mm/h, Kelembapan: ${data.soilMoisture}%`;
+    } else if (sensorData.inaAvailable === false || data.batteryVoltage <= 0.5) {
+      // Sensor arus/tegangan INA tidak terbaca atau 0V: BUKAN tanda bahaya bencana!
+      // Relay sirine & strobo WAJIB OFF, hanya warning visual di web dashboard!
+      newStatus = 'baterai_lemah';
+      sirenActive = false;
+      stroboActive = false;
+      alarmTriggered = false;
+      triggerCause = sensorData.alarmReason || 'Sensor Arus/Tegangan INA Tidak Terdeteksi (0.00V) [Warning Web Saja, Relay OFF]';
+      triggerValue = `${data.batteryVoltage} V`;
     } else if (data.batteryVoltage < thresholds.batteryLowVoltage) {
       newStatus = 'baterai_lemah';
-      alarmTriggered = true;
-      triggerCause = 'Tegangan Baterai VRLA Dibawah Batas Aman';
+      sirenActive = false;
+      stroboActive = false;
+      alarmTriggered = false; // BUKAN alarm bencana alam, relay tetap OFF
+      triggerCause = sensorData.alarmReason || `Tegangan Baterai Lemah (${data.batteryVoltage}V < ${thresholds.batteryLowVoltage}V) [Warning Web Saja, Relay OFF]`;
       triggerValue = `${data.batteryVoltage} V`;
+    }
+
+    // Jika ESP32 telah menyertakan status dan alasan spesifik dari firmware
+    if (sensorData.status && ['aman', 'siaga', 'bahaya', 'baterai_lemah'].includes(sensorData.status)) {
+      newStatus = sensorData.status;
+      if (newStatus === 'bahaya') {
+        sirenActive = true;
+        stroboActive = true;
+        alarmTriggered = true;
+      } else if (newStatus === 'siaga') {
+        sirenActive = false;
+        stroboActive = true;
+        alarmTriggered = true;
+      } else {
+        // 'aman' atau 'baterai_lemah': sirine dan strobo dipastikan MATI
+        sirenActive = false;
+        stroboActive = false;
+        alarmTriggered = false;
+      }
+      if (sensorData.alarmReason) {
+        triggerCause = sensorData.alarmReason;
+      }
     }
 
     // 1. Simpan Log Sensor ke ews_sensor_logs
@@ -227,6 +260,39 @@ class TelemetryService {
               console.error('Error fetching telegram config for alarm:', teleErr.message);
             }
           }
+        } else if (newStatus === 'baterai_lemah') {
+          // Dispatch notifikasi pemeliharaan baterai/INA ke Telegram (jika diaktifkan) maksimal 1x per 30 menit
+          try {
+            const [recentBattAlert] = await pool.query(
+              `SELECT id FROM alarm_logs 
+               WHERE ews_id = ? AND alarm_type = 'baterai_lemah' AND created_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+               LIMIT 1`,
+              [ewsId]
+            );
+
+            if (recentBattAlert.length === 0) {
+              const alarmId = `BAT-${Date.now().toString().slice(-6)}`;
+              await pool.query(
+                `INSERT INTO alarm_logs (
+                  id, ews_id, alarm_type, trigger_cause, trigger_value, duration_minutes, acknowledged
+                ) VALUES (?, ?, 'baterai_lemah', ?, ?, 0, 0)`,
+                [alarmId, ewsId, triggerCause, triggerValue]
+              );
+
+              const [teleRows] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [ewsId]);
+              if (teleRows.length > 0 && teleRows[0].enabled) {
+                TelegramService.sendAlarmAlert(
+                  teleRows[0],
+                  currentNode || { id: ewsId, name: ewsId },
+                  'baterai_lemah',
+                  triggerCause,
+                  triggerValue
+                ).catch((err) => console.error('Telegram battery alert dispatch error:', err.message));
+              }
+            }
+          } catch (teleErr) {
+            console.error('Error dispatching telegram battery alert:', teleErr.message);
+          }
         }
 
         // 4. Deteksi Pemulihan (Recovery) jika node sebelumnya berstatus OFFLINE
@@ -257,7 +323,12 @@ class TelemetryService {
       status: newStatus,
       sirenActive,
       stroboActive,
-      sensorData: data,
+      alarmReason: triggerCause,
+      sensorData: {
+        ...data,
+        alarmReason: triggerCause,
+        inaAvailable: sensorData.inaAvailable !== undefined ? Boolean(sensorData.inaAvailable) : (data.batteryVoltage > 0.5),
+      },
       timestamp: new Date().toISOString(),
     };
   }
@@ -357,11 +428,26 @@ class TelemetryService {
             newStatus = 'siaga';
             sirenActive = false;
             stroboActive = true;
+          } else if (batt <= 0.5) {
+            // Sensor arus/tegangan INA tidak terbaca / 0V: BUKAN bahaya bencana, relay wajib OFF
+            newStatus = 'baterai_lemah';
+            sirenActive = false;
+            stroboActive = false;
           } else if (batt < batteryLow) {
             newStatus = 'baterai_lemah';
+            sirenActive = false;
+            stroboActive = false;
+          } else {
+            newStatus = 'aman';
+            sirenActive = false;
+            stroboActive = false;
           }
 
-          if (newStatus !== currentNode.status || sirenActive !== Boolean(currentNode.siren_active)) {
+          if (
+            newStatus !== currentNode.status ||
+            sirenActive !== Boolean(currentNode.siren_active) ||
+            stroboActive !== Boolean(currentNode.strobo_active)
+          ) {
             await pool.query(
               `UPDATE ews_nodes SET status = ?, siren_active = ?, strobo_active = ? WHERE id = ?`,
               [newStatus, sirenActive ? 1 : 0, stroboActive ? 1 : 0, ewsId]

@@ -88,6 +88,8 @@ export interface EWSSensorData {
   microSdStorageTotalMb: number;
   firmwareVersion: string;
   uptimeHours: number;
+  alarmReason?: string;
+  inaAvailable?: boolean;
   lastSeenAt?: string | null;
   lastUpdated: string;
 }
@@ -101,6 +103,7 @@ export interface EWSNode {
     lng: number;
   };
   status: EWSStatus;
+  alarmReason?: string;
   sirenActive: boolean;
   stroboActive: boolean;
   muted: boolean;

@@ -152,10 +152,49 @@ Koneksi Bot Telegram <b>BERHASIL TERHUBUNG</b>. Notifikasi darurat bencana, peri
     if (alarmType === 'offline') {
       return await this.sendOfflineAlert(telegramConfig, ewsNode, cause);
     }
+    if (alarmType === 'baterai_lemah') {
+      if (!telegramConfig.notify_baterai_lemah && !telegramConfig.notifyBateraiLemah) {
+        return;
+      }
+      const timeStr = new Date().toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        dateStyle: 'full',
+        timeStyle: 'medium',
+      });
+      const htmlMessage = `
+⚠️🔋 <b>[PERINGATAN PEMELIHARAAN: DAYA / SENSOR ARUS INA]</b> ⚠️🔋
+━━━━━━━━━━━━━━━━━━━━━━━━
+<b>STATUS CATU DAYA BATERAI & SENSOR INA</b>
+━━━━━━━━━━━━━━━━━━━━━━━━
+📍 <b>Stasiun:</b> ${ewsNode.name || ewsNode.id}
+📌 <b>Wilayah:</b> ${ewsNode.location || '-'}
+⏱ <b>Waktu Deteksi:</b> ${timeStr} WIB
+
+⚠️ <b>Pemicu Peringatan:</b>
+<b>${cause}</b>
+📈 <b>Tegangan Terbaca:</b> ${value}
+
+📢 <b>Status Relay Lapangan:</b>
+💡 <b>RELAY SIRINE & STROBO MATI (OFF)</b>
+<i>Kondisi ini merupakan indikator pemeliharaan teknis perangkat, BUKAN tanda bahaya bencana longsor. Sirine di lapangan tidak dibunyikan.</i>
+
+🛠 <b>Rekomendasi Tindakan:</b>
+1. Periksa koneksi kabel modul INA219/INA226 pada bus I2C ESP32.
+2. Periksa output solar charge controller dan tegangan aki 12V.
+━━━━━━━━━━━━━━━━━━━━━━━━
+<i>Pesan otomatis dikirim oleh Gateway IoT EWS BPBD</i>
+`.trim();
+
+      return await this.sendMessage(
+        telegramConfig.bot_token || telegramConfig.botToken,
+        telegramConfig.chat_id || telegramConfig.chatId,
+        htmlMessage
+      );
+    }
 
     const isBahaya = alarmType === 'bahaya';
     const icon = isBahaya ? '🚨🚨 [STATUS: BAHAYA LONGSOR]' : '⚠️⚠️ [STATUS: SIAGA 1 WASPADA]';
-    const sirenNote = isBahaya ? '🔊 SIRINE LOKAL 110dB & STROBO MERAH DIAKTIFKAN!' : '💡 STROBO KUNING AKTIF';
+    const sirenNote = isBahaya ? '🔊 SIRINE LOKAL 110dB & STROBO MERAH DIAKTIFKAN!' : '💡 STROBO KUNING AKTIF (SIRINE OFF)';
 
     const timeStr = new Date().toLocaleString('id-ID', {
       timeZone: 'Asia/Jakarta',

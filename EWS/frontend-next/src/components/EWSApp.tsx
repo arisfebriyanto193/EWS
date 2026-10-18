@@ -146,14 +146,17 @@ export default function App() {
       setEwsNodes((prev) =>
         prev.map((e) => {
           if (e.id === payload.ewsId) {
+            const incomingReason = payload.alarmReason || payload.sensorData?.alarmReason || e.alarmReason;
             return {
               ...e,
               status: payload.status && payload.status !== 'offline' ? payload.status : (e.status === 'offline' ? 'aman' : e.status),
+              alarmReason: incomingReason,
               sirenActive: payload.sirenActive !== undefined ? payload.sirenActive : e.sirenActive,
               stroboActive: payload.stroboActive !== undefined ? payload.stroboActive : e.stroboActive,
               sensorData: {
                 ...e.sensorData,
                 ...(payload.sensorData || {}),
+                alarmReason: incomingReason,
                 gsmStatus: 'online',
                 lastUpdated: 'Live via WS (Baru saja)',
               },

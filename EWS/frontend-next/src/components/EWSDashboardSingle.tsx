@@ -25,6 +25,7 @@ import {
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { ThresholdConfigModal } from './ThresholdConfigModal';
+import { TriggerCauseModal } from './TriggerCauseModal';
 import { wsClient } from '../services/websocket';
 
 interface TelemetryPoint {
@@ -52,6 +53,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [isTelkomselModalOpen, setIsTelkomselModalOpen] = useState(false);
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
+  const [isTriggerCauseModalOpen, setIsTriggerCauseModalOpen] = useState(false);
   const [historyRange, setHistoryRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [activeChartMetric, setActiveChartMetric] = useState<'tilt' | 'rain' | 'moisture' | 'power'>('tilt');
   const [isSirenTesting, setIsSirenTesting] = useState(false);
@@ -351,21 +353,39 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
 
                 <button
                   onClick={handleToggleMute}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                     ews.muted
                       ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-300 dark:border-red-800'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
-                  title="Mute sirine sementara"
+                  title={ews.muted ? 'Buka suara sirine' : 'Senyapkan sirine'}
                 >
                   {ews.muted ? <VolumeX className="w-3.5 h-3.5 text-red-600 dark:text-red-400" /> : <Volume2 className="w-3.5 h-3.5" />}
-                  <span>{ews.muted ? 'Sirine Dimute' : 'Mute Buzzer'}</span>
+                  <span>{ews.muted ? 'Sirine Disenyapkan' : 'Senyapkan Sirine'}</span>
+                </button>
+
+                {/* Tombol Sensor Pemicu (di samping tombol Senyapkan) */}
+                <button
+                  onClick={() => setIsTriggerCauseModalOpen(true)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+                    ews.status === 'bahaya'
+                      ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse'
+                      : ews.status === 'siaga'
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400'
+                      : ews.status === 'baterai_lemah'
+                      ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-400'
+                      : 'bg-purple-50 dark:bg-[#1e1933] hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                  }`}
+                  title="Lihat rincian sensor yang memicu kondisi ini & nilai ambang batas"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Sensor Pemicu</span>
                 </button>
 
                 {ews.status !== 'aman' && (
                   <button
                     onClick={() => onResetAlarm(ews.id)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Reset Alarm</span>
@@ -415,6 +435,115 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               Tidak ada data telemetri yang masuk dalam 25 detik terakhir. Menampilkan data cache terakhir ({ews.sensorData.lastUpdated}). Status akan otomatis online kembali saat ESP32 mengirim data.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Bahaya Imminent Alert Banner with Cause */}
+      {ews.status === 'bahaya' && (
+        <div className="bg-red-50 dark:bg-red-950/80 border border-red-300 dark:border-red-800 rounded-xl p-4 flex items-start justify-between gap-3.5 text-red-900 dark:text-red-200 shadow-xs animate-pulse">
+          <div className="flex items-start gap-3.5 flex-1">
+            <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/80 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0 mt-0.5">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-bold text-red-800 dark:text-red-200">
+                  🚨 BAHAYA ANOMALI EKSTREM - SIRINE & STROBO AKTIF!
+                </h4>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-red-600 text-white font-mono font-bold uppercase">
+                  EMERGENCY ALARM
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-red-700 dark:text-red-300 mt-1">
+                <strong>Penyebab Pemicu:</strong>{' '}
+                {ews.alarmReason || ews.sensorData?.alarmReason || 'Kemiringan Tanah Ekstrem / Curah Hujan Bahaya / Getaran Gempa'}
+              </p>
+              <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5">
+                Sirine lapangan dan lampu strobo diaktifkan sesuai siklus timer otomatis ({ews.thresholds.alarmDuration ?? 60}s aktif, {ews.thresholds.alarmPause ?? 30}s jeda).
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsTriggerCauseModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer shadow-xs"
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Sensor Pemicu</span>
+          </button>
+        </div>
+      )}
+
+      {/* Siaga Alert Banner with Cause */}
+      {ews.status === 'siaga' && (
+        <div className="bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 rounded-xl p-4 flex items-start justify-between gap-3.5 text-amber-900 dark:text-amber-200 shadow-xs">
+          <div className="flex items-start gap-3.5 flex-1">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/80 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200">
+                  ⚠️ STATUS SIAGA - LAMPU STROBO AKTIF (SIRINE OFF)
+                </h4>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-white font-mono font-bold uppercase">
+                  WARNING
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mt-1">
+                <strong>Penyebab Pemicu:</strong>{' '}
+                {ews.alarmReason || ews.sensorData?.alarmReason || 'Kemiringan Tanah / Curah Hujan / Kelembapan Melebihi Ambang Siaga'}
+              </p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                Telah terjadi anomali awal pada lereng. Lampu strobo menyala sebagai peringatan visual, sirine tetap dimatikan.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsTriggerCauseModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer shadow-xs"
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Sensor Pemicu</span>
+          </button>
+        </div>
+      )}
+
+      {/* Baterai Lemah / INA Disconnected Banner (HANYA WARNING WEB - RELAY OFF) */}
+      {ews.status === 'baterai_lemah' && (
+        <div className="bg-orange-50 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800/80 rounded-xl p-4 flex items-start justify-between gap-3.5 text-orange-900 dark:text-orange-200 shadow-xs">
+          <div className="flex items-start gap-3.5 flex-1">
+            <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/60 flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0 mt-0.5">
+              <Battery className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-bold text-orange-800 dark:text-orange-200">
+                  ℹ️ PERINGATAN DAYA / SENSOR ARUS INA (HANYA NOTIFIKASI WEB)
+                </h4>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-orange-600 text-white font-mono font-bold uppercase">
+                  RELAY DIJAMIN MATI (OFF)
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-orange-800 dark:text-orange-300 mt-1">
+                <strong>Keterangan:</strong>{' '}
+                {ews.alarmReason ||
+                  ews.sensorData?.alarmReason ||
+                  (ews.sensorData.batteryVoltage <= 0.5
+                    ? 'Sensor Arus/Tegangan INA Tidak Terdeteksi (0.00V) [Bukan Tanda Bahaya, Relay OFF]'
+                    : `Tegangan Baterai Lemah (${ews.sensorData.batteryVoltage}V < ${ews.thresholds.batteryLowVoltage}V) [Warning Web Saja, Relay OFF]`)}
+              </p>
+              <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-0.5">
+                Kondisi ini merupakan indikator pemeliharaan perangkat, <strong>bukan tanda bahaya bencana</strong>. Relay sirine dan strobo di lapangan tetap dinonaktifkan (OFF) agar aki terlindungi dan tidak membunyikan alarm palsu.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsTriggerCauseModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer shadow-xs"
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Sensor Pemicu</span>
+          </button>
         </div>
       )}
 
@@ -958,6 +1087,16 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         isOpen={isThresholdModalOpen}
         onClose={() => setIsThresholdModalOpen(false)}
         onSave={(newThresh) => onUpdateEws({ ...ews, thresholds: newThresh })}
+      />
+
+      {/* Sensor Trigger Cause Detail Modal */}
+      <TriggerCauseModal
+        ews={ews}
+        isOpen={isTriggerCauseModalOpen}
+        onClose={() => setIsTriggerCauseModalOpen(false)}
+        onToggleMute={handleToggleMute}
+        onResetAlarm={onResetAlarm}
+        onOpenThresholdConfig={() => setIsThresholdModalOpen(true)}
       />
     </div>
   );
