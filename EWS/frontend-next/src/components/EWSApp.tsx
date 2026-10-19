@@ -35,6 +35,7 @@ import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { AddEWSModal } from './AddEWSModal';
 import { PestTrapDashboard } from './PestTrapDashboard';
 import { Volume2, VolumeX, ShieldAlert } from 'lucide-react';
+import { formatWIB } from '../utils/date';
 
 export default function App() {
   // Authentication: starts at null so login page is displayed before dashboard
@@ -568,7 +569,7 @@ export default function App() {
             id: `ALM-${Date.now().toString().slice(-4)}`,
             ewsId: e.id,
             ewsName: e.name,
-            timestamp: new Date().toLocaleString('id-ID') + ' WIB',
+            timestamp: formatWIB(new Date(), true),
             type: 'bahaya',
             triggerCause: 'Kemiringan Tanah Ekstrem (Inclinometer) & Getaran ADXL345',
             triggerValue: `Pitch: 3.42° (Ambang: ${e.thresholds.tiltDanger}°) | Getaran: 0.38g`,
@@ -598,7 +599,7 @@ export default function App() {
             id: `ALM-${Date.now().toString().slice(-4)}`,
             ewsId: e.id,
             ewsName: e.name,
-            timestamp: new Date().toLocaleString('id-ID') + ' WIB',
+            timestamp: formatWIB(new Date(), true),
             type: 'siaga',
             triggerCause: 'Curah Hujan Tinggi & Pergeseran Sudut Awal',
             triggerValue: `Hujan: 32.4 mm/jam | Pitch: 1.65°`,
@@ -685,7 +686,7 @@ export default function App() {
                 acknowledged: true,
                 acknowledgedBy: author,
                 acknowledgeNote: note,
-                acknowledgedAt: new Date().toLocaleString('id-ID') + ' WIB',
+                acknowledgedAt: formatWIB(new Date(), true),
               };
             }
             return log;

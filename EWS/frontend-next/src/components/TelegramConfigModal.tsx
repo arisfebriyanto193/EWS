@@ -14,6 +14,7 @@ import {
   Shield,
   X,
 } from 'lucide-react';
+import { formatWIB } from '../utils/date';
 
 interface TelegramConfigModalProps {
   ews: EWSNode;
@@ -78,7 +79,7 @@ export const TelegramConfigModal: React.FC<TelegramConfigModalProps> = ({
         message: res.message || `Berhasil terkirim ke Telegram! Periksa obrolan bot Anda.`,
       });
 
-      const updatedTime = res.lastTestTime || new Date().toLocaleTimeString('id-ID');
+      const updatedTime = res.lastTestTime || formatWIB(new Date(), true);
       setConfig((prev) => ({
         ...prev,
         lastTestStatus: 'success',

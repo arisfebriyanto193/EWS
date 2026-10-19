@@ -1,11 +1,14 @@
 const db = require('../database/db');
 const TelegramService = require('./telegramService');
+const { get5MinuteSlot, formatWib } = require('../utils/dateUtils');
 
 /**
  * Service untuk memproses telemetri sensor, pengecekan threshold,
  * pencatatan ke database, dan pemicuan alarm otomatis.
  */
 class TelemetryService {
+  // Cache slot 5-menit terakhir yang sudah dicatat ke database per ewsId
+  static lastRecordedSlot = new Map();
   /**
    * Proses data sensor EWS dari ESP32
    */
@@ -236,36 +239,61 @@ class TelemetryService {
       }
     }
 
-    // 1. Simpan Log Sensor ke ews_sensor_logs
+    // 1. Simpan Log Sensor ke ews_sensor_logs (HANYA 5 MENIT SEKALI: misal 01.00, 01.05, 01.10, dst)
     if (isDbConnected && pool) {
       try {
-        await pool.query(
-          `INSERT INTO ews_sensor_logs (
-            ews_id, pitch_angle, roll_angle, soil_moisture, soil_temperature,
-            rainfall_rate, rainfall_cumulative, vibration_level, battery_voltage,
-            battery_current, solar_current, gsm_signal_dbm, gsm_status,
-            microsd_used_mb, microsd_total_mb, firmware_version, uptime_hours
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            ewsId,
-            data.pitchAngle,
-            data.rollAngle,
-            data.soilMoisture,
-            data.soilTemperature,
-            data.rainfallRate,
-            data.rainfallCumulative,
-            data.vibrationLevel,
-            data.batteryVoltage,
-            data.batteryCurrent,
-            data.solarCurrent,
-            data.gsmSignalDbm,
-            data.gsmStatus,
-            data.microsdUsedMb,
-            data.microsdTotalMb,
-            data.firmwareVersion,
-            data.uptimeHours,
-          ]
-        );
+        const slot = get5MinuteSlot(new Date());
+        let lastSlot = TelemetryService.lastRecordedSlot.get(ewsId);
+
+        // Jika memory cache masih kosong (misal setelah server restart), cek DB agar tidak duplikat slot yang sama
+        if (lastSlot === undefined) {
+          try {
+            const [recent] = await pool.query(
+              'SELECT created_at FROM ews_sensor_logs WHERE ews_id = ? ORDER BY created_at DESC LIMIT 1',
+              [ewsId]
+            );
+            if (recent.length > 0) {
+              lastSlot = Math.floor(new Date(recent[0].created_at).getTime() / (5 * 60 * 1000));
+              TelemetryService.lastRecordedSlot.set(ewsId, lastSlot);
+            }
+          } catch (slotCheckErr) {
+            // Abaikan jika query check gagal
+          }
+        }
+
+        if (lastSlot !== slot.slotIndex) {
+          TelemetryService.lastRecordedSlot.set(ewsId, slot.slotIndex);
+          await pool.query(
+            `INSERT INTO ews_sensor_logs (
+              ews_id, pitch_angle, roll_angle, soil_moisture, soil_temperature,
+              rainfall_rate, rainfall_cumulative, vibration_level, battery_voltage,
+              battery_current, solar_current, gsm_signal_dbm, gsm_status,
+              microsd_used_mb, microsd_total_mb, firmware_version, uptime_hours,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              ewsId,
+              data.pitchAngle,
+              data.rollAngle,
+              data.soilMoisture,
+              data.soilTemperature,
+              data.rainfallRate,
+              data.rainfallCumulative,
+              data.vibrationLevel,
+              data.batteryVoltage,
+              data.batteryCurrent,
+              data.solarCurrent,
+              data.gsmSignalDbm,
+              data.gsmStatus,
+              data.microsdUsedMb,
+              data.microsdTotalMb,
+              data.firmwareVersion,
+              data.uptimeHours,
+              slot.slotDate, // Tanggal presisi pada interval 5 menit (01.00, 01.05, dst)
+            ]
+          );
+          console.log(`📝 [Log EWS 5-Menit] Data telemetri ${ewsId} dicatat pada ${slot.formattedWib}`);
+        }
 
         // 2. Update Cache Status di Tabel ews_nodes
         await pool.query(
@@ -421,6 +449,7 @@ class TelemetryService {
       },
       thresholds,
       timestamp: new Date().toISOString(),
+      timestampWib: formatWib(new Date(), true),
     };
   }
 
@@ -577,30 +606,37 @@ class TelemetryService {
             }
           }
 
-          // Simpan log snapshot berkala
-          await pool.query(
-            `INSERT INTO ews_sensor_logs (
-              ews_id, pitch_angle, roll_angle, soil_moisture, soil_temperature,
-              rainfall_rate, rainfall_cumulative, vibration_level, battery_voltage,
-              battery_current, solar_current, gsm_signal_dbm, gsm_status, uptime_hours
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              ewsId,
-              parseFloat(currentNode.last_pitch || 0),
-              parseFloat(currentNode.last_roll || 0),
-              parseFloat(currentNode.last_soil_moisture || 0),
-              parseFloat(currentNode.last_soil_temp || 0),
-              parseFloat(currentNode.last_rainfall_rate || 0),
-              parseFloat(currentNode.last_rainfall_cumulative || 0),
-              parseFloat(currentNode.last_vibration || 0),
-              batt,
-              parseInt(currentNode.last_battery_current || 0, 10),
-              parseInt(currentNode.last_solar_current || 0, 10),
-              parseInt(currentNode.last_gsm_signal || -70, 10),
-              currentNode.last_gsm_status || 'online',
-              parseInt(currentNode.uptime_hours || 0, 10),
-            ]
-          );
+          // Simpan log snapshot hanya jika slot 5-menit belum tercatat
+          const singleSlot = get5MinuteSlot(new Date());
+          const lastSingleSlot = TelemetryService.lastRecordedSlot.get(ewsId);
+          if (lastSingleSlot !== singleSlot.slotIndex) {
+            TelemetryService.lastRecordedSlot.set(ewsId, singleSlot.slotIndex);
+            await pool.query(
+              `INSERT INTO ews_sensor_logs (
+                ews_id, pitch_angle, roll_angle, soil_moisture, soil_temperature,
+                rainfall_rate, rainfall_cumulative, vibration_level, battery_voltage,
+                battery_current, solar_current, gsm_signal_dbm, gsm_status, uptime_hours,
+                created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                ewsId,
+                parseFloat(currentNode.last_pitch || 0),
+                parseFloat(currentNode.last_roll || 0),
+                parseFloat(currentNode.last_soil_moisture || 0),
+                parseFloat(currentNode.last_soil_temp || 0),
+                parseFloat(currentNode.last_rainfall_rate || 0),
+                parseFloat(currentNode.last_rainfall_cumulative || 0),
+                parseFloat(currentNode.last_vibration || 0),
+                batt,
+                parseInt(currentNode.last_battery_current || 0, 10),
+                parseInt(currentNode.last_solar_current || 0, 10),
+                parseInt(currentNode.last_gsm_signal || -70, 10),
+                currentNode.last_gsm_status || 'online',
+                parseInt(currentNode.uptime_hours || 0, 10),
+                singleSlot.slotDate,
+              ]
+            );
+          }
 
           return {
             ewsId,
@@ -627,6 +663,7 @@ class TelemetryService {
               inaAvailable: batt > 0.5,
             },
             timestamp: new Date().toISOString(),
+            timestampWib: formatWib(new Date(), true),
           };
         }
       } catch (err) {
@@ -639,6 +676,7 @@ class TelemetryService {
       sensorKey: target.prop,
       rawValue: numVal,
       timestamp: new Date().toISOString(),
+      timestampWib: formatWib(new Date(), true),
     };
   }
 

@@ -11,6 +11,7 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
+import { formatWIB } from '../utils/date';
 
 interface AlarmHistoryViewProps {
   logs: AlarmLog[];
@@ -40,7 +41,7 @@ export const AlarmHistoryView: React.FC<AlarmHistoryViewProps> = ({
   });
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Titik EWS', 'Waktu', 'Tipe', 'Pemicu', 'Nilai', 'Durasi Menit', 'Status Konfirmasi', 'Petugas', 'Catatan'];
+    const headers = ['ID', 'Titik EWS', 'Waktu (WIB)', 'Tipe', 'Pemicu', 'Nilai', 'Durasi Menit', 'Status Konfirmasi', 'Petugas', 'Catatan'];
     const rows = filteredLogs.map((l) => [
       l.id,
       `"${l.ewsName}"`,

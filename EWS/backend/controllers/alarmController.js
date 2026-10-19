@@ -1,12 +1,13 @@
 const db = require('../database/db');
 const wsService = require('../services/websocketService');
+const { formatWib } = require('../utils/dateUtils');
 
 function formatAlarmLog(row) {
   return {
     id: row.id,
     ewsId: row.ews_id,
     ewsName: row.ews_name || `Titik ${row.ews_id}`,
-    timestamp: row.created_at ? new Date(row.created_at).toLocaleString('id-ID') + ' WIB' : '',
+    timestamp: row.created_at ? formatWib(row.created_at, false) : '',
     type: row.alarm_type,
     triggerCause: row.trigger_cause,
     triggerValue: row.trigger_value,
@@ -14,8 +15,8 @@ function formatAlarmLog(row) {
     acknowledged: Boolean(row.acknowledged),
     acknowledgedBy: row.acknowledged_by || undefined,
     acknowledgeNote: row.acknowledge_note || undefined,
-    acknowledgedAt: row.acknowledged_at ? new Date(row.acknowledged_at).toLocaleString('id-ID') + ' WIB' : undefined,
-    resolvedAt: row.resolved_at ? new Date(row.resolved_at).toLocaleString('id-ID') + ' WIB' : undefined,
+    acknowledgedAt: row.acknowledged_at ? formatWib(row.acknowledged_at, false) : undefined,
+    resolvedAt: row.resolved_at ? formatWib(row.resolved_at, false) : undefined,
   };
 }
 

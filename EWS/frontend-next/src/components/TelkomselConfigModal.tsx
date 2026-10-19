@@ -20,6 +20,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { formatWIB } from '../utils/date';
 
 interface TelkomselConfigModalProps {
   ews: EWSNode;
@@ -273,7 +274,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
                       {config.lastSyncedAt && (
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3 text-slate-400" />
-                          Disinkron: {new Date(config.lastSyncedAt).toLocaleTimeString('id-ID')}
+                          Disinkron: {formatWIB(config.lastSyncedAt)}
                         </span>
                       )}
                     </div>

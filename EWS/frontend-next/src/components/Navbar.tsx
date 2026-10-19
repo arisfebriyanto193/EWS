@@ -15,6 +15,7 @@ import {
   Sun,
   X,
 } from 'lucide-react';
+import { formatWIB } from '../utils/date';
 
 interface NavbarProps {
   currentUser: UserAccount;
@@ -44,14 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString('id-ID', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        }) + ' WIB'
-      );
+      setCurrentTime(formatWIB(now, true));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);

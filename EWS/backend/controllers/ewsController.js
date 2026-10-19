@@ -2,6 +2,7 @@ const db = require('../database/db');
 const wsService = require('../services/websocketService');
 const TelegramService = require('../services/telegramService');
 const telkomselService = require('../services/telkomselService');
+const { formatWib } = require('../utils/dateUtils');
 
 // Helper untuk format node dari DB ke struktur EWSNode frontend
 function formatEwsNode(node, telegram, telkomsel) {
@@ -44,7 +45,8 @@ function formatEwsNode(node, telegram, telkomsel) {
       firmwareVersion: node.firmware_version || 'v2.4.1-ESP32-A7670C',
       uptimeHours: parseInt(node.uptime_hours || 0, 10),
       lastSeenAt: node.last_seen_at ? new Date(node.last_seen_at).toISOString() : null,
-      lastUpdated: node.last_seen_at ? new Date(node.last_seen_at).toLocaleString('id-ID') : 'Aktif',
+      lastUpdated: node.last_seen_at ? formatWib(node.last_seen_at, false) : 'Aktif',
+      lastUpdatedWib: node.last_seen_at ? formatWib(node.last_seen_at, true) : 'Aktif',
     },
     thresholds: {
       safeTiltPitch: parseFloat(node.safe_pitch ?? 0.0),

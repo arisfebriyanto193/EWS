@@ -23,12 +23,15 @@ import {
   VolumeX,
   Wifi,
   RotateCcw,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { ThresholdConfigModal } from './ThresholdConfigModal';
 import { TriggerCauseModal } from './TriggerCauseModal';
 import { DownloadStorageModal } from './DownloadStorageModal';
+import { DeviceOptionsModal } from './DeviceOptionsModal';
+import { formatWIB, formatWIBTimeOnly } from '../utils/date';
 import { wsClient } from '../services/websocket';
 
 interface TelemetryPoint {
@@ -60,6 +63,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const [isTriggerCauseModalOpen, setIsTriggerCauseModalOpen] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false);
   const [historyRange, setHistoryRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [activeChartMetric, setActiveChartMetric] = useState<'tilt' | 'rain' | 'moisture' | 'power'>('tilt');
   const [isSirenTesting, setIsSirenTesting] = useState(false);
@@ -83,43 +87,66 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    const limit = historyRange === '1h' ? 12 : historyRange === '24h' ? 24 : 50;
-    api.getSensorLogs(ews.id, limit)
-      .then((logs) => {
-        if (!isMounted) return;
-        if (logs && Array.isArray(logs) && logs.length > 0) {
-          const points: TelemetryPoint[] = logs
-            .slice()
-            .reverse()
-            .map((item: any) => ({
-              time: item.created_at
-                ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : '-',
-              tilt: Number(item.pitch_angle ?? 0),
-              rain: Number(item.rainfall_rate ?? 0),
-              moisture: Number(item.soil_moisture ?? 0),
-              battery: Number(item.battery_voltage ?? 0),
-            }));
-          setChartHistory(points);
-        } else {
-          setChartHistory([]);
-        }
-      })
-      .catch(() => {
-        if (isMounted) setChartHistory([]);
-      });
+    const fetchLogs = () => {
+      const limit = historyRange === '1h' ? 12 : historyRange === '24h' ? 24 : 50;
+      api.getSensorLogs(ews.id, limit)
+        .then((logs) => {
+          if (!isMounted) return;
+          if (logs && Array.isArray(logs) && logs.length > 0) {
+            const points: TelemetryPoint[] = logs
+              .slice()
+              .reverse()
+              .map((item: any) => ({
+                time: item.created_at
+                  ? formatWIBTimeOnly(item.created_at)
+                  : '-',
+                tilt: Number(item.pitch_angle ?? 0),
+                rain: Number(item.rainfall_rate ?? 0),
+                moisture: Number(item.soil_moisture ?? 0),
+                battery: Number(item.battery_voltage ?? 0),
+              }));
+            setChartHistory(points);
+          } else {
+            setChartHistory([]);
+          }
+        })
+        .catch(() => {
+          if (isMounted) setChartHistory([]);
+        });
+    };
+
+    fetchLogs();
+    // Sinkronisasi data log 5-menitan dari database setiap 30 detik
+    const pollInterval = setInterval(fetchLogs, 30000);
 
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
     };
   }, [ews.id, historyRange]);
 
   useEffect(() => {
     if (!ews.sensorData.lastUpdated || ews.sensorData.lastUpdated.includes('Menunggu')) return;
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const nowTimeStr = formatWIBTimeOnly(new Date());
+
     setChartHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      // Jika masih dalam slot 5-menit yang sama, update nilai sensor titik terkini tanpa menambah baris baru
+      if (last.time === nowTimeStr) {
+        const copy = [...prev];
+        copy[copy.length - 1] = {
+          ...last,
+          tilt: ews.sensorData.pitchAngle,
+          rain: ews.sensorData.rainfallRate,
+          moisture: ews.sensorData.soilMoisture,
+          battery: ews.sensorData.batteryVoltage,
+        };
+        return copy;
+      }
+      // Jika sudah berpindah interval (misal dari 01.00 ke 01.05), tambahkan titik rekaman baru
       const newPoint: TelemetryPoint = {
-        time: nowTime,
+        time: nowTimeStr,
         tilt: ews.sensorData.pitchAngle,
         rain: ews.sensorData.rainfallRate,
         moisture: ews.sensorData.soilMoisture,
@@ -354,95 +381,16 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               </span>
               <span className="flex items-center gap-1 text-slate-500">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                Update: {ews.sensorData.lastUpdated}
+                Update: {formatWIB(ews.sensorData?.lastSeenAt || ews.sensorData?.lastUpdated, false)}
               </span>
             </div>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons: Disederhanakan menjadi 1 tombol "Opsi Lainnya" */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleOpenTelegram}
-              className="px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-              title="Konfigurasi Bot Telegram Mandiri khusus untuk titik ini"
-            >
-              <Send className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>Konfigurasi Bot Telegram</span>
-              {ews.telegramConfig.enabled && (
-                <span className="w-2 h-2 rounded-full bg-purple-600" />
-              )}
-            </button>
-
-            <button
-              onClick={handleOpenTelkomsel}
-              className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-              title="Monitoring Kuota Internet & Pulsa Telkomsel modem 4G"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
-              <span>SIM & Kuota Telkomsel</span>
-              {ews.telkomselConfig?.isConnected ? (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-red-600 text-white font-bold">
-                  {ews.telkomselConfig.quotaData?.primaryQuota?.remaining || "Aktif"}
-                </span>
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" />
-              )}
-            </button>
-
-            <button
-              onClick={handleOpenThreshold}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#1e1933] hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-purple-900/50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Atur ambang batas (threshold) sensor dan simpan ke EEPROM ESP32"
-            >
-              <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>Atur Ambang Batas</span>
-            </button>
-
-            <button
-              onClick={() => setIsDownloadModalOpen(true)}
-              className="px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Unduh rekaman telemetri sensor dari MicroSD, Flash Internal SPIFFS, atau Database Server (.CSV)"
-            >
-              <Download className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-              <span>Unduh Data (.CSV)</span>
-            </button>
-
-            <button
-              onClick={handleRequestDataNow}
-              disabled={isRequestingData}
-              className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              title="Minta ESP32 langsung mempublikasikan telemetri data sensor terkini ke web (On-Demand Realtime)"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${isRequestingData ? 'animate-spin' : ''}`} />
-              <span>{isRequestingData ? 'Meminta Data...' : 'Minta Data Realtime'}</span>
-            </button>
-
-            {canControl && (
+            {/* Tombol Akses Cepat Darurat saat Status Tidak Aman */}
+            {ews.status !== 'aman' && (
               <>
-                <button
-                  onClick={handleTestSiren}
-                  disabled={isSirenTesting}
-                  className="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                  title="Uji sirine lokal 12V 110-120dB & lampu strobo"
-                >
-                  <Volume2 className={`w-3.5 h-3.5 text-amber-600 dark:text-amber-400 ${isSirenTesting ? 'animate-bounce' : ''}`} />
-                  <span>{isSirenTesting ? 'Menguji Sirine...' : 'Uji Sirine 12V'}</span>
-                </button>
-
-                <button
-                  onClick={handleToggleMute}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    ews.muted
-                      ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-300 dark:border-red-800'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                  title={ews.muted ? 'Buka suara sirine' : 'Senyapkan sirine'}
-                >
-                  {ews.muted ? <VolumeX className="w-3.5 h-3.5 text-red-600 dark:text-red-400" /> : <Volume2 className="w-3.5 h-3.5" />}
-                  <span>{ews.muted ? 'Sirine Disenyapkan' : 'Senyapkan Sirine'}</span>
-                </button>
-
-                {/* Tombol Sensor Pemicu (di samping tombol Senyapkan) */}
                 <button
                   onClick={() => setIsTriggerCauseModalOpen(true)}
                   className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
@@ -450,9 +398,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                       ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse'
                       : ews.status === 'siaga'
                       ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400'
-                      : ews.status === 'baterai_lemah'
-                      ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-400'
-                      : 'bg-purple-50 dark:bg-[#1e1933] hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                      : 'bg-orange-500 hover:bg-orange-600 text-white border-orange-400'
                   }`}
                   title="Lihat rincian sensor yang memicu kondisi ini & nilai ambang batas"
                 >
@@ -460,28 +406,36 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                   <span>Sensor Pemicu</span>
                 </button>
 
-                {ews.status !== 'aman' && (
+                {canControl && (
                   <button
                     onClick={handleResetClick}
                     className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Reset alarm ke status normal"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Reset Alarm</span>
                   </button>
                 )}
-
-                {/* Tombol Restart ESP32 */}
-                <button
-                  onClick={handleRestartEsp}
-                  disabled={isRestarting}
-                  className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
-                  title="Mulai ulang (reboot) ESP32 dari jarak jauh"
-                >
-                  <RotateCcw className={`w-3.5 h-3.5 text-red-600 dark:text-red-400 ${isRestarting ? 'animate-spin' : ''}`} />
-                  <span>{isRestarting ? 'Merestart...' : 'Restart ESP32'}</span>
-                </button>
               </>
             )}
+
+            {/* Tombol Tunggal Utama: Opsi Lainnya */}
+            <button
+              onClick={() => setIsOptionsModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95 border border-purple-600"
+              title="Buka menu konfigurasi bot Telegram, SIM Telkomsel, ambang batas, ekspor data, kontrol aktuator & restart ESP32"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Opsi Lainnya</span>
+              {ews.telegramConfig?.enabled && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400" title="Bot Telegram Aktif" />
+              )}
+              {ews.telkomselConfig?.isConnected && (
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-red-600 text-white font-bold">
+                  {ews.telkomselConfig.quotaData?.primaryQuota?.remaining || '4G'}
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -1246,6 +1200,27 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         ews={ews}
         isOpen={isDownloadModalOpen}
         onClose={() => setIsDownloadModalOpen(false)}
+      />
+
+      {/* Device Options Modal (Menu Tunggal Opsi Lainnya) */}
+      <DeviceOptionsModal
+        ews={ews}
+        isOpen={isOptionsModalOpen}
+        onClose={() => setIsOptionsModalOpen(false)}
+        onOpenTelegram={handleOpenTelegram}
+        onOpenTelkomsel={handleOpenTelkomsel}
+        onOpenThreshold={handleOpenThreshold}
+        onOpenDownload={() => setIsDownloadModalOpen(true)}
+        onRequestDataNow={handleRequestDataNow}
+        isRequestingData={isRequestingData}
+        canControl={Boolean(canControl)}
+        onTestSiren={handleTestSiren}
+        isSirenTesting={isSirenTesting}
+        onToggleMute={handleToggleMute}
+        onOpenTriggerCause={() => setIsTriggerCauseModalOpen(true)}
+        onResetAlarm={handleResetClick}
+        onRestartEsp={handleRestartEsp}
+        isRestarting={isRestarting}
       />
     </div>
   );

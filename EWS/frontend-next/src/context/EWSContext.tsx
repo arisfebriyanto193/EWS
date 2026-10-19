@@ -16,6 +16,7 @@ import {
 } from '../mockData';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
+import { formatWIB } from '../utils/date';
 
 interface EWSContextType {
   currentUser: UserAccount | null;
@@ -205,7 +206,8 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...(payload.sensorData || {}),
                 alarmReason: incomingReason,
                 gsmStatus: 'online',
-                lastUpdated: 'Live via WS (Baru saja)',
+                lastSeenAt: new Date().toISOString(),
+                lastUpdated: formatWIB(new Date(), false),
               },
             };
           }
@@ -275,7 +277,8 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             }
             updated.gsmStatus = 'online';
-            updated.lastUpdated = 'Live WS (Baru saja)';
+            updated.lastSeenAt = new Date().toISOString();
+            updated.lastUpdated = formatWIB(new Date(), false);
 
             const incomingReason = (typeof payload === 'object' && (payload?.alarmReason || payload?.sensorData?.alarmReason)) || e.alarmReason;
             if (incomingReason) {
@@ -564,7 +567,7 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: `ALM-${Date.now().toString().slice(-4)}`,
             ewsId: e.id,
             ewsName: e.name,
-            timestamp: new Date().toLocaleString('id-ID') + ' WIB',
+            timestamp: formatWIB(new Date(), false),
             type: 'bahaya',
             triggerCause: 'Kemiringan Tanah Ekstrem (Inclinometer) & Getaran ADXL345',
             triggerValue: `Pitch: 3.42° (Ambang: ${e.thresholds.tiltDanger}°) | Getaran: 0.38g`,
@@ -593,7 +596,7 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: `ALM-${Date.now().toString().slice(-4)}`,
             ewsId: e.id,
             ewsName: e.name,
-            timestamp: new Date().toLocaleString('id-ID') + ' WIB',
+            timestamp: formatWIB(new Date(), false),
             type: 'siaga',
             triggerCause: 'Curah Hujan Tinggi & Pergeseran Sudut Awal',
             triggerValue: `Hujan: 32.4 mm/jam | Pitch: 1.65°`,
@@ -677,7 +680,7 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 acknowledged: true,
                 acknowledgedBy: author,
                 acknowledgeNote: note,
-                acknowledgedAt: new Date().toLocaleString('id-ID') + ' WIB',
+                acknowledgedAt: formatWIB(new Date(), false),
               };
             }
             return log;

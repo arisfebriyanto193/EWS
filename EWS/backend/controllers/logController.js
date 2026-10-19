@@ -1,6 +1,7 @@
 const db = require('../database/db');
 const TelemetryService = require('../services/telemetryService');
 const wsService = require('../services/websocketService');
+const { formatWib } = require('../utils/dateUtils');
 
 exports.getSensorLogs = async (req, res) => {
   try {
@@ -37,12 +38,18 @@ exports.getSensorLogs = async (req, res) => {
 
     const [rows] = await pool.query(sql, params);
 
+    const formattedData = rows.map((r) => ({
+      ...r,
+      created_at_wib: formatWib(r.created_at, false),
+      created_at_wib_full: formatWib(r.created_at, true),
+    }));
+
     return res.json({
       success: true,
-      count: rows.length,
+      count: formattedData.length,
       page: parsedPage,
       limit: parsedLimit,
-      data: rows,
+      data: formattedData,
     });
   } catch (error) {
     console.error('Error querying sensor logs:', error);
@@ -97,14 +104,14 @@ exports.exportSensorCsv = async (req, res) => {
     sql += ' ORDER BY created_at ASC LIMIT 1000';
     const [rows] = await pool.query(sql, params);
 
-    // Generate CSV Header
-    let csv = 'ID,Titik EWS,Waktu,Pitch (°),Roll (°),Kelembapan (%),Suhu (°C),Curah Hujan (mm/h),Akumulasi Hujan (mm),Getaran (g),Tegangan Aki (V),Arus Aki (mA),Arus Solar (mA),GSM RSSI (dBm),Status GSM\n';
+    // Generate CSV Header (Waktu WIB: DD-MM-YYYY HH:mm:ss WIB)
+    let csv = 'ID,Titik EWS,Waktu (WIB),Pitch (°),Roll (°),Kelembapan (%),Suhu (°C),Curah Hujan (mm/h),Akumulasi Hujan (mm),Getaran (g),Tegangan Aki (V),Arus Aki (mA),Arus Solar (mA),GSM RSSI (dBm),Status GSM\n';
 
     rows.forEach((r) => {
       const line = [
         r.id,
         r.ews_id,
-        `"${new Date(r.created_at).toISOString()}"`,
+        `"${formatWib(r.created_at, true)}"`,
         r.pitch_angle,
         r.roll_angle,
         r.soil_moisture,
