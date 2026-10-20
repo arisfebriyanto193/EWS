@@ -137,6 +137,9 @@ export interface EWSNode {
     // 5. Konfigurasi Siklus & Timer Alarm Otomatis
     alarmDuration?: number; // Durasi alarm sirine aktif saat anomali (detik)
     alarmPause?: number;    // Jeda istirahat sirine saat anomali berlanjut sebelum menyala kembali (detik)
+
+    // 6. Proteksi Baterai: Alarm tetap aktif walau baterai lemah?
+    forceAlarmOnLowBatt?: boolean; // true = alarm tetap nyala walau baterai lemah, false = matikan relay (default: false)
   };
 }
 

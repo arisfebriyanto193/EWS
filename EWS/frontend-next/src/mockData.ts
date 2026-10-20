@@ -118,6 +118,7 @@ export const PRESET_EWS_NODES: EWSNode[] = [
       soilAdcWet: 1200,
       vibrationDanger: 0.25,
       batteryLowVoltage: 11.8,
+      forceAlarmOnLowBatt: false,
     },
   },
   {
@@ -180,6 +181,7 @@ export const PRESET_EWS_NODES: EWSNode[] = [
       soilAdcWet: 1200,
       vibrationDanger: 0.25,
       batteryLowVoltage: 11.8,
+      forceAlarmOnLowBatt: false,
     },
   },
   {
@@ -242,6 +244,7 @@ export const PRESET_EWS_NODES: EWSNode[] = [
       soilAdcWet: 1200,
       vibrationDanger: 0.25,
       batteryLowVoltage: 11.8,
+      forceAlarmOnLowBatt: false,
     },
   },
   {
@@ -304,6 +307,7 @@ export const PRESET_EWS_NODES: EWSNode[] = [
       soilAdcWet: 1200,
       vibrationDanger: 0.25,
       batteryLowVoltage: 11.8,
+      forceAlarmOnLowBatt: false,
     },
   },
 ];

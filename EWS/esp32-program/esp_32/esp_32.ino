@@ -41,7 +41,7 @@
  */
 
 #include <WiFi.h>
-#include <WiFiManager.h>
+// WiFiManager dihapus - diganti dengan WebServer bawaan + AP auto-management
 #include <WebServer.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
@@ -104,7 +104,7 @@ bool getCurrentDateParts(int &day, int &mon, int &yr, int &hr, int &min);
 // =============================================================================
 // 1. KONFIGURASI JARINGAN, DEVICE ID & SERVER WEBSOCKET (DAPAT DIATUR VIA WEB)
 // =============================================================================
-// Default Fallback Kredensial WiFi (dapat diganti via NVS/Web/WiFiManager)
+// Default Fallback Kredensial WiFi (dapat diganti via NVS/Web Server)
 String wifiSsidDefault     = "TALAS 1";
 String wifiPasswordDefault = "kitahebat";
 
@@ -116,11 +116,18 @@ String wsPath              = "/ws";
 
 // Identitas Node Stasiun EWS (disimpan di NVS "ews_cfg" -> "devId")
 String ewsId               = "EWS-02";
-const char* FIRMWARE_VERSION = "v2.5.0-CALIB-WEB";
+const char* FIRMWARE_VERSION = "v2.6.0-NO-WIFIMGR";
 
 // Objek Internal WebServer untuk Kalibrasi & Konfigurasi Mandiri
 WebServer localServer(80);
-volatile bool triggerWiFiManagerPortal = false;
+
+// Manajemen AP Otomatis (pengganti WiFiManager)
+// Jika WiFi tidak terhubung, AP dinyalakan. Setiap 30 detik dicek:
+// - Jika jaringan tersimpan tersedia → matikan AP, sambung WiFi
+// - Jika WiFi terputus → nyalakan AP kembali
+bool apActive = false;
+unsigned long lastWifiCheckMs = 0;
+const unsigned long WIFI_CHECK_INTERVAL_MS = 30000; // 30 detik
 
 // =============================================================================
 // 2. DEFINISI PIN SESUAI SCHEMATIC PCB
@@ -241,6 +248,9 @@ struct SensorThresholds {
   // Siklus Timer Alarm Otomatis (Detik / S)
   uint32_t alarmDuration;     // Durasi sirine aktif saat anomali (detik, default: 60)
   uint32_t alarmPause;        // Jeda waktu mati sebelum sirine menyala lagi jika masih anomali (detik, default: 30)
+
+  // Proteksi Baterai: Apakah relay alarm tetap aktif walau baterai lemah?
+  bool forceAlarmOnLowBatt;   // true = alarm tetap nyala walau baterai lemah, false = matikan relay saat baterai lemah (default: false)
 };
 
 struct SensorRawValues {
@@ -295,7 +305,8 @@ SensorThresholds currentThresholds = {
   1200,   // soilAdcWet
   0.70f,  // rainCalibPerTip
   60,     // alarmDuration (detik, default 60s)
-  30      // alarmPause (detik, default 30s)
+  30,     // alarmPause (detik, default 30s)
+  false   // forceAlarmOnLowBatt (default: matikan relay saat baterai lemah)
 };
 
 SensorRawValues sharedRawSensors;
@@ -422,6 +433,7 @@ void loadThresholdsFromEEPROM() {
     currentThresholds.rainCalibPerTip       = prefs.getFloat("rainCalib", 0.70f);
     currentThresholds.alarmDuration         = prefs.getUInt("alarmDur", 60);
     currentThresholds.alarmPause            = prefs.getUInt("alarmPause", 30);
+    currentThresholds.forceAlarmOnLowBatt   = prefs.getBool("forceAlmBatt", false);
     prefs.end();
 
     Serial.println("[EEPROM/NVS] Berhasil memuat nilai acuan kalibrasi & ambang batas:");
@@ -437,6 +449,8 @@ void loadThresholdsFromEEPROM() {
                   currentThresholds.vibrationDanger, currentThresholds.batteryLowVoltage, currentThresholds.battDividerRatio);
     Serial.printf("   - Siklus Alarm Otomatis : Aktif %u s | Jeda %u s\n", 
                   currentThresholds.alarmDuration, currentThresholds.alarmPause);
+    Serial.printf("   - Alarm Saat Baterai Lemah : %s\n", 
+                  currentThresholds.forceAlarmOnLowBatt ? "TETAP AKTIF (Paksa)" : "DIMATIKAN (Proteksi Aki)");
   } else {
     Serial.println("[INFO] [EEPROM/NVS] Belum ada konfigurasi di Flash. Menggunakan nilai bawaan.");
   }
@@ -462,6 +476,7 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
     prefs.putFloat("rainCalib", newT.rainCalibPerTip);
     prefs.putUInt("alarmDur", newT.alarmDuration);
     prefs.putUInt("alarmPause", newT.alarmPause);
+    prefs.putBool("forceAlmBatt", newT.forceAlarmOnLowBatt);
     prefs.end();
 
     if (dataMutex != NULL && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -483,6 +498,7 @@ volatile bool isWsConnected = false;
 volatile bool needSubscribe = false;
 bool sirenActive  = false;
 bool stroboActive = false;
+float lastBattVoltage = 99.0f;  // Tegangan baterai terakhir (default tinggi agar relay bisa aktif saat awal boot sebelum pembacaan pertama)
 String currentStatus = "aman";
 
 // Manajemen Siklus Timer Alarm Otomatis
@@ -1722,6 +1738,16 @@ void updateRelayState() {
 }
 
 void setRelaySirine(bool active) {
+  // Proteksi baterai lemah: Relay tidak boleh menyala jika tegangan di bawah batas (kecuali forceAlarmOnLowBatt aktif)
+  if (active && lastBattVoltage < currentThresholds.batteryLowVoltage && !currentThresholds.forceAlarmOnLowBatt) {
+    if (sirenActive) {
+      sirenActive = false;
+      updateRelayState();
+    }
+    Serial.printf("[RELAY SIRINE] DITOLAK - Baterai lemah (%.2fV < %.2fV). Relay tidak dinyalakan untuk melindungi aki. (Aktifkan 'Paksa Alarm Saat Baterai Lemah' di pengaturan untuk override)\n",
+                  lastBattVoltage, currentThresholds.batteryLowVoltage);
+    return;
+  }
   sirenActive = active;
   updateRelayState();
   Serial.printf("[RELAY SIRINE] %s (GPIO %d, State: %s)\n",
@@ -1730,6 +1756,16 @@ void setRelaySirine(bool active) {
 }
 
 void setRelayStrobo(bool active) {
+  // Proteksi baterai lemah: Relay tidak boleh menyala jika tegangan di bawah batas (kecuali forceAlarmOnLowBatt aktif)
+  if (active && lastBattVoltage < currentThresholds.batteryLowVoltage && !currentThresholds.forceAlarmOnLowBatt) {
+    if (stroboActive) {
+      stroboActive = false;
+      updateRelayState();
+    }
+    Serial.printf("[RELAY STROBO] DITOLAK - Baterai lemah (%.2fV < %.2fV). Relay tidak dinyalakan untuk melindungi aki. (Aktifkan 'Paksa Alarm Saat Baterai Lemah' di pengaturan untuk override)\n",
+                  lastBattVoltage, currentThresholds.batteryLowVoltage);
+    return;
+  }
   stroboActive = active;
   updateRelayState();
   Serial.printf("[RELAY STROBO] %s (GPIO %d, State: %s)\n",
@@ -1926,6 +1962,9 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
 
               if (tObj.containsKey("alarmPause")) newT.alarmPause = tObj["alarmPause"].as<uint32_t>();
               else if (tObj.containsKey("alarmPau")) newT.alarmPause = tObj["alarmPau"].as<uint32_t>();
+
+              if (tObj.containsKey("forceAlarmOnLowBatt")) newT.forceAlarmOnLowBatt = tObj["forceAlarmOnLowBatt"].as<bool>();
+              else if (tObj.containsKey("forceAlmBatt")) newT.forceAlarmOnLowBatt = tObj["forceAlmBatt"].as<bool>();
 
               saveThresholdsToEEPROM(newT);
 
@@ -2151,6 +2190,7 @@ void sensorTask(void *pvParameters) {
     float batt = 0.0f;
     int solar = 0, battMa = 0;
     readPowerMonitor(batt, solar, battMa);
+    lastBattVoltage = batt;  // Update tegangan baterai global untuk proteksi relay
 
     // Ambil ambang batas dari memori yang sinkron
     SensorThresholds thresh;
@@ -2530,6 +2570,7 @@ void telemetryTask(void *pvParameters) {
         th["batteryLowVoltage"]     = thresh.batteryLowVoltage;
         th["alarmDuration"]         = thresh.alarmDuration;
         th["alarmPause"]            = thresh.alarmPause;
+        th["forceAlarmOnLowBatt"]   = thresh.forceAlarmOnLowBatt;
 
         // Tambahan info jaringan & siklus alarm untuk website
         p["ipAddress"]          = ipStr;
@@ -2640,12 +2681,13 @@ void setup() {
   xTaskCreatePinnedToCore(sensorTask, "sensorTask", 4096, NULL, 1, NULL, 1);
 
   // =============================================================================
-  // KONEKSI WIFI & FAILOVER WIFIMANAGER (TIMEOUT 10 DETIK & PORTAL 30 DETIK)
+  // KONEKSI WIFI & AP OTOMATIS (TANPA WIFIMANAGER)
+  // Jika WiFi gagal → nyalakan AP. Setiap 30 detik cek ulang jaringan.
   // =============================================================================
   // Muat konfigurasi identitas device dan jaringan dari NVS
   loadDeviceConfigFromNVS();
 
-  WiFi.mode(WIFI_AP_STA); // Mode ganda: siap melayani Web Server kalibrasi lokal (AP & STA)
+  WiFi.mode(WIFI_STA); // Mulai sebagai Station dulu
   Serial.printf("[WIFI] Menghubungkan ke WiFi: %s ", wifiSsidDefault.c_str());
 
 #if ENABLE_OLED
@@ -2678,12 +2720,17 @@ void setup() {
     Serial.print(".");
   }
 
-  // Jika gagal tersambung dalam 10 detik, picu Captive Portal WiFiManager
+  // Jika gagal tersambung dalam 10 detik, nyalakan Access Point untuk akses Web Config
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("\n[WARN] Gagal terhubung ke WiFi dalam 10 detik!");
-    Serial.println("[WIFI] Mengaktifkan Access Point WiFiManager untuk konfigurasi SSID/Password...");
+    Serial.println("[WIFI] Mengaktifkan Access Point untuk konfigurasi via Web Server bawaan...");
 
     String apSSID = String("EWS-Config-") + ewsId;
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(apSSID.c_str());
+    apActive = true;
+    Serial.printf("[AP] Access Point AKTIF! SSID: %s | IP: %s\n", apSSID.c_str(), WiFi.softAPIP().toString().c_str());
+    Serial.println("[AP] Buka browser di http://192.168.4.1 untuk mengatur WiFi SSID/Password.");
 
 #if ENABLE_OLED
     if (oledAvailable) {
@@ -2697,11 +2744,11 @@ void setup() {
           display.println("WIFI TIMEOUT (10s)!");
           display.drawLine(0, 10, 127, 10, SH110X_WHITE);
           display.setCursor(0, 14);
-          display.println("Buka Hotspot AP:");
+          display.println("AP Hotspot AKTIF:");
           display.printf("SSID: %s\n", apSSID.c_str());
           display.setCursor(0, 36);
-          display.println("Web Config Portal:");
-          display.println("IP: 192.168.4.1 (30s)");
+          display.println("Web Config (bawaan):");
+          display.println("IP: 192.168.4.1");
           display.display();
           xSemaphoreGive(i2cMutex);
         }
@@ -2709,39 +2756,6 @@ void setup() {
       }
     }
 #endif
-
-    WiFiManager wm;
-    // Timeout untuk config portal (30 detik) agar di lapangan sistem tidak macet berlama-lama
-    wm.setConfigPortalTimeout(30);
-
-    bool portalRes = wm.startConfigPortal(apSSID.c_str());
-
-    if (!portalRes) {
-      Serial.println("[ERR] WiFiManager timeout / konfigurasi batal. Melanjutkan sistem...");
-#if ENABLE_OLED
-      if (oledAvailable) {
-        if (oledMutex != NULL && xSemaphoreTake(oledMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-          if (i2cMutex != NULL && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            selectI2CBus(activeOledSda, PIN_OLED_SCL, 400000);
-            display.clearDisplay();
-            display.setCursor(0, 15);
-            display.println("WiFi Portal Timeout");
-            display.println("Sistem Mode Offline");
-            display.display();
-            xSemaphoreGive(i2cMutex);
-          }
-          xSemaphoreGive(oledMutex);
-        }
-        delay(1500);
-      }
-#endif
-    } else {
-      Serial.println("[OK] WiFi berhasil dikonfigurasi melalui WiFiManager!");
-      // Simpan SSID & Password baru hasil WiFiManager ke NVS Preferences
-      wifiSsidDefault = WiFi.SSID();
-      wifiPasswordDefault = WiFi.psk();
-      saveDeviceConfigToNVS(ewsId, wifiSsidDefault, wifiPasswordDefault, wsHost, wsPort, wsPath, wsUseSsl);
-    }
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -2772,8 +2786,11 @@ void setup() {
     }
 #endif
   } else {
-    Serial.println("\n[WARN] Gagal koneksi WiFi, proses tetap berjalan...");
+    Serial.println("\n[WARN] Gagal koneksi WiFi. AP aktif, proses tetap berjalan...");
   }
+
+  // Inisialisasi timer pengecekan WiFi berkala
+  lastWifiCheckMs = millis();
 
   // Konfigurasi WebSocket Dinamis dari NVS
   if (wsUseSsl) {
@@ -2805,19 +2822,81 @@ void loop() {
   // Layani HTTP request Web Server Kalibrasi
   localServer.handleClient();
 
-  // Buka portal WiFiManager jika diminta dari dashboard Web
-  if (triggerWiFiManagerPortal) {
-    triggerWiFiManagerPortal = false;
-    Serial.println("[WIFI] Membuka Portal WiFiManager sesuai permintaan dari Dashboard...");
-    String apName = String("EWS-Config-") + ewsId;
-    WiFiManager wm;
-    wm.setConfigPortalTimeout(120); // 2 menit timeout
-    bool res = wm.startConfigPortal(apName.c_str());
-    if (res) {
-      wifiSsidDefault = WiFi.SSID();
-      wifiPasswordDefault = WiFi.psk();
-      saveDeviceConfigToNVS(ewsId, wifiSsidDefault, wifiPasswordDefault, wsHost, wsPort, wsPath, wsUseSsl);
-      Serial.println("[WIFI] WiFi baru berhasil disimpan dari portal WiFiManager!");
+  // ==========================================================================
+  // MANAJEMEN WIFI & AP OTOMATIS (PENGGANTI WIFIMANAGER)
+  // Setiap 30 detik: cek apakah WiFi tersambung atau jaringan tersedia.
+  // - Jika WiFi terputus & SSID tersimpan ditemukan → matikan AP, sambung WiFi
+  // - Jika WiFi terputus & SSID tidak ditemukan → pastikan AP tetap aktif
+  // - Jika WiFi tersambung & AP masih aktif → matikan AP
+  // ==========================================================================
+  if (millis() - lastWifiCheckMs >= WIFI_CHECK_INTERVAL_MS) {
+    lastWifiCheckMs = millis();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      // WiFi terhubung - matikan AP jika masih aktif
+      if (apActive) {
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_STA);
+        apActive = false;
+        Serial.println("[WIFI] WiFi terhubung, AP dimatikan.");
+      }
+    } else {
+      // WiFi tidak terhubung - scan jaringan untuk cari SSID tersimpan
+      Serial.println("[WIFI] WiFi tidak terhubung. Scanning jaringan...");
+      int n = WiFi.scanNetworks(false, false, false, 300);
+      bool ssidFound = false;
+
+      for (int i = 0; i < n; i++) {
+        if (WiFi.SSID(i) == wifiSsidDefault) {
+          ssidFound = true;
+          break;
+        }
+      }
+      WiFi.scanDelete();
+
+      if (ssidFound) {
+        // SSID ditemukan - coba sambungkan
+        Serial.printf("[WIFI] SSID '%s' ditemukan! Mencoba koneksi...\n", wifiSsidDefault.c_str());
+        
+        // Matikan AP sementara untuk koneksi yang bersih
+        if (apActive) {
+          WiFi.softAPdisconnect(true);
+          apActive = false;
+        }
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(wifiSsidDefault.c_str(), wifiPasswordDefault.c_str());
+
+        unsigned long startAttempt = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
+          delay(250);
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+          Serial.printf("[WIFI] Berhasil tersambung ke '%s'! IP: %s\n", wifiSsidDefault.c_str(), WiFi.localIP().toString().c_str());
+          // Sinkronisasi RTC jika belum pernah
+          if (!rtcSyncedWithNTP) {
+            syncRTCWithNTP();
+          }
+        } else {
+          // Gagal konek walaupun SSID ada - nyalakan AP kembali
+          Serial.println("[WIFI] Gagal tersambung walaupun SSID ditemukan. AP dinyalakan kembali.");
+          String apSSID = String("EWS-Config-") + ewsId;
+          WiFi.mode(WIFI_AP_STA);
+          WiFi.softAP(apSSID.c_str());
+          apActive = true;
+        }
+      } else {
+        // SSID tidak ditemukan - pastikan AP aktif untuk konfigurasi
+        if (!apActive) {
+          Serial.println("[WIFI] SSID tersimpan tidak ditemukan. AP dinyalakan.");
+          String apSSID = String("EWS-Config-") + ewsId;
+          WiFi.mode(WIFI_AP_STA);
+          WiFi.softAP(apSSID.c_str());
+          apActive = true;
+        } else {
+          Serial.println("[WIFI] SSID tersimpan tidak ditemukan. AP tetap aktif.");
+        }
+      }
     }
   }
 
@@ -2968,7 +3047,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       font-size: 0.9rem;
       transition: all 0.2s;
     }
-    .form-control:focus {
+    .form-control:focus { 
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 3px var(--primary-glow);
@@ -3303,8 +3382,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <button type="submit" class="btn btn-primary" style="flex: 2; margin-top: 0; background: linear-gradient(135deg, #059669, #047857);">
           💾 Simpan Pengaturan Jaringan & Server
         </button>
-        <button type="button" class="btn btn-secondary" style="flex: 1; border-color: var(--accent-yellow); color: var(--accent-yellow);" onclick="openWiFiManagerPortal()">
-          📶 Buka Portal WiFiManager
+        <button type="button" class="btn btn-secondary" style="flex: 1; border-color: var(--accent-yellow); color: var(--accent-yellow);" onclick="reconnectWifi()">
+          📶 Reconnect WiFi Sekarang
         </button>
       </div>
     </form>
@@ -3429,13 +3508,35 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     });
   }
 
-  function openWiFiManagerPortal() {
-    if (!confirm("Buka Access Point Hotspot WiFiManager untuk scan & ganti WiFi?")) return;
-    fetch('/api/trigger_wifimanager', { method: 'POST' })
-      .then(res => res.json())
-      .then(d => {
-        alert(d.message || "WiFiManager Portal Aktif!");
-      });
+  function reconnectWifi() {
+    if (!confirm("Simpan pengaturan WiFi baru lalu coba hubungkan sekarang?")) return;
+    // Simpan dulu pengaturan device (termasuk SSID/Pass baru)
+    const payload = {
+      devId:  document.getElementById('inpDevId').value.trim(),
+      wsHost: document.getElementById('inpWsHost').value.trim(),
+      wsPort: parseInt(document.getElementById('inpWsPort').value),
+      wsPath: document.getElementById('inpWsPath').value.trim(),
+      wsSsl:  document.getElementById('inpWsSsl').value === "1",
+      wfSsid: document.getElementById('inpWfSsid').value.trim(),
+      wfPass: document.getElementById('inpWfPass').value
+    };
+    fetch('/api/save_device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(() => {
+      // Setelah simpan, trigger reconnect
+      return fetch('/api/reconnect_wifi', { method: 'POST' });
+    })
+    .then(res => res.json())
+    .then(d => {
+      showToast(d.message || "Memulai koneksi ulang WiFi...");
+    })
+    .catch(e => {
+      showToast("Gagal: " + e.message);
+    });
   }
 
   function saveDevice(e) {
@@ -3640,6 +3741,7 @@ void handleApiConfig() {
   doc["battRatio"] = thresh.battDividerRatio;
   doc["alarmDur"]  = thresh.alarmDuration;
   doc["alarmPau"]  = thresh.alarmPause;
+  doc["forceAlmBatt"] = thresh.forceAlarmOnLowBatt;
 
   String res;
   serializeJson(doc, res);
@@ -3678,6 +3780,7 @@ void handleApiSaveCalibration() {
   if (doc.containsKey("battRatio")) newT.battDividerRatio      = doc["battRatio"].as<float>();
   if (doc.containsKey("alarmDur"))  newT.alarmDuration         = doc["alarmDur"].as<uint32_t>();
   if (doc.containsKey("alarmPau"))  newT.alarmPause            = doc["alarmPau"].as<uint32_t>();
+  if (doc.containsKey("forceAlmBatt")) newT.forceAlarmOnLowBatt = doc["forceAlmBatt"].as<bool>();
 
   saveThresholdsToEEPROM(newT);
   localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Kalibrasi & Ambang Batas Berhasil Disimpan ke EEPROM!\"}");
@@ -3993,10 +4096,10 @@ void setupWebServer() {
     }
     localServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Epoch tidak valid\"}");
   });
-  localServer.on("/api/trigger_wifimanager", HTTP_POST, []() {
-    localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Access Point WiFiManager diaktifkan! Hubungkan ke WiFi EWS-Config-" + ewsId + "\"}");
-    delay(500);
-    triggerWiFiManagerPortal = true;
+  localServer.on("/api/reconnect_wifi", HTTP_POST, []() {
+    localServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Memulai koneksi ulang WiFi dengan SSID yang tersimpan... Cek kembali dalam 15 detik.\"}");
+    // Reset timer agar pengecekan WiFi dilakukan segera pada iterasi loop berikutnya
+    lastWifiCheckMs = 0;
   });
   localServer.on("/api/restart", HTTP_POST, []() {
     saveDailyRainToEEPROM();

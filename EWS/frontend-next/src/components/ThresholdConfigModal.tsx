@@ -47,9 +47,10 @@ const DEFAULT_THRESHOLDS: EWSNode['thresholds'] = {
   batteryLowVoltage: 11.8,
   alarmDuration: 60,
   alarmPause: 30,
+  forceAlarmOnLowBatt: false,
 };
 
-type FormThresholds = Partial<Record<keyof EWSNode['thresholds'], string | number>>;
+type FormThresholds = Partial<Record<keyof EWSNode['thresholds'], string | number | boolean>>;
 
 const toFixed2 = (val: any, fallback = 0): number => {
   if (val === undefined || val === null || val === '') return fallback;
@@ -78,6 +79,7 @@ const formatInitialThresholds = (src?: Partial<EWSNode['thresholds']>): FormThre
     batteryLowVoltage: toFixed2(merged.batteryLowVoltage, 11.8),
     alarmDuration: Math.round(Number(merged.alarmDuration ?? 60)),
     alarmPause: Math.round(Number(merged.alarmPause ?? 30)),
+    forceAlarmOnLowBatt: merged.forceAlarmOnLowBatt ?? false,
   };
 };
 
@@ -149,6 +151,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
       batteryLowVoltage: Math.max(0, parseFloat(String(raw.batteryLowVoltage ?? 11.8)) || 11.8),
       alarmDuration: Math.max(1, parseInt(String(raw.alarmDuration ?? 60), 10) || 60),
       alarmPause: Math.max(0, parseInt(String(raw.alarmPause ?? 30), 10) || 30),
+      forceAlarmOnLowBatt: raw.forceAlarmOnLowBatt === true || raw.forceAlarmOnLowBatt === 'true',
     };
   };
 
@@ -201,6 +204,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
         batteryLowVoltage: cleanThresholds.batteryLowVoltage,
         alarmDuration: cleanThresholds.alarmDuration ?? 60,
         alarmPause: cleanThresholds.alarmPause ?? 30,
+        forceAlarmOnLowBatt: cleanThresholds.forceAlarmOnLowBatt ?? false,
 
         // Format Web Server ESP32 (/api/save_calibration)
         safePitch: cleanThresholds.safeTiltPitch,
@@ -220,6 +224,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
         battLow: cleanThresholds.batteryLowVoltage,
         alarmDur: cleanThresholds.alarmDuration ?? 60,
         alarmPau: cleanThresholds.alarmPause ?? 30,
+        forceAlmBatt: cleanThresholds.forceAlarmOnLowBatt ?? false,
       };
 
       // 1. Siarkan perintah SET_THRESHOLDS via WebSocket langsung ke ESP32
@@ -816,6 +821,45 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">V</span>
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">Default: 11.8 V (Cut-off VRLA 12V)</span>
+              </div>
+
+              {/* Toggle: Paksa Alarm Saat Baterai Lemah */}
+              <div className="mt-3 p-3 rounded-lg border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Paksa Alarm Saat Baterai Lemah</p>
+                    <p className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-0.5">
+                      Jika aktif, sirine & strobo <strong>tetap menyala</strong> saat bahaya walaupun tegangan aki di bawah batas.
+                      Jika nonaktif, relay <strong>dimatikan otomatis</strong> untuk melindungi aki dari kerusakan.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setThresholds((prev) => ({ ...prev, forceAlarmOnLowBatt: !prev.forceAlarmOnLowBatt }))}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-[#1a162b] ${
+                      thresholds.forceAlarmOnLowBatt
+                        ? 'bg-amber-500'
+                        : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                    role="switch"
+                    aria-checked={!!thresholds.forceAlarmOnLowBatt}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        thresholds.forceAlarmOnLowBatt ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className={`text-[10px] font-bold mt-1.5 ${
+                  thresholds.forceAlarmOnLowBatt
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}>
+                  {thresholds.forceAlarmOnLowBatt
+                    ? '⚠️ Alarm TETAP AKTIF walau baterai lemah — Risiko aki rusak!'
+                    : '🛡️ Relay DIMATIKAN otomatis saat baterai lemah — Aki terlindungi'}
+                </p>
               </div>
             </div>
           </div>
