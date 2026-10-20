@@ -50,7 +50,11 @@ const DEFAULT_THRESHOLDS: EWSNode['thresholds'] = {
   forceAlarmOnLowBatt: false,
 };
 
-type FormThresholds = Partial<Record<keyof EWSNode['thresholds'], string | number | boolean>>;
+type NumericThresholdKeys = Exclude<keyof EWSNode['thresholds'], 'forceAlarmOnLowBatt'>;
+
+type FormThresholds = Partial<Record<NumericThresholdKeys, string | number>> & {
+  forceAlarmOnLowBatt?: boolean;
+};
 
 const toFixed2 = (val: any, fallback = 0): number => {
   if (val === undefined || val === null || val === '') return fallback;
@@ -123,7 +127,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleChange = (key: keyof EWSNode['thresholds'], val: string) => {
+  const handleChange = (key: NumericThresholdKeys, val: string) => {
     // Simpan string mentah agar pengguna bebas mengetik tanda minus (-), desimal (.), atau backspace tanpa tertimpa atau reset
     setThresholds((prev) => ({
       ...prev,
@@ -151,7 +155,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
       batteryLowVoltage: Math.max(0, parseFloat(String(raw.batteryLowVoltage ?? 11.8)) || 11.8),
       alarmDuration: Math.max(1, parseInt(String(raw.alarmDuration ?? 60), 10) || 60),
       alarmPause: Math.max(0, parseInt(String(raw.alarmPause ?? 30), 10) || 30),
-      forceAlarmOnLowBatt: raw.forceAlarmOnLowBatt === true || raw.forceAlarmOnLowBatt === 'true',
+      forceAlarmOnLowBatt: Boolean(raw.forceAlarmOnLowBatt),
     };
   };
 
