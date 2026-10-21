@@ -1,0 +1,21 @@
+# Server Configuration
+PORT=5001
+WS_PATH=/ws
+FRONTEND_URL=http://localhost:3001
+
+# WebSocket & CORS Configuration
+ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
+
+# MySQL Database Configuration
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=ews_iot_db
+DB_PORT=3306
+
+# JWT Authentication
+JWT_SECRET=your_jwt_secret_key_here
+JWT_EXPIRES_IN=7d
+
+# Node Environment
+NODE_ENV=development

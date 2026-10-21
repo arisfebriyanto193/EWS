@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-app: #fbfbfe;
+  --bg-card: #ffffff;
+  --text-app: #0f172a;
+  --border-subtle: #e2e8f0;
+  --purple-accent: #6b21a8;
+  --purple-hover: #581c87;
+  --purple-light: #f5f3ff;
+}
+
+.dark {
+  --bg-app: #0c0a15;
+  --bg-card: #141122;
+  --text-app: #f8fafc;
+  --border-subtle: #27223b;
+  --purple-accent: #9333ea;
+  --purple-hover: #a855f7;
+  --purple-light: #1e1833;
+}
+
+::selection {
+  background-color: #7e22ce;
+  color: #ffffff;
+}
+
+body {
+  font-family: var(--font-sans), 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-app);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  letter-spacing: -0.01em;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono), 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Academic Telemetry Grid Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #3b2d54;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a855f7;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b21a8;
+}
+
+/* Interactive focus indicators */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid #7e22ce;
+  outline-offset: 1px;
+}
