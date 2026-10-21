@@ -1,4 +1,21 @@
 # Server Configuration
+
+# MIGRASI 
+# npm run migrate
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 PORT=5000
 WS_PATH=/ws
 # Opsional: Buka baris di bawah jika ingin port terpisah. Jika tidak diisi, otomatis gabung ke PORT 5000 di atas
