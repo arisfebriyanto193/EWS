@@ -61,6 +61,8 @@
 #define PIN_BT2             26   // Tombol 2: Ganti Mode / Bangun dari Sleep
 #define PIN_BT3             27   // Tombol 3: Reset Counter Hama / Test Zap
 
+#define PIN_MODEM_TRIGGER   16   // GPIO 16 - Trigger Modem WiFi (aktif LOW)
+
 // Alamat I2C
 #define OLED_I2C_ADDR       0x3C
 #define INA226_I2C_ADDR     0x40
@@ -123,6 +125,12 @@ uint16_t ledRotationInterval = 15;
 uint16_t manualIntervalMin   = 15; // Cooldown minimal antar trigger sensor atau interval siklus blower (menit)
 uint16_t manualDurationSec   = 3;  // Durasi blower menyala saat deteksi hama / siklus waktu (detik)
 
+// Pengaturan Modem WiFi Trigger (GPIO 16) - Bisa diatur via Web Server
+unsigned long modemPulseMs       = 3000;    // Durasi sinyal LOW untuk trigger modem (ms) - default 3 detik
+unsigned long modemBootDelayMs   = 30000;   // Delay sebelum trigger pertama saat boot (ms) - default 30 detik
+unsigned long modemRetryIntervalMs = 30000; // Interval retry trigger modem (ms) - default 30 detik
+unsigned long modemWaitWifiMs     = 120000; // Tunggu WiFi setelah trigger pertama (ms) - default 2 menit
+
 // Parameter Deteksi Hama
 uint16_t distThreshold_mm = 150;   // Ambang batas deteksi hama (mm)
 uint32_t pestCounter      = 0;     // Total hama terperangkap
@@ -177,6 +185,29 @@ unsigned long lastLedRotate        = 0;
 unsigned long lastManualCycleStart = 0; // (legacy, tidak dipakai untuk LED lagi)
 unsigned long zapOffTime           = 0; // (legacy alias untuk blowerOffTime)
 
+// Modem WiFi Trigger (GPIO 16)
+bool modemFirstTriggerDone     = false;  // Apakah trigger pertama (30 detik setelah boot) sudah dilakukan
+bool modemPulseActive          = false;  // Apakah sinyal LOW sedang aktif (pulse sedang berjalan)
+unsigned long modemPulseStart  = 0;      // Waktu mulai pulse LOW
+unsigned long modemFirstTriggerTime = 0; // Waktu trigger pertama selesai
+unsigned long modemLastRetryTrigger = 0; // Waktu retry trigger terakhir
+bool modemRetryMode            = false;  // Sudah masuk mode retry (setelah 2 menit gagal WiFi)
+
+// Status & State Pengecekan WiFi Sebelum Trigger Modem
+enum ModemCheckState {
+  MODEM_CHECK_IDLE = 0,       // Tidak sedang melakukan pengecekan
+  MODEM_CHECK_SCANNING,       // Sedang memindai jaringan WiFi sekitar secara asinkron
+  MODEM_CHECK_CONNECTING      // WiFi tersimpan ditemukan, sedang mencoba menghubungkan ulang
+};
+
+ModemCheckState modemCheckState   = MODEM_CHECK_IDLE;
+unsigned long modemCheckStartTime = 0;
+bool lastWifiConnectedState       = false; // Untuk mendeteksi transisi status WiFi (terhubung/terputus)
+
+// NTP Time Sync
+bool ntpSynced                 = false;  // Apakah waktu sudah disinkronkan via NTP
+bool ntpSyncAttempted          = false;  // Apakah sudah pernah mencoba sync di loop (tracking transisi WiFi)
+
 // Debounce Tombol
 unsigned long bt1LastPress = 0;
 unsigned long bt2LastPress = 0;
@@ -216,6 +247,16 @@ void setupWebServer();
 void setupWebSocket();
 void sendTelemetryToEws();
 void handleWsMessage(uint8_t *payload, size_t length);
+void syncTimeFromNTP();
+void startModemPulse();
+
+// Helper untuk mengirim sinyal pulse LOW ke pin trigger modem (GPIO 16)
+void startModemPulse() {
+  modemPulseActive = true;
+  modemPulseStart = millis();
+  digitalWrite(PIN_MODEM_TRIGGER, LOW);
+  Serial.println("📡 [Modem] Trigger modem aktif! Mengirim sinyal LOW ke pin GPIO 16 (3 detik)...");
+}
 
 // ==============================================================================
 // 6. SETUP & LOOP UTAMA
@@ -240,6 +281,12 @@ void setup() {
   pinMode(PIN_BT1, INPUT_PULLUP);
   pinMode(PIN_BT2, INPUT_PULLUP);
   pinMode(PIN_BT3, INPUT_PULLUP);
+
+  // Inisialisasi Pin Trigger Modem WiFi (GPIO 16)
+  // Default HIGH (modem tidak di-trigger), trigger dengan sinyal LOW
+  pinMode(PIN_MODEM_TRIGGER, OUTPUT);
+  digitalWrite(PIN_MODEM_TRIGGER, HIGH);
+  Serial.println("📡 [Modem] Pin GPIO 16 siap, ketersediaan WiFi tersimpan akan dicek sebelum trigger");
 
   // Inisialisasi LED NeoPixel WS2812B
   strip.begin();
@@ -288,8 +335,13 @@ void setup() {
 
     if (WiFi.status() == WL_CONNECTED) {
       wifiConnected = true;
+      modemFirstTriggerDone = true; // Sudah terhubung, jangan picu modem trigger saat boot delay
+      lastWifiConnectedState = true;
       Serial.print("✅ Terhubung ke WiFi! IP: ");
       Serial.println(WiFi.localIP());
+
+      // Sinkronkan waktu dari NTP segera setelah terhubung ke internet
+      syncTimeFromNTP();
     } else {
       Serial.println("❌ Gagal terhubung ke WiFi dalam 8 detik.");
     }
@@ -405,7 +457,187 @@ void loop() {
     Serial.println("🌀 [Blower] Durasi habis, blower MATI");
   }
 
-  // 8. Eksekusi Restart ESP32 Tertunda (dipicu dari Web Dashboard)
+  // 8. TRIGGER MODEM WiFi via GPIO 16 (Aktif LOW) DENGAN CEK KETERSEDIAAN & RECONNECT
+  // Alur Baru Sesuai Kebutuhan:
+  //   - Saat di mode AP (WiFi belum terhubung), sebelum trigger modem dijalankan:
+  //       1. Cek apakah WiFi tersimpan (wifiSsid) tersedia di sekitar (scan async).
+  //       2. Jika tersedia: coba hubungkan ulang ke WiFi tersebut (timeout 8 detik).
+  //       3. Jika berhasil terhubung: BATALKAN trigger modem (tidak usah di-trigger).
+  //       4. Jika belum/gagal terhubung atau SSID tidak ditemukan: baru trigger modem!
+  //   - Begitu WiFi tersambung kapan saja, mode retry dihentikan & trigger dibatalkan.
+
+  // Deteksi transisi terputusnya WiFi saat sistem sedang berjalan
+  bool currentWifiConnected = (WiFi.status() == WL_CONNECTED);
+  if (!currentWifiConnected && lastWifiConnectedState) {
+    Serial.println("⚠️ [WiFi] Koneksi WiFi terputus! Memulai hitung mundur pantau modem...");
+    modemFirstTriggerTime = now;
+    modemRetryMode = false;
+  }
+  lastWifiConnectedState = currentWifiConnected;
+
+  if (modemPulseActive) {
+    // Sedang mengirim pulse LOW, cek apakah durasi pulse sudah selesai
+    if (now - modemPulseStart >= modemPulseMs) {
+      digitalWrite(PIN_MODEM_TRIGGER, HIGH); // Kembalikan ke HIGH (selesai trigger)
+      modemPulseActive = false;
+      Serial.println("📡 [Modem] Pulse LOW selesai, pin GPIO 16 kembali HIGH");
+    }
+  } else if (currentWifiConnected) {
+    // Jika WiFi sudah terhubung:
+    // Jika ada pengecekan atau scan yang masih berjalan, bersihkan dan batalkan trigger
+    if (modemCheckState == MODEM_CHECK_SCANNING) {
+      WiFi.scanDelete();
+    }
+    if (modemCheckState != MODEM_CHECK_IDLE) {
+      Serial.println("✅ [Modem] WiFi terhubung! Pengecekan selesai, trigger modem DIBATALKAN.");
+      modemCheckState = MODEM_CHECK_IDLE;
+    }
+    if (!modemFirstTriggerDone) {
+      modemFirstTriggerDone = true;
+    }
+    if (modemRetryMode) {
+      modemRetryMode = false;
+      Serial.println("📡 [Modem] WiFi terhubung! Retry modem dihentikan.");
+    }
+  } else {
+    // WiFi saat ini BELUM terhubung (misal dalam mode AP)
+    if (modemCheckState == MODEM_CHECK_IDLE) {
+      // 1. Masuk mode retry jika sudah lewat waktu tunggu (2 menit) dari trigger pertama / putus koneksi
+      if (modemFirstTriggerDone && !modemRetryMode && (now - modemFirstTriggerTime >= modemWaitWifiMs)) {
+        modemRetryMode = true;
+        modemLastRetryTrigger = 0; // Agar langsung trigger pada siklus ini
+        Serial.println("📡 [Modem] 2 menit tanpa WiFi, masuk mode retry...");
+      }
+
+      // 2. Evaluasi apakah sudah waktunya trigger (trigger pertama 30s boot delay ATAU interval retry 30s)
+      bool needFirstTrigger = (!modemFirstTriggerDone && (now >= modemBootDelayMs));
+      bool needRetryTrigger = (modemRetryMode && (modemLastRetryTrigger == 0 || (now - modemLastRetryTrigger >= modemRetryIntervalMs)));
+
+      if (needFirstTrigger || needRetryTrigger) {
+        // Sebelum trigger modem, cek terlebih dahulu apakah WiFi tersimpan tersedia
+        if (wifiSsid.length() == 0) {
+          Serial.println("📡 [Modem] Tidak ada SSID WiFi tersimpan, langsung trigger modem...");
+          if (!modemFirstTriggerDone) {
+            modemFirstTriggerDone = true;
+            modemFirstTriggerTime = now;
+          } else {
+            modemLastRetryTrigger = now;
+          }
+          startModemPulse();
+        } else {
+          Serial.printf("📡 [Modem] %s: Memeriksa ketersediaan WiFi tersimpan '%s' sebelum trigger...\n",
+                        needRetryTrigger ? "Retry Trigger" : "Trigger Pertama", wifiSsid.c_str());
+
+          // Mulai scan WiFi secara asinkron agar tidak memblokir Web Server & sensor
+          int16_t scanStatus = WiFi.scanComplete();
+          if (scanStatus != WIFI_SCAN_RUNNING) {
+            WiFi.scanDelete();
+            WiFi.scanNetworks(true, false);
+          }
+          modemCheckState = MODEM_CHECK_SCANNING;
+          modemCheckStartTime = now;
+        }
+      }
+    } else if (modemCheckState == MODEM_CHECK_SCANNING) {
+      // Sedang menunggu hasil pemindaian jaringan WiFi sekitar
+      int16_t scanStatus = WiFi.scanComplete();
+
+      if (scanStatus == WIFI_SCAN_RUNNING) {
+        // Cek batas waktu scan (maksimal 6 detik)
+        if (now - modemCheckStartTime >= 6000) {
+          Serial.println("⚠️ [Modem] Scan WiFi timeout (>6s). WiFi belum terhubung, memicu modem...");
+          if (!modemFirstTriggerDone) {
+            modemFirstTriggerDone = true;
+            modemFirstTriggerTime = now;
+          } else {
+            modemLastRetryTrigger = now;
+          }
+          modemCheckState = MODEM_CHECK_IDLE;
+          startModemPulse();
+        }
+      } else if (scanStatus == WIFI_SCAN_FAILED || scanStatus < 0) {
+        Serial.println("⚠️ [Modem] Scan WiFi gagal. WiFi belum terhubung, memicu modem...");
+        if (!modemFirstTriggerDone) {
+          modemFirstTriggerDone = true;
+          modemFirstTriggerTime = now;
+        } else {
+          modemLastRetryTrigger = now;
+        }
+        modemCheckState = MODEM_CHECK_IDLE;
+        startModemPulse();
+      } else {
+        // Scan selesai, periksa apakah WiFi tersimpan (wifiSsid) ada di sekitar
+        bool ssidFound = false;
+        int rssiFound = -100;
+        for (int i = 0; i < scanStatus; ++i) {
+          if (WiFi.SSID(i) == wifiSsid) {
+            ssidFound = true;
+            rssiFound = WiFi.RSSI(i);
+            break;
+          }
+        }
+        WiFi.scanDelete(); // Bebaskan memori buffer scan
+
+        if (ssidFound) {
+          Serial.printf("📶 [Modem] WiFi tersimpan '%s' TERSEDIA (RSSI: %d dBm)! Mencoba hubungkan ulang...\n",
+                        wifiSsid.c_str(), rssiFound);
+          WiFi.disconnect(false);
+          WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+          modemCheckState = MODEM_CHECK_CONNECTING;
+          modemCheckStartTime = now;
+        } else {
+          Serial.printf("❌ [Modem] WiFi tersimpan '%s' TIDAK TERSEDIA di sekitar.\n", wifiSsid.c_str());
+          Serial.println("📡 [Modem] Belum terhubung, menjalankan trigger modem via GPIO 16...");
+          if (!modemFirstTriggerDone) {
+            modemFirstTriggerDone = true;
+            modemFirstTriggerTime = now;
+          } else {
+            modemLastRetryTrigger = now;
+          }
+          modemCheckState = MODEM_CHECK_IDLE;
+          startModemPulse();
+        }
+      }
+    } else if (modemCheckState == MODEM_CHECK_CONNECTING) {
+      // Sedang mencoba menghubungkan ulang ke WiFi tersimpan yang terdeteksi
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("✅ [Modem] BERHASIL TERHUBUNG ke WiFi '%s'!\n", wifiSsid.c_str());
+        Serial.println("📡 [Modem] Karena WiFi sudah terhubung, trigger modem DIBATALKAN.");
+        if (!modemFirstTriggerDone) {
+          modemFirstTriggerDone = true;
+        }
+        modemRetryMode = false;
+        modemCheckState = MODEM_CHECK_IDLE;
+      } else if (now - modemCheckStartTime >= 8000) {
+        // Timeout 8 detik: WiFi terdeteksi namun gagal terkoneksi (misal auth timeout/router belum siap)
+        Serial.println("❌ [Modem] Timeout koneksi ulang (8 detik). WiFi belum berhasil terhubung.");
+        Serial.println("📡 [Modem] Menjalankan trigger modem via GPIO 16...");
+        WiFi.disconnect(false); // Hentikan attempt agar tidak mengganggu SoftAP
+        if (!modemFirstTriggerDone) {
+          modemFirstTriggerDone = true;
+          modemFirstTriggerTime = now;
+        } else {
+          modemLastRetryTrigger = now;
+        }
+        modemCheckState = MODEM_CHECK_IDLE;
+        startModemPulse();
+      }
+    }
+  }
+
+  // 9. SINKRONISASI WAKTU NTP SAAT WiFi BARU TERHUBUNG
+  // Deteksi transisi WiFi: dari belum tersambung → tersambung → langsung sync NTP
+  if (WiFi.status() == WL_CONNECTED && !ntpSyncAttempted) {
+    ntpSyncAttempted = true;
+    if (!ntpSynced) {
+      syncTimeFromNTP();
+    }
+  } else if (WiFi.status() != WL_CONNECTED) {
+    // Reset flag jika WiFi terputus, agar sync ulang saat reconnect
+    ntpSyncAttempted = false;
+  }
+
+  // 10. Eksekusi Restart ESP32 Tertunda (dipicu dari Web Dashboard)
   if (shouldRestart && (now - restartTriggerTime >= 1000)) {
     Serial.println("🔄 Merestart ESP32...");
     ESP.restart();
@@ -464,7 +696,7 @@ void initHardware() {
 // 8. PEMBACAAN SENSOR & LOGIKA DETEKSI HAMA
 // ==============================================================================
 void readSensors() {
-  // A. Baca Waktu RTC DS3231
+  // A. Baca Waktu RTC DS3231 atau fallback ke NTP internal clock
   if (rtcReady) {
     DateTime now = rtc.now();
     rtcHour = now.hour();
@@ -473,6 +705,17 @@ void readSensors() {
     rtcYear = now.year();
     rtcMonth = now.month();
     rtcDay = now.day();
+  } else if (ntpSynced) {
+    // Fallback: RTC tidak ada, gunakan jam internal ESP32 yang sudah disinkronkan via NTP
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 0)) {
+      rtcHour   = timeinfo.tm_hour;
+      rtcMinute = timeinfo.tm_min;
+      rtcSecond = timeinfo.tm_sec;
+      rtcYear   = timeinfo.tm_year + 1900;
+      rtcMonth  = timeinfo.tm_mon + 1;
+      rtcDay    = timeinfo.tm_mday;
+    }
   }
 
   // B. Baca Tegangan & Arus Baterai dari INA226
@@ -960,6 +1203,32 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <button class="btn btn-red" onclick="rebootEsp()">🔄 Restart ESP32</button>
       <div id="msg_server" class="msg"></div>
     </div>
+
+    <div class="card">
+      <span style="font-weight:bold;font-size:14px;color:#38bdf8;display:block;margin-bottom:10px">📡 Pengaturan Modem WiFi (GPIO 16)</span>
+      <div class="grid">
+        <div class="row">
+          <label>Durasi Pulse LOW (detik):</label>
+          <input type="number" id="m_pulse" placeholder="3" min="1" max="30" step="1">
+        </div>
+        <div class="row">
+          <label>Delay Boot Awal (detik):</label>
+          <input type="number" id="m_boot" placeholder="30" min="5" max="300" step="1">
+        </div>
+      </div>
+      <div class="grid">
+        <div class="row">
+          <label>Interval Retry (detik):</label>
+          <input type="number" id="m_retry" placeholder="30" min="10" max="300" step="1">
+        </div>
+        <div class="row">
+          <label>Tunggu WiFi Maks (detik):</label>
+          <input type="number" id="m_wait" placeholder="120" min="30" max="600" step="1">
+        </div>
+      </div>
+      <button class="btn btn-green" onclick="saveModem()">💾 Simpan Pengaturan Modem</button>
+      <div id="msg_modem" class="msg"></div>
+    </div>
   </div>
 
   <!-- TAB 3: KONTROL & MONITORING -->
@@ -1055,6 +1324,10 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('s_ssl').value = d.wsUseSsl ? '1' : '0';
         document.getElementById('c_start').value = d.startTime || '18:00';
         document.getElementById('c_end').value = d.endTime || '06:00';
+        document.getElementById('m_pulse').value = d.modemPulseSec || 3;
+        document.getElementById('m_boot').value = d.modemBootDelaySec || 30;
+        document.getElementById('m_retry').value = d.modemRetryIntervalSec || 30;
+        document.getElementById('m_wait').value = d.modemWaitWifiSec || 120;
         loaded = true;
       }
 
@@ -1171,6 +1444,29 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
   }
 
+  function saveModem() {
+    let pulse = document.getElementById('m_pulse').value.trim();
+    let boot  = document.getElementById('m_boot').value.trim();
+    let retry = document.getElementById('m_retry').value.trim();
+    let wait  = document.getElementById('m_wait').value.trim();
+    let m     = document.getElementById('msg_modem');
+    m.style.color = '#38bdf8';
+    m.innerText = 'Menyimpan pengaturan modem...';
+    let body = `modemPulseSec=${pulse}&modemBootDelaySec=${boot}&modemRetryIntervalSec=${retry}&modemWaitWifiSec=${wait}`;
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body
+    }).then(r => r.json()).then(d => {
+      m.style.color = '#34d399';
+      m.innerText = d.message || 'Pengaturan modem tersimpan!';
+      setTimeout(() => { m.innerText = ''; }, 4000);
+    }).catch(e => {
+      m.style.color = '#ef4444';
+      m.innerText = 'Error: ' + e;
+    });
+  }
+
   function setMode(m) { fetch('/api/mode?val=' + m, {method:'POST'}).then(() => refresh()); }
   function toggleUv() { fetch('/api/toggle-uv', {method:'POST'}).then(() => refresh()); }
   function toggleBlower() { fetch('/api/toggle-blower', {method:'POST'}).then(() => refresh()); }
@@ -1213,6 +1509,10 @@ void setupWebServer() {
 
   // API Scan WiFi Sekitar (Asinkron & Cepat, Tanpa Freeze CPU)
   server.on("/api/wifi-scan", HTTP_GET, []() {
+    if (modemCheckState == MODEM_CHECK_SCANNING) {
+      server.send(200, "application/json", "{\"status\":\"scanning\",\"list\":[]}");
+      return;
+    }
     int16_t scanStatus = WiFi.scanComplete();
     if (scanStatus == WIFI_SCAN_FAILED || scanStatus == -2) {
       // Mulai scan baru secara asinkron (0ms blocking time)
@@ -1293,6 +1593,10 @@ void setupWebServer() {
     doc["ledColor"] = presets[activePreset].name;
     doc["blowerMode"] = blowerMode;
     doc["ledRunning"] = ledRunning;
+    doc["modemPulseSec"] = (int)(modemPulseMs / 1000);
+    doc["modemBootDelaySec"] = (int)(modemBootDelayMs / 1000);
+    doc["modemRetryIntervalSec"] = (int)(modemRetryIntervalMs / 1000);
+    doc["modemWaitWifiSec"] = (int)(modemWaitWifiMs / 1000);
 
     JsonArray pArr = doc.createNestedArray("presets");
     for (int i = 0; i < 5; i++) {
@@ -1325,6 +1629,10 @@ void setupWebServer() {
     doc["manualDurationSec"] = manualDurationSec;
     doc["blowerMode"] = blowerMode;
     doc["ledRunning"] = ledRunning;
+    doc["modemPulseSec"] = (int)(modemPulseMs / 1000);
+    doc["modemBootDelaySec"] = (int)(modemBootDelayMs / 1000);
+    doc["modemRetryIntervalSec"] = (int)(modemRetryIntervalMs / 1000);
+    doc["modemWaitWifiSec"] = (int)(modemWaitWifiMs / 1000);
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
@@ -1356,6 +1664,24 @@ void setupWebServer() {
       String s = server.arg("wsUseSsl");
       wsUseSsl = (s == "1" || s == "true");
       updated = true;
+    }
+
+    // Pengaturan Modem WiFi Trigger (dalam detik, konversi ke ms)
+    if (server.hasArg("modemPulseSec")) {
+      int v = server.arg("modemPulseSec").toInt();
+      if (v >= 1 && v <= 30) { modemPulseMs = (unsigned long)v * 1000UL; updated = true; }
+    }
+    if (server.hasArg("modemBootDelaySec")) {
+      int v = server.arg("modemBootDelaySec").toInt();
+      if (v >= 5 && v <= 300) { modemBootDelayMs = (unsigned long)v * 1000UL; updated = true; }
+    }
+    if (server.hasArg("modemRetryIntervalSec")) {
+      int v = server.arg("modemRetryIntervalSec").toInt();
+      if (v >= 10 && v <= 300) { modemRetryIntervalMs = (unsigned long)v * 1000UL; updated = true; }
+    }
+    if (server.hasArg("modemWaitWifiSec")) {
+      int v = server.arg("modemWaitWifiSec").toInt();
+      if (v >= 30 && v <= 600) { modemWaitWifiMs = (unsigned long)v * 1000UL; updated = true; }
     }
 
     if (updated) {
@@ -1784,6 +2110,10 @@ void loadPreferences() {
   uvLedEnabled         = prefs.getBool("uv_en", true);
   ledRunning           = prefs.getBool("led_run", false);
   blowerMode           = prefs.getString("bl_mode", "sensor");
+  modemPulseMs         = prefs.getULong("mdm_pulse", 3000);
+  modemBootDelayMs     = prefs.getULong("mdm_boot", 30000);
+  modemRetryIntervalMs = prefs.getULong("mdm_retry", 30000);
+  modemWaitWifiMs      = prefs.getULong("mdm_wait", 120000);
   // Blower SELALU mati saat boot (hanya aktif dari trigger sensor VL53 atau waktu)
   blowerEnabled = false;
   zapperActive = false;
@@ -1824,6 +2154,10 @@ void savePreferences() {
   prefs.putBool("uv_en", uvLedEnabled);
   prefs.putBool("led_run", ledRunning);
   prefs.putString("bl_mode", blowerMode);
+  prefs.putULong("mdm_pulse", modemPulseMs);
+  prefs.putULong("mdm_boot", modemBootDelayMs);
+  prefs.putULong("mdm_retry", modemRetryIntervalMs);
+  prefs.putULong("mdm_wait", modemWaitWifiMs);
   // blowerEnabled tidak perlu disimpan karena selalu MATI saat boot
 
   for (int i = 0; i < 5; i++) {
@@ -1835,4 +2169,59 @@ void savePreferences() {
     prefs.putUChar(kB.c_str(), presets[i].b);
   }
   prefs.end();
+}
+
+// ==============================================================================
+// SINKRONISASI WAKTU NTP → RTC DS3231 (atau internal clock jika tidak ada RTC)
+// ==============================================================================
+void syncTimeFromNTP() {
+  Serial.println("🕐 [NTP] Memulai sinkronisasi waktu dari internet...");
+
+  // Konfigurasi NTP: GMT+7 (WIB = 25200 detik), tanpa DST
+  configTime(25200, 0, "pool.ntp.org", "time.nist.gov", "id.pool.ntp.org");
+
+  // Tunggu respons NTP (maksimal 10 detik, non-blocking friendly karena dipanggil di momen transisi)
+  struct tm timeinfo;
+  int retries = 0;
+  while (!getLocalTime(&timeinfo, 1000) && retries < 10) {
+    retries++;
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (retries >= 10) {
+    Serial.println("❌ [NTP] Gagal mendapatkan waktu dari NTP server");
+    return;
+  }
+
+  ntpSynced = true;
+
+  // Format waktu untuk log
+  char timeBuf[32];
+  strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  Serial.print("✅ [NTP] Waktu NTP diterima: ");
+  Serial.println(timeBuf);
+
+  // Update variabel waktu global
+  rtcHour   = timeinfo.tm_hour;
+  rtcMinute = timeinfo.tm_min;
+  rtcSecond = timeinfo.tm_sec;
+  rtcYear   = timeinfo.tm_year + 1900;
+  rtcMonth  = timeinfo.tm_mon + 1;
+  rtcDay    = timeinfo.tm_mday;
+
+  // Jika RTC DS3231 tersedia, tulis waktu NTP ke RTC agar tersimpan saat ESP32 mati
+  if (rtcReady) {
+    rtc.adjust(DateTime(
+      timeinfo.tm_year + 1900,
+      timeinfo.tm_mon + 1,
+      timeinfo.tm_mday,
+      timeinfo.tm_hour,
+      timeinfo.tm_min,
+      timeinfo.tm_sec
+    ));
+    Serial.println("✅ [NTP→RTC] Waktu RTC DS3231 berhasil disinkronkan dari NTP");
+  } else {
+    Serial.println("ℹ️ [NTP] RTC tidak ada, menggunakan jam internal ESP32 (NTP-synced)");
+  }
 }
