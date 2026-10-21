@@ -1,0 +1,12 @@
+# URL API Backend untuk client-side browser fetch
+# Jika menggunakan reverse proxy Next.js internal (/api), biarkan kosong atau isi /api
+NEXT_PUBLIC_API_URL=/api
+
+# URL WebSocket Gateway backend
+# Lokal: ws://localhost:5000/ws
+# Production / Server: wss://be-ews.qbyte.web.id/ws
+NEXT_PUBLIC_WS_URL=wss://be-ews.qbyte.web.id/ws
+
+# URL Target Proxy Server-Side Next.js (next.config.ts)
+# Digunakan oleh Next.js untuk meneruskan request /api/* ke backend Express
+BACKEND_URL=https://be-ews.qbyte.web.id
