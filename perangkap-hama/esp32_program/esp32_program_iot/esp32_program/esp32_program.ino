@@ -249,6 +249,7 @@ void sendTelemetryToEws();
 void handleWsMessage(uint8_t *payload, size_t length);
 void syncTimeFromNTP();
 void startModemPulse();
+void triggerZapperCycle();
 
 // Helper untuk mengirim sinyal pulse LOW ke pin trigger modem (GPIO 16)
 void startModemPulse() {
@@ -862,6 +863,14 @@ void updateActuators() {
       }
     }
   }
+}
+
+void triggerZapperCycle() {
+  digitalWrite(PIN_RELAY_1, HIGH);
+  blowerEnabled = true;
+  zapperActive = true;
+  blowerOffTime = millis() + ((unsigned long)manualDurationSec * 1000UL);
+  sendTelemetryToEws();
 }
 
 void applyLedColor(uint8_t r, uint8_t g, uint8_t b) {
@@ -2151,6 +2160,7 @@ void setupWebServer() {
           }
           updated = true;
         }
+      }
     }
     
     // Fallback: baca form parameter jika tidak menggunakan JSON body
