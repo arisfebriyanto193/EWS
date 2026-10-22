@@ -84,8 +84,8 @@ Kedua backend menggunakan MySQL database `ews_iot_db`.
 ### Kredensial Database Default
 - **Host**: `localhost`
 - **Port**: `3306`
-- **User**: `aris`
-- **Password**: `Aris@022805`
+- **User**: `root`
+- **Password**: ``
 - **Nama Database**: `ews_iot_db`
 
 ### Tabel Khusus Perangkap Hama:
