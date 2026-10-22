@@ -158,9 +158,9 @@ uint16_t rtcYear = 2026;
 uint8_t rtcMonth = 10, rtcDay = 12;
 
 // Kredensial WiFi & IoT Server EWS (Dapat diatur dinamis via Web Server, disimpan di NVS tanpa hardcode)
-String wifiSsid       = "TALAS 1";
-String wifiPass       = "kitahebat";
-String wsHost         = "be-ews.qbyte.web.id";
+String wifiSsid       = "test";
+String wifiPass       = "11111111";
+String wsHost         = "hamakusens.elektrodinus.id";
 int    wsPort         = 443;
 String wsPath         = "/ws";
 bool   wsUseSsl       = true;
@@ -255,7 +255,7 @@ void startModemPulse() {
   modemPulseActive = true;
   modemPulseStart = millis();
   digitalWrite(PIN_MODEM_TRIGGER, LOW);
-  Serial.println("📡 [Modem] Trigger modem aktif! Mengirim sinyal LOW ke pin GPIO 16 (3 detik)...");
+  Serial.println("[Modem] Trigger modem aktif! Mengirim sinyal LOW ke pin GPIO 16 (3 detik)...");
 }
 
 // ==============================================================================
@@ -271,7 +271,7 @@ void setup() {
   // Periksa apakah bangun dari Deep Sleep karena tombol ditekan
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
-    Serial.println("⚡ Bangun dari Deep Sleep karena tombol fisik ditekan!");
+    Serial.println(" Bangun dari Deep Sleep karena tombol fisik ditekan!");
   }
 
   // Inisialisasi Pin GPIO
@@ -286,7 +286,7 @@ void setup() {
   // Default HIGH (modem tidak di-trigger), trigger dengan sinyal LOW
   pinMode(PIN_MODEM_TRIGGER, OUTPUT);
   digitalWrite(PIN_MODEM_TRIGGER, HIGH);
-  Serial.println("📡 [Modem] Pin GPIO 16 siap, ketersediaan WiFi tersimpan akan dicek sebelum trigger");
+  Serial.println("[Modem] Pin GPIO 16 siap, ketersediaan WiFi tersimpan akan dicek sebelum trigger");
 
   // Inisialisasi LED NeoPixel WS2812B
   strip.begin();
@@ -322,7 +322,7 @@ void setup() {
   bool wifiConnected = false;
 
   if (wifiSsid.length() > 0) {
-    Serial.print("🌐 Menghubungkan ke WiFi: ");
+    Serial.print(" Menghubungkan ke WiFi: ");
     Serial.println(wifiSsid);
     WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
@@ -337,13 +337,13 @@ void setup() {
       wifiConnected = true;
       modemFirstTriggerDone = true; // Sudah terhubung, jangan picu modem trigger saat boot delay
       lastWifiConnectedState = true;
-      Serial.print("✅ Terhubung ke WiFi! IP: ");
+      Serial.print(" Terhubung ke WiFi! IP: ");
       Serial.println(WiFi.localIP());
 
       // Sinkronkan waktu dari NTP segera setelah terhubung ke internet
       syncTimeFromNTP();
     } else {
-      Serial.println("❌ Gagal terhubung ke WiFi dalam 8 detik.");
+      Serial.println(" Gagal terhubung ke WiFi dalam 8 detik.");
     }
   }
 
@@ -356,7 +356,7 @@ void setup() {
     WiFi.softAP(apName.c_str(), "12345678");
     WiFi.setSleep(false);
     esp_wifi_set_ps(WIFI_PS_NONE);
-    Serial.print("📶 Mengaktifkan SoftAP Cadangan: ");
+    Serial.print(" Mengaktifkan SoftAP Cadangan: ");
     Serial.print(apName);
     Serial.print(" | IP AP: ");
     Serial.println(WiFi.softAPIP());
@@ -365,13 +365,13 @@ void setup() {
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
     dnsServer.start(53, "*", WiFi.softAPIP());
     dnsRunning = true;
-    Serial.println("🌐 Captive Portal DNS Aktif di Port 53");
+    Serial.println(" Captive Portal DNS Aktif di Port 53");
   }
 
   // Setup Web Server Lokal HTTP
   setupWebServer();
   server.begin();
-  Serial.println("🌐 Web Server HTTP lokal siap di port 80");
+  Serial.println(" Web Server HTTP lokal siap di port 80");
 
   // Inisialisasi WebSocket hanya jika sudah terhubung ke WiFi STA dengan akses internet
   if (wifiConnected) {
@@ -454,7 +454,7 @@ void loop() {
     digitalWrite(PIN_RELAY_1, LOW);
     blowerEnabled = false;
     zapperActive = false;
-    Serial.println("🌀 [Blower] Durasi habis, blower MATI");
+    Serial.println(" [Blower] Durasi habis, blower MATI");
   }
 
   // 8. TRIGGER MODEM WiFi via GPIO 16 (Aktif LOW) DENGAN CEK KETERSEDIAAN & RECONNECT
@@ -469,7 +469,7 @@ void loop() {
   // Deteksi transisi terputusnya WiFi saat sistem sedang berjalan
   bool currentWifiConnected = (WiFi.status() == WL_CONNECTED);
   if (!currentWifiConnected && lastWifiConnectedState) {
-    Serial.println("⚠️ [WiFi] Koneksi WiFi terputus! Memulai hitung mundur pantau modem...");
+    Serial.println(" [WiFi] Koneksi WiFi terputus! Memulai hitung mundur pantau modem...");
     modemFirstTriggerTime = now;
     modemRetryMode = false;
   }
@@ -480,7 +480,7 @@ void loop() {
     if (now - modemPulseStart >= modemPulseMs) {
       digitalWrite(PIN_MODEM_TRIGGER, HIGH); // Kembalikan ke HIGH (selesai trigger)
       modemPulseActive = false;
-      Serial.println("📡 [Modem] Pulse LOW selesai, pin GPIO 16 kembali HIGH");
+      Serial.println("[Modem] Pulse LOW selesai, pin GPIO 16 kembali HIGH");
     }
   } else if (currentWifiConnected) {
     // Jika WiFi sudah terhubung:
@@ -489,7 +489,7 @@ void loop() {
       WiFi.scanDelete();
     }
     if (modemCheckState != MODEM_CHECK_IDLE) {
-      Serial.println("✅ [Modem] WiFi terhubung! Pengecekan selesai, trigger modem DIBATALKAN.");
+      Serial.println("[OK] [Modem] WiFi terhubung! Pengecekan selesai, trigger modem DIBATALKAN.");
       modemCheckState = MODEM_CHECK_IDLE;
     }
     if (!modemFirstTriggerDone) {
@@ -497,7 +497,7 @@ void loop() {
     }
     if (modemRetryMode) {
       modemRetryMode = false;
-      Serial.println("📡 [Modem] WiFi terhubung! Retry modem dihentikan.");
+      Serial.println("[Modem] WiFi terhubung! Retry modem dihentikan.");
     }
   } else {
     // WiFi saat ini BELUM terhubung (misal dalam mode AP)
@@ -506,7 +506,7 @@ void loop() {
       if (modemFirstTriggerDone && !modemRetryMode && (now - modemFirstTriggerTime >= modemWaitWifiMs)) {
         modemRetryMode = true;
         modemLastRetryTrigger = 0; // Agar langsung trigger pada siklus ini
-        Serial.println("📡 [Modem] 2 menit tanpa WiFi, masuk mode retry...");
+        Serial.println("[Modem] 2 menit tanpa WiFi, masuk mode retry...");
       }
 
       // 2. Evaluasi apakah sudah waktunya trigger (trigger pertama 30s boot delay ATAU interval retry 30s)
@@ -516,7 +516,7 @@ void loop() {
       if (needFirstTrigger || needRetryTrigger) {
         // Sebelum trigger modem, cek terlebih dahulu apakah WiFi tersimpan tersedia
         if (wifiSsid.length() == 0) {
-          Serial.println("📡 [Modem] Tidak ada SSID WiFi tersimpan, langsung trigger modem...");
+          Serial.println("[Modem] Tidak ada SSID WiFi tersimpan, langsung trigger modem...");
           if (!modemFirstTriggerDone) {
             modemFirstTriggerDone = true;
             modemFirstTriggerTime = now;
@@ -525,7 +525,7 @@ void loop() {
           }
           startModemPulse();
         } else {
-          Serial.printf("📡 [Modem] %s: Memeriksa ketersediaan WiFi tersimpan '%s' sebelum trigger...\n",
+          Serial.printf("[Modem] %s: Memeriksa ketersediaan WiFi tersimpan '%s' sebelum trigger...\n",
                         needRetryTrigger ? "Retry Trigger" : "Trigger Pertama", wifiSsid.c_str());
 
           // Mulai scan WiFi secara asinkron agar tidak memblokir Web Server & sensor
@@ -545,7 +545,7 @@ void loop() {
       if (scanStatus == WIFI_SCAN_RUNNING) {
         // Cek batas waktu scan (maksimal 6 detik)
         if (now - modemCheckStartTime >= 6000) {
-          Serial.println("⚠️ [Modem] Scan WiFi timeout (>6s). WiFi belum terhubung, memicu modem...");
+          Serial.println("[WARN] [Modem] Scan WiFi timeout (>6s). WiFi belum terhubung, memicu modem...");
           if (!modemFirstTriggerDone) {
             modemFirstTriggerDone = true;
             modemFirstTriggerTime = now;
@@ -556,7 +556,7 @@ void loop() {
           startModemPulse();
         }
       } else if (scanStatus == WIFI_SCAN_FAILED || scanStatus < 0) {
-        Serial.println("⚠️ [Modem] Scan WiFi gagal. WiFi belum terhubung, memicu modem...");
+        Serial.println("[WARN] [Modem] Scan WiFi gagal. WiFi belum terhubung, memicu modem...");
         if (!modemFirstTriggerDone) {
           modemFirstTriggerDone = true;
           modemFirstTriggerTime = now;
@@ -579,15 +579,15 @@ void loop() {
         WiFi.scanDelete(); // Bebaskan memori buffer scan
 
         if (ssidFound) {
-          Serial.printf("📶 [Modem] WiFi tersimpan '%s' TERSEDIA (RSSI: %d dBm)! Mencoba hubungkan ulang...\n",
+          Serial.printf("[Modem] WiFi tersimpan '%s' TERSEDIA (RSSI: %d dBm)! Mencoba hubungkan ulang...\n",
                         wifiSsid.c_str(), rssiFound);
           WiFi.disconnect(false);
           WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
           modemCheckState = MODEM_CHECK_CONNECTING;
           modemCheckStartTime = now;
         } else {
-          Serial.printf("❌ [Modem] WiFi tersimpan '%s' TIDAK TERSEDIA di sekitar.\n", wifiSsid.c_str());
-          Serial.println("📡 [Modem] Belum terhubung, menjalankan trigger modem via GPIO 16...");
+          Serial.printf("[ERROR] [Modem] WiFi tersimpan '%s' TIDAK TERSEDIA di sekitar.\n", wifiSsid.c_str());
+          Serial.println("[Modem] Belum terhubung, menjalankan trigger modem via GPIO 16...");
           if (!modemFirstTriggerDone) {
             modemFirstTriggerDone = true;
             modemFirstTriggerTime = now;
@@ -601,8 +601,8 @@ void loop() {
     } else if (modemCheckState == MODEM_CHECK_CONNECTING) {
       // Sedang mencoba menghubungkan ulang ke WiFi tersimpan yang terdeteksi
       if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("✅ [Modem] BERHASIL TERHUBUNG ke WiFi '%s'!\n", wifiSsid.c_str());
-        Serial.println("📡 [Modem] Karena WiFi sudah terhubung, trigger modem DIBATALKAN.");
+        Serial.printf("[OK] [Modem] BERHASIL TERHUBUNG ke WiFi '%s'!\n", wifiSsid.c_str());
+        Serial.println("[Modem] Karena WiFi sudah terhubung, trigger modem DIBATALKAN.");
         if (!modemFirstTriggerDone) {
           modemFirstTriggerDone = true;
         }
@@ -610,8 +610,8 @@ void loop() {
         modemCheckState = MODEM_CHECK_IDLE;
       } else if (now - modemCheckStartTime >= 8000) {
         // Timeout 8 detik: WiFi terdeteksi namun gagal terkoneksi (misal auth timeout/router belum siap)
-        Serial.println("❌ [Modem] Timeout koneksi ulang (8 detik). WiFi belum berhasil terhubung.");
-        Serial.println("📡 [Modem] Menjalankan trigger modem via GPIO 16...");
+        Serial.println("[ERROR] [Modem] Timeout koneksi ulang (8 detik). WiFi belum berhasil terhubung.");
+        Serial.println("[Modem] Menjalankan trigger modem via GPIO 16...");
         WiFi.disconnect(false); // Hentikan attempt agar tidak mengganggu SoftAP
         if (!modemFirstTriggerDone) {
           modemFirstTriggerDone = true;
@@ -626,7 +626,7 @@ void loop() {
   }
 
   // 9. SINKRONISASI WAKTU NTP SAAT WiFi BARU TERHUBUNG
-  // Deteksi transisi WiFi: dari belum tersambung → tersambung → langsung sync NTP
+  // Deteksi transisi WiFi: dari belum tersambung -> tersambung -> langsung sync NTP
   if (WiFi.status() == WL_CONNECTED && !ntpSyncAttempted) {
     ntpSyncAttempted = true;
     if (!ntpSynced) {
@@ -639,7 +639,7 @@ void loop() {
 
   // 10. Eksekusi Restart ESP32 Tertunda (dipicu dari Web Dashboard)
   if (shouldRestart && (now - restartTriggerTime >= 1000)) {
-    Serial.println("🔄 Merestart ESP32...");
+    Serial.println("Merestart ESP32...");
     ESP.restart();
   }
 }
@@ -653,9 +653,9 @@ void initHardware() {
     oledReady = true;
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
-    Serial.println("✅ OLED SSD1306 (0x3C) Siap");
+    Serial.println("[OK] OLED SSD1306 (0x3C) Siap");
   } else {
-    Serial.println("⚠️ OLED SSD1306 tidak terdeteksi");
+    Serial.println("[WARN] OLED SSD1306 tidak terdeteksi");
   }
 
   // 2. RTC DS3231 (0x68)
@@ -668,9 +668,9 @@ void initHardware() {
     rtcHour = now.hour();
     rtcMinute = now.minute();
     rtcSecond = now.second();
-    Serial.println("✅ RTC DS3231 (0x68) Siap");
+    Serial.println("[OK] RTC DS3231 (0x68) Siap");
   } else {
-    Serial.println("⚠️ RTC DS3231 tidak terdeteksi, menggunakan timer internal");
+    Serial.println("[WARN] RTC DS3231 tidak terdeteksi, menggunakan timer internal");
   }
 
   // 3. INA226 (0x40)
@@ -678,17 +678,17 @@ void initHardware() {
     inaReady = true;
     ina226.waitUntilConversionCompleted();
     ina226.setResistorRange(0.1, 1.3); // Shunt 0.1 Ohm
-    Serial.println("✅ INA226 (0x40) Siap");
+    Serial.println("[OK] INA226 (0x40) Siap");
   } else {
-    Serial.println("⚠️ INA226 tidak terdeteksi");
+    Serial.println("[WARN] INA226 tidak terdeteksi");
   }
 
   // 4. VL53L0X (0x29)
   if (sensorVL53.begin(VL53_I2C_ADDR)) {
     vl53Ready = true;
-    Serial.println("✅ VL53L0X (0x29) Siap");
+    Serial.println("[OK] VL53L0X (0x29) Siap");
   } else {
-    Serial.println("⚠️ VL53L0X tidak terdeteksi");
+    Serial.println("[WARN] VL53L0X tidak terdeteksi");
   }
 }
 
@@ -756,7 +756,7 @@ void readSensors() {
           blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
           lastBlowerTrigger = nowMs;
           pestCounter++;
-          Serial.print("⚡🌀 Hama Terdeteksi Sensor! Jarak: ");
+          Serial.print("[DETEKSI] Hama Terdeteksi Sensor! Jarak: ");
           Serial.print(currentDistance);
           Serial.print(" mm | Blower ON selama ");
           Serial.print(manualDurationSec);
@@ -820,7 +820,7 @@ void updateActuators() {
         if (rotIntervalMs > 0 && (now - lastLedRotate >= rotIntervalMs)) {
           lastLedRotate = now;
           activePreset = (activePreset + 1) % 5;
-          Serial.print("🎨 [Auto-Rotate LED] Beralih ke Preset ");
+          Serial.print("[Auto-Rotate LED] Beralih ke Preset ");
           Serial.print(activePreset + 1);
           Serial.print(": ");
           Serial.println(presets[activePreset].name);
@@ -856,7 +856,7 @@ void updateActuators() {
         zapperActive = true;
         blowerOffTime = now + ((unsigned long)manualDurationSec * 1000UL);
         lastBlowerTimeCycle = now;
-        Serial.print("🌀 [Blower Siklus Waktu] Blower ON selama ");
+        Serial.print("[Blower Siklus Waktu] Blower ON selama ");
         Serial.print(manualDurationSec);
         Serial.println(" detik (Interval Berkala)");
       }
@@ -887,7 +887,7 @@ void handlePhysicalButtons() {
     if (now - bt1LastPress > 300) {
       bt1LastPress = now;
       activePreset = (activePreset + 1) % 5;
-      Serial.print("🔘 [Tombol 1] Ganti Preset ke: ");
+      Serial.print("[Tombol 1] Ganti Preset ke: ");
       Serial.print(activePreset + 1);
       Serial.print(" - ");
       Serial.println(presets[activePreset].name);
@@ -907,7 +907,7 @@ void handlePhysicalButtons() {
     } else {
       // Jika ditahan lebih dari 2 detik -> Masuk ke MODE SLEEP
       if (now - bt2PressStart >= 2000) {
-        Serial.println("💤 [Tombol 2 Tahan 2 Detik] Masuk ke SLEEP MODE!");
+        Serial.println("[Tombol 2 Tahan 2 Detik] Masuk ke SLEEP MODE!");
         enterDeepSleep();
       }
     }
@@ -924,7 +924,7 @@ void handlePhysicalButtons() {
           lastManualCycleStart = millis();
         }
 
-        Serial.print("🔘 [Tombol 2] Ganti Mode ke: ");
+        Serial.print("[Tombol 2] Ganti Mode ke: ");
         if (currentMode == MODE_MANUAL) Serial.println("MANUAL");
         else if (currentMode == MODE_OTOMATIS) Serial.println("OTOMATIS");
         else if (currentMode == MODE_OTOMATIS_LED) Serial.println("OTOMATIS-LED");
@@ -941,7 +941,7 @@ void handlePhysicalButtons() {
     if (now - bt3LastPress > 2000) {
       bt3LastPress = now;
       pestCounter = 0;
-      Serial.println("🔄 [Tombol 3] Counter Hama Direset ke 0");
+      Serial.println("[Tombol 3] Counter Hama Direset ke 0");
       savePreferences();
       sendTelemetryToEws();
     }
@@ -952,7 +952,7 @@ void handlePhysicalButtons() {
 // 11. DEEP SLEEP (BENAR-BENAR MEMATIKAN SISTEM)
 // ==============================================================================
 void enterDeepSleep() {
-  Serial.println("\n💤 Mempersiapkan Sistem untuk Memasuki DEEP SLEEP...");
+  Serial.println("\n[SLEEP] Mempersiapkan Sistem untuk Memasuki DEEP SLEEP...");
 
   // 1. Matikan Beban Lampu LED WS2812B
   turnOffLed();
@@ -986,7 +986,7 @@ void enterDeepSleep() {
   // 6. Konfigurasi Tombol Wakeup (Bangun dari LOW/GND saat ditekan)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BT2, 0); // Tombol 2 sebagai pemicu bangun
 
-  Serial.println("💤 Sistem Mati. Masuk Deep Sleep sekarang. Tekan Tombol 2 untuk bangun.");
+  Serial.println("[SLEEP] Sistem Mati. Masuk Deep Sleep sekarang. Tekan Tombol 2 untuk bangun.");
   delay(100);
   esp_deep_sleep_start();
 }
@@ -1076,408 +1076,781 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:,">
-  <title>Smart Pest Trap</title>
+  <title>Smart Pest Trap - Local Control</title>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 12px; line-height: 1.4; }
-    .wrap { max-width: 520px; margin: auto; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    h2 { margin: 0; font-size: 1.25rem; color: #38bdf8; }
-    .badge { font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: bold; background: #334155; }
-    .badge-ok { background: #065f46; color: #34d399; }
-    .badge-bad { background: #991b1b; color: #f87171; }
+    :root {
+      --bg: #0f172a; --card: #1e293b; --card-hover: #24344d; --border: #334155;
+      --text: #f8fafc; --text-muted: #94a3b8; --primary: #0284c7; --primary-glow: #38bdf8;
+      --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --accent: #8b5cf6;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 12px; line-height: 1.4; }
+    .wrap { max-width: 580px; margin: auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 4px 0; }
+    .title-group h2 { margin: 0; font-size: 1.2rem; color: var(--primary-glow); display: flex; align-items: center; gap: 6px; }
+    .title-group p { margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted); }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 600; background: var(--border); }
+    .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); }
+    .badge-bad { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.4); }
     .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-    .tab { flex: 1; padding: 8px 4px; border: none; border-radius: 8px; background: #1e293b; color: #94a3b8; font-weight: 600; font-size: 13px; cursor: pointer; text-align: center; border: 1px solid #334155; }
-    .tab.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
-    .card { background: #1e293b; border-radius: 10px; padding: 14px; border: 1px solid #334155; margin-bottom: 12px; }
-    .panel { display: none; }
-    .panel.active { display: block; }
-    .row { margin-bottom: 10px; }
-    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; font-weight: 500; }
-    input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 14px; }
-    input:focus, select:focus { outline: none; border-color: #38bdf8; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .btn { display: block; width: 100%; padding: 10px; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; text-align: center; margin-top: 6px; box-sizing: border-box; }
-    .btn-blue { background: #0284c7; color: #fff; }
-    .btn-green { background: #059669; color: #fff; }
-    .btn-amber { background: #d97706; color: #fff; }
-    .btn-red { background: #dc2626; color: #fff; }
-    .btn-gray { background: #475569; color: #fff; }
-    .btn-sm { padding: 6px 10px; font-size: 12px; margin-top: 0; }
-    .stat-val { font-size: 17px; font-weight: bold; color: #f1f5f9; }
-    .stat-label { font-size: 11px; color: #94a3b8; }
-    .msg { font-size: 12px; text-align: center; margin-top: 8px; min-height: 18px; }
-    .preset-item { display: flex; align-items: center; gap: 8px; background: #0f172a; padding: 6px 10px; border-radius: 6px; margin-bottom: 5px; font-size: 13px; }
-    .dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #fff; }
+    .tab { flex: 1; padding: 9px 4px; border: none; border-radius: 8px; background: var(--card); color: var(--text-muted); font-weight: 600; font-size: 13px; cursor: pointer; text-align: center; border: 1px solid var(--border); transition: all 0.2s; }
+    .tab.active { background: var(--primary); color: #fff; border-color: var(--primary-glow); box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--primary-glow); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .stat-tile { background: rgba(15, 23, 42, 0.6); padding: 8px; border-radius: 8px; border: 1px solid var(--border); text-align: center; }
+    .stat-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+    .stat-val { font-size: 15px; font-weight: bold; margin-top: 2px; color: #fff; }
+    .mode-card, .opt-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s; background: rgba(15, 23, 42, 0.5); text-align: left; }
+    .mode-card:hover, .opt-card:hover { border-color: var(--primary-glow); background: var(--card-hover); }
+    .mode-card.selected, .opt-card.selected { border-color: var(--primary-glow); background: rgba(56, 189, 248, 0.12); box-shadow: 0 0 12px rgba(56, 189, 248, 0.2); }
+    .mode-card h4, .opt-card h4 { margin: 0; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 6px; }
+    .mode-card p, .opt-card p { margin: 4px 0 0 0; font-size: 11px; color: var(--text-muted); }
+    .preset-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .preset-item { display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    .preset-item.active-preset { border-color: var(--success); background: rgba(16, 185, 129, 0.1); }
+    .preset-info { display: flex; align-items: center; gap: 10px; }
+    .color-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 6px rgba(0,0,0,0.5); flex-shrink: 0; }
+    .preset-name { font-size: 13px; font-weight: 600; color: #fff; }
+    .preset-rgb { font-size: 10px; color: var(--text-muted); }
+    .preset-actions { display: flex; gap: 6px; }
+    .form-group { margin-bottom: 10px; }
+    label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
+    input, select { width: 100%; padding: 8px 10px; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; color: #fff; font-size: 13px; }
+    input:focus, select:focus { outline: none; border-color: var(--primary-glow); }
+    .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .slider-row input[type="range"] { flex: 1; padding: 0; height: 6px; }
+    .slider-row span { width: 35px; text-align: right; font-size: 12px; font-weight: bold; }
+    button { padding: 9px 12px; border: none; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn-primary { background: var(--primary); color: #fff; width: 100%; }
+    .btn-primary:hover { background: #0369a1; }
+    .btn-success { background: var(--success); color: #fff; width: 100%; }
+    .btn-success:hover { background: #059669; }
+    .btn-action { background: #334155; color: #f8fafc; font-size: 12px; padding: 6px 10px; }
+    .btn-action:hover { background: #475569; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-warn { background: var(--warning); color: #1e293b; font-weight: 700; }
+    .swatch-box { height: 36px; border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.8); margin-bottom: 8px; }
+    .alert-banner { display: none; padding: 10px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+    .alert-ok { background: rgba(16, 185, 129, 0.15); border: 1px solid var(--success); color: #34d399; }
+    .alert-err { background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); color: #f87171; }
+    .drawer { background: #162032; border: 1px dashed var(--primary-glow); border-radius: 10px; padding: 12px; margin-top: 10px; display: none; }
+    .tag-active { font-size: 10px; padding: 3px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); font-weight: bold; }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="header">
-    <h2>🌾 Smart Pest Trap</h2>
-    <span id="txt_trap" class="badge">TRAP</span>
+    <div class="title-group">
+      <h2><span id="hdr_trap_name">Smart Pest Trap</span></h2>
+      <p>ID: <span id="hdr_trap_id">--</span> &bull; <span id="hdr_ws_badge" class="badge">IoT Cloud: --</span></p>
+    </div>
+    <div style="text-align: right;">
+      <span id="hdr_clock" class="badge">--:--:--</span>
+    </div>
   </div>
 
-  <!-- NAVIGASI TAB RINGAN -->
+  <div id="alert_box" class="alert-banner"></div>
+
   <div class="tabs">
-    <button class="tab active" onclick="goTab('wifi', this)">📶 WiFi</button>
-    <button class="tab" onclick="goTab('server', this)">⚙️ Server</button>
-    <button class="tab" onclick="goTab('ctrl', this)">📊 Kontrol</button>
+    <button class="tab active" onclick="openTab('p_ctrl')">Kontrol & Config</button>
+    <button class="tab" onclick="openTab('p_wifi')">WiFi</button>
+    <button class="tab" onclick="openTab('p_server')">Server & Modem</button>
   </div>
 
-  <!-- TAB 1: WIFI MANAGER -->
-  <div id="p_wifi" class="panel active">
+  <!-- TAB 1: KONTROL & KONFIGURASI LENGKAP -->
+  <div id="p_ctrl">
+    <!-- Quick Stats -->
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-weight:bold;font-size:14px;color:#38bdf8">📶 Pengaturan WiFi</span>
-        <span id="wifi_badge" class="badge">...</span>
+      <div class="card-title">
+        <span>Status Telemetri & Sensor</span>
+        <span id="hdr_uv_badge" class="badge badge-bad">UV: OFF</span>
       </div>
-      <div class="row" style="font-size:12px;color:#cbd5e1;background:#0f172a;padding:8px;border-radius:6px">
-        IP: <b id="txt_ip">-</b> | SSID: <b id="txt_cur_ssid">-</b>
+      <div class="grid-3" style="margin-bottom: 8px;">
+        <div class="stat-tile"><div class="stat-lbl">Tegangan Aki</div><div class="stat-val" id="s_volt">-- V</div></div>
+        <div class="stat-tile"><div class="stat-lbl">Arus Beban</div><div class="stat-val" id="s_curr">-- mA</div></div>
+        <div class="stat-tile"><div class="stat-lbl">Jarak Wadah</div><div class="stat-val" id="s_dist">-- mm</div></div>
       </div>
-
-      <div class="row" style="margin-top:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <label style="margin:0">Daftar WiFi Terdekat:</label>
-          <button class="btn btn-blue btn-sm" id="btn_scan" onclick="scanWifi()">🔍 Scan Ulang</button>
-        </div>
-        <select id="sel_wifi" onchange="pickWifi(this.value)">
-          <option value="">-- Tekan Scan WiFi --</option>
-        </select>
+      <div class="grid-3">
+        <div class="stat-tile"><div class="stat-lbl">Total Hama</div><div class="stat-val" id="s_count" style="color:#38bdf8;">--</div></div>
+        <div class="stat-tile"><div class="stat-lbl">Kapasitas</div><div class="stat-val" id="s_cap">-- %</div></div>
+        <div class="stat-tile"><div class="stat-lbl">Status Blower</div><div class="stat-val" id="s_blower_txt" style="font-size:13px;">--</div></div>
       </div>
-
-      <div class="row">
-        <label>SSID WiFi:</label>
-        <input type="text" id="w_ssid" placeholder="Nama WiFi / Hotspot">
-      </div>
-      <div class="row">
-        <label>Password WiFi:</label>
-        <input type="password" id="w_pass" placeholder="Password WiFi">
-      </div>
-      <button class="btn btn-green" onclick="saveWifi()">💾 Simpan &amp; Hubungkan WiFi</button>
-      <div id="msg_wifi" class="msg"></div>
     </div>
-  </div>
 
-  <!-- TAB 2: SERVER & IDENTITAS -->
-  <div id="p_server" class="panel">
+    <!-- Ringkasan Aktuator & Parameter Saat Ini -->
+    <div class="card" style="background: rgba(15, 23, 42, 0.4); border-style: dashed;">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+        <div><strong>Warna Aktif:</strong> <span id="sum_color_badge" class="badge">--</span></div>
+        <div><strong>Mode Operasi:</strong> <span id="sum_mode_badge" class="badge">--</span></div>
+      </div>
+    </div>
+
+    <!-- Mode Kerja Operasional (Sama seperti IoT Dashboard) -->
     <div class="card">
-      <span style="font-weight:bold;font-size:14px;color:#38bdf8;display:block;margin-bottom:10px">⚙️ WebSocket &amp; Identitas</span>
+      <div class="card-title">Mode Kerja Operasional</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div class="mode-card" id="mode_card_manual" onclick="selectMode('manual')">
+          <h4>Manual (Interval & Durasi)</h4>
+          <p>Aktuator menyala berkala selama durasi tertentu setiap interval waktu yang ditentukan.</p>
+        </div>
+        <div class="mode-card" id="mode_card_otomatis" onclick="selectMode('otomatis')">
+          <h4>Otomatis (Jadwal RTC)</h4>
+          <p>Lampu dan blower aktif otomatis mengikuti jam operasional malam hari (Start s/d End).</p>
+        </div>
+        <div class="mode-card" id="mode_card_otomatis_led" onclick="selectMode('otomatis_led')">
+          <h4>Otomatis + Rotasi LED</h4>
+          <p>Aktif mengikuti jadwal malam hari dengan rotasi warna preset RGB bergantian secara berkala.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parameter Blower & Lampu LED (Sama seperti IoT Dashboard) -->
+    <div class="card">
+      <div class="card-title">Parameter Blower & Lampu LED</div>
       
-      <div class="grid">
-        <div class="row">
-          <label>Trap ID (ID Unik):</label>
-          <input type="text" id="s_id" placeholder="TRAP-01">
-        </div>
-        <div class="row">
-          <label>Nama Perangkap:</label>
-          <input type="text" id="s_name" placeholder="Kebun Kopi">
-        </div>
-      </div>
-
-      <div class="grid">
-        <div class="row">
-          <label>Host WebSocket:</label>
-          <input type="text" id="s_host" placeholder="be-ews.qbyte.web.id">
-        </div>
-        <div class="row">
-          <label>Port:</label>
-          <input type="number" id="s_port" placeholder="443">
+      <div style="margin-bottom:12px;">
+        <label>Mode Pemicu Blower</label>
+        <div class="grid-2">
+          <div class="opt-card" id="opt_bl_sensor" onclick="selectBlowerMode('sensor')">
+            <h4>Sensor Deteksi</h4>
+            <p>Blower aktif hanya saat sensor mendeteksi serangga masuk.</p>
+          </div>
+          <div class="opt-card" id="opt_bl_time" onclick="selectBlowerMode('time')">
+            <h4>Selalu Aktif</h4>
+            <p>Blower aktif terus-menerus selama lampu atraktor menyala.</p>
+          </div>
         </div>
       </div>
 
-      <div class="grid">
-        <div class="row">
-          <label>Path:</label>
-          <input type="text" id="s_path" placeholder="/ws">
-        </div>
-        <div class="row">
-          <label>SSL (WSS):</label>
-          <select id="s_ssl">
-            <option value="1">WSS (SSL Port 443)</option>
-            <option value="0">WS Biasa (Port 80)</option>
-          </select>
+      <div>
+        <label>Mode Pergantian Lampu LED</label>
+        <div class="grid-2">
+          <div class="opt-card" id="opt_led_fixed" onclick="selectLedRunning(false)">
+            <h4>1 Warna Statis</h4>
+            <p>LED menyala menggunakan preset warna pilihan tetap.</p>
+          </div>
+          <div class="opt-card" id="opt_led_running" onclick="selectLedRunning(true)">
+            <h4>Berganti (Running)</h4>
+            <p>Warna LED berganti otomatis antar preset setiap interval rotasi.</p>
+          </div>
         </div>
       </div>
-
-      <button class="btn btn-blue" onclick="saveServer()">💾 Simpan Konfigurasi Server</button>
-      <button class="btn btn-red" onclick="rebootEsp()">🔄 Restart ESP32</button>
-      <div id="msg_server" class="msg"></div>
     </div>
 
+    <!-- Koleksi Preset Warna Lampu (RGB Atraktor) -->
     <div class="card">
-      <span style="font-weight:bold;font-size:14px;color:#38bdf8;display:block;margin-bottom:10px">📡 Pengaturan Modem WiFi (GPIO 16)</span>
-      <div class="grid">
-        <div class="row">
-          <label>Durasi Pulse LOW (detik):</label>
-          <input type="number" id="m_pulse" placeholder="3" min="1" max="30" step="1">
+      <div class="card-title">
+        <span>Koleksi Preset Warna Lampu (Atraktor)</span>
+        <span style="font-size:10px; color:var(--text-muted);">Pilih aktif atau edit RGB</span>
+      </div>
+      <div class="preset-list" id="preset_container">
+        <!-- Rendered via JavaScript -->
+      </div>
+
+      <!-- Drawer / Editor Preset Warna -->
+      <div id="preset_editor" class="drawer">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="color:var(--primary-glow); font-size:13px;" id="edit_preset_title">Edit Preset</strong>
+          <button class="btn-action" onclick="closePresetEditor()" style="padding:2px 8px;">X Tutup</button>
         </div>
-        <div class="row">
-          <label>Delay Boot Awal (detik):</label>
-          <input type="number" id="m_boot" placeholder="30" min="5" max="300" step="1">
+        <div id="swatch_preview" class="swatch-box">WARNA PREVIEW</div>
+        <div class="form-group">
+          <label>Nama Preset</label>
+          <input type="text" id="edit_p_name" maxlength="15">
+        </div>
+        <div class="form-group">
+          <label style="color:#f87171;">Merah (Red): <span id="val_r">0</span></label>
+          <div class="slider-row">
+            <input type="range" id="slider_r" min="0" max="255" oninput="onColorSliderChange()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="color:#4ade80;">Hijau (Green): <span id="val_g">0</span></label>
+          <div class="slider-row">
+            <input type="range" id="slider_g" min="0" max="255" oninput="onColorSliderChange()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="color:#60a5fa;">Biru (Blue): <span id="val_b">0</span></label>
+          <div class="slider-row">
+            <input type="range" id="slider_b" min="0" max="255" oninput="onColorSliderChange()">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="saveEditedPreset()">Simpan Perubahan Preset Ini</button>
+      </div>
+    </div>
+
+    <!-- Detail Konfigurasi Waktu & Durasi (Sama seperti IoT Dashboard) -->
+    <div class="card">
+      <div class="card-title">Detail Konfigurasi Waktu & Durasi</div>
+      
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Jam Mulai (Start)</label>
+          <input type="time" id="cfg_start_time" onchange="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Jam Selesai (End)</label>
+          <input type="time" id="cfg_end_time" onchange="markDirty()">
         </div>
       </div>
-      <div class="grid">
-        <div class="row">
-          <label>Interval Retry (detik):</label>
-          <input type="number" id="m_retry" placeholder="30" min="10" max="300" step="1">
+
+      <div class="form-group">
+        <label>Interval Rotasi LED (Menit)</label>
+        <input type="number" id="cfg_rot_interval" min="1" max="180" onchange="markDirty()">
+        <small style="font-size:10px; color:var(--text-muted);">Aktif saat Mode Rotasi LED atau Lampu Running menyala (1 - 180 mnt).</small>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Interval Siklus Manual (Menit)</label>
+          <input type="number" id="cfg_man_interval" min="1" max="1440" onchange="markDirty()">
+          <small style="font-size:10px; color:var(--text-muted);">Jeda antar siklus aktif.</small>
         </div>
-        <div class="row">
-          <label>Tunggu WiFi Maks (detik):</label>
-          <input type="number" id="m_wait" placeholder="120" min="30" max="600" step="1">
+        <div class="form-group">
+          <label>Durasi Aktif Manual (Detik)</label>
+          <input type="number" id="cfg_man_duration" min="1" max="3600" onchange="markDirty()">
+          <small style="font-size:10px; color:var(--text-muted);">Lama aktif per siklus.</small>
         </div>
       </div>
-      <button class="btn btn-green" onclick="saveModem()">💾 Simpan Pengaturan Modem</button>
-      <div id="msg_modem" class="msg"></div>
+    </div>
+
+    <!-- Tombol Simpan / Sinkron Utama -->
+    <div class="card" style="border-color:var(--primary-glow); background: rgba(2, 132, 199, 0.08);">
+      <button class="btn-success" id="btn_save_all" onclick="applyAllControlConfig()" style="font-size:14px; padding:12px;">
+        Terapkan & Simpan Semua Pengaturan
+      </button>
+      <div style="font-size:11px; color:var(--text-muted); text-align:center; margin-top:6px;">
+        Pengaturan akan tersimpan di memori ESP32 & disinkronkan ke IoT Cloud secara real-time.
+      </div>
+    </div>
+
+    <!-- Kontrol Cepat & Saklar Manual Langsung -->
+    <div class="card">
+      <div class="card-title">Saklar & Uji Manual Langsung</div>
+      <div class="grid-2" style="margin-bottom:8px;">
+        <button class="btn-action" id="btn_tog_uv" onclick="toggleUv()">Saklar UV LED: --</button>
+        <button class="btn-action" id="btn_tog_bl" onclick="toggleBlower()">Saklar Blower: --</button>
+      </div>
+      <div class="grid-3">
+        <button class="btn-action" onclick="triggerZap()">Uji Zap (1x)</button>
+        <button class="btn-action" onclick="resetCounter()">Reset Counter</button>
+        <button class="btn-warn" onclick="enterSleep()">Mode Sleep</button>
+      </div>
     </div>
   </div>
 
-  <!-- TAB 3: KONTROL & MONITORING -->
-  <div id="p_ctrl" class="panel">
+  <!-- TAB 2: PENGATURAN WIFI -->
+  <div id="p_wifi" style="display:none;">
     <div class="card">
-      <div class="grid" style="text-align:center">
-        <div><div class="stat-label">Tegangan Aki</div><div class="stat-val" id="d_bat">-</div></div>
-        <div><div class="stat-label">Arus Beban</div><div class="stat-val" id="d_curr">-</div></div>
-        <div><div class="stat-label">Jarak Objek</div><div class="stat-val" id="d_dist">-</div></div>
-        <div><div class="stat-label">Total Hama</div><div class="stat-val" id="d_pest">-</div></div>
-        <div><div class="stat-label">Jam RTC</div><div class="stat-val" id="d_rtc" style="font-size:15px">-</div></div>
-        <div><div class="stat-label">IoT Cloud</div><div class="stat-val" id="d_ws" style="font-size:14px">-</div></div>
+      <div class="card-title">Koneksi WiFi Lapangan</div>
+      <div class="form-group">
+        <label>Pilih Jaringan Sekitar</label>
+        <div style="display:flex; gap:6px;">
+          <select id="wifi_list" onchange="document.getElementById('wifi_ssid').value = this.value"><option>Memindai...</option></select>
+          <button class="btn-action" onclick="scanWifi()">Scan</button>
+        </div>
       </div>
+      <div class="form-group">
+        <label>SSID WiFi</label>
+        <input type="text" id="wifi_ssid" placeholder="Nama WiFi">
+      </div>
+      <div class="form-group">
+        <label>Password WiFi</label>
+        <input type="password" id="wifi_pass" placeholder="Password WiFi">
+      </div>
+      <button class="btn-primary" onclick="saveWifi()">Hubungkan ke WiFi</button>
+    </div>
+  </div>
+
+  <!-- TAB 3: PENGATURAN SERVER & MODEM -->
+  <div id="p_server" style="display:none;">
+    <div class="card">
+      <div class="card-title">Konfigurasi IoT WebSocket Server</div>
+      <div class="form-group"><label>Trap ID</label><input type="text" id="cfg_trap_id"></div>
+      <div class="form-group"><label>Trap Name</label><input type="text" id="cfg_trap_name"></div>
+      <div class="form-group"><label>Host WebSocket</label><input type="text" id="cfg_ws_host"></div>
+      <div class="grid-2">
+        <div class="form-group"><label>Port</label><input type="number" id="cfg_ws_port"></div>
+        <div class="form-group"><label>Path</label><input type="text" id="cfg_ws_path"></div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="cfg_ws_ssl" style="width:auto;"> Gunakan Enkripsi SSL (WSS)
+        </label>
+      </div>
+      <button class="btn-primary" onclick="saveServer()">Simpan Konfigurasi Server</button>
     </div>
 
     <div class="card">
-      <label>Mode Operasional:</label>
-      <div class="grid">
-        <button class="btn btn-green btn-sm" onclick="setMode('manual')">MANUAL</button>
-        <button class="btn btn-blue btn-sm" onclick="setMode('otomatis')">OTOMATIS</button>
-        <button class="btn btn-amber btn-sm" onclick="setMode('otomatis-led')">ROTASI LED</button>
-        <button class="btn btn-red btn-sm" onclick="setMode('sleep')">SLEEP</button>
+      <div class="card-title">Manajemen Daya & Modem 4G</div>
+      <div class="grid-2">
+        <div class="form-group"><label>Pulse Power (ms)</label><input type="number" id="cfg_m_pulse"></div>
+        <div class="form-group"><label>Boot Delay (ms)</label><input type="number" id="cfg_m_boot"></div>
+        <div class="form-group"><label>Retry Interval (ms)</label><input type="number" id="cfg_m_retry"></div>
+        <div class="form-group"><label>Wait WiFi (ms)</label><input type="number" id="cfg_m_wait"></div>
       </div>
-      <div class="grid" style="margin-top:6px">
-        <button class="btn btn-amber btn-sm" onclick="toggleUv()">💡 Saklar LED UV</button>
-        <button class="btn btn-gray btn-sm" onclick="toggleBlower()">🌀 Test Blower</button>
+      <button class="btn-primary" onclick="saveModem()">Simpan Parameter Modem</button>
+      <div style="margin-top:12px;">
+        <button class="btn-danger" style="width:100%;" onclick="restartEsp()">Restart ESP32</button>
       </div>
-    </div>
-
-    <div class="card">
-      <label>Preset Warna Atraktor:</label>
-      <div id="preset_boxes"></div>
-      <div class="grid" style="margin-top:8px">
-        <div><label>Mulai:</label><input type="time" id="c_start"></div>
-        <div><label>Selesai:</label><input type="time" id="c_end"></div>
-      </div>
-      <button class="btn btn-blue btn-sm" style="margin-top:8px" onclick="saveSched()">💾 Simpan Jadwal</button>
     </div>
   </div>
 </div>
 
 <script>
-  let loaded = false;
-  let activeTabName = 'wifi';
-  let refreshTimer = null;
+  // Global State Sinkronisasi
+  let currentConfig = {
+    mode: 'manual',
+    blowerMode: 'sensor',
+    ledRunning: false,
+    activePreset: 0,
+    startTime: '18:00',
+    endTime: '06:00',
+    ledRotationInterval: 30,
+    manualIntervalMin: 15,
+    manualDurationSec: 30,
+    presets: []
+  };
 
-  function goTab(name, btn) {
-    activeTabName = name;
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('p_' + name).classList.add('active');
-    btn.classList.add('active');
+  let editingPresetIndex = -1;
+  let isDirty = false;
+  let pollTimer = null;
 
-    // Hanya aktifkan auto-polling live saat membuka tab Kontrol
-    if (name === 'ctrl') {
-      refresh();
-      if (!refreshTimer) refreshTimer = setInterval(refresh, 3000);
-    } else {
-      if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
+  function markDirty() {
+    isDirty = true;
+  }
+
+  function showAlert(msg, isErr) {
+    let b = document.getElementById('alert_box');
+    b.className = 'alert-banner ' + (isErr ? 'alert-err' : 'alert-ok');
+    b.innerHTML = msg;
+    b.style.display = 'block';
+    setTimeout(() => { b.style.display = 'none'; }, 4000);
+  }
+
+  function openTab(tabId) {
+    ['p_ctrl', 'p_wifi', 'p_server'].forEach(id => {
+      document.getElementById(id).style.display = (id === tabId) ? 'block' : 'none';
+    });
+    document.querySelectorAll('.tab').forEach((el, idx) => {
+      el.classList.toggle('active', ['p_ctrl', 'p_wifi', 'p_server'][idx] === tabId);
+    });
+    if (tabId === 'p_wifi') scanWifi();
+  }
+
+  // Pilihan Mode Kerja
+  function selectMode(m) {
+    currentConfig.mode = m;
+    markDirty();
+    updateModeSelectionUI();
+  }
+
+  function updateModeSelectionUI() {
+    ['manual', 'otomatis', 'otomatis_led'].forEach(m => {
+      let card = document.getElementById('mode_card_' + m);
+      if (card) {
+        card.classList.toggle('selected', currentConfig.mode === m || (m === 'otomatis_led' && currentConfig.mode === 'otomatis-led'));
       }
+    });
+  }
+
+  // Pilihan Blower Mode
+  function selectBlowerMode(bm) {
+    currentConfig.blowerMode = bm;
+    markDirty();
+    updateBlowerModeUI();
+  }
+
+  function updateBlowerModeUI() {
+    let s = document.getElementById('opt_bl_sensor');
+    let t = document.getElementById('opt_bl_time');
+    if (s && t) {
+      s.classList.toggle('selected', currentConfig.blowerMode === 'sensor');
+      t.classList.toggle('selected', currentConfig.blowerMode === 'time');
     }
   }
 
-  function refresh() {
-    fetch('/api/status').then(r => r.json()).then(d => {
-      document.getElementById('d_bat').innerText = d.batteryVoltage + ' V';
-      document.getElementById('d_curr').innerText = d.loadCurrent + ' mA';
-      document.getElementById('d_dist').innerText = d.currentDistance + ' mm';
-      document.getElementById('d_pest').innerText = d.photoelectricCount;
-      document.getElementById('d_rtc').innerText = d.currentTime;
-      
-      let ws = document.getElementById('d_ws');
-      ws.innerText = d.wsConnected ? 'CONNECT' : 'DISCONNECT';
-      ws.style.color = d.wsConnected ? '#34d399' : '#f87171';
-
-      let wb = document.getElementById('wifi_badge');
-      wb.innerText = d.wifiStatus;
-      wb.className = 'badge ' + (d.wifiStatus === 'TERKONEKSI' ? 'badge-ok' : 'badge-bad');
-
-      document.getElementById('txt_ip').innerText = d.wifiIp;
-      document.getElementById('txt_cur_ssid').innerText = d.wifiSsid || '-';
-      document.getElementById('txt_trap').innerText = d.trapId;
-
-      if (!loaded) {
-        document.getElementById('w_ssid').value = d.wifiSsid || '';
-        document.getElementById('s_id').value = d.trapId || '';
-        document.getElementById('s_name').value = d.trapName || '';
-        document.getElementById('s_host').value = d.wsHost || '';
-        document.getElementById('s_port').value = d.wsPort || 443;
-        document.getElementById('s_path').value = d.wsPath || '/ws';
-        document.getElementById('s_ssl').value = d.wsUseSsl ? '1' : '0';
-        document.getElementById('c_start').value = d.startTime || '18:00';
-        document.getElementById('c_end').value = d.endTime || '06:00';
-        document.getElementById('m_pulse').value = d.modemPulseSec || 3;
-        document.getElementById('m_boot').value = d.modemBootDelaySec || 30;
-        document.getElementById('m_retry').value = d.modemRetryIntervalSec || 30;
-        document.getElementById('m_wait').value = d.modemWaitWifiSec || 120;
-        loaded = true;
-      }
-
-      let phtml = '';
-      if (d.presets) {
-        d.presets.forEach((p, i) => {
-          phtml += `<div class="preset-item">
-            <div class="dot" style="background:rgb(${p.r},${p.g},${p.b})"></div>
-            <span style="flex:1">${i+1}. ${p.name}</span>
-            <button class="btn ${d.activePreset===i?'btn-green':'btn-gray'} btn-sm" onclick="setPreset(${i})">${d.activePreset===i?'AKTIF':'PILIH'}</button>
-          </div>`;
-        });
-        document.getElementById('preset_boxes').innerHTML = phtml;
-      }
-    }).catch(e => {});
+  // Pilihan LED Running Mode
+  function selectLedRunning(r) {
+    currentConfig.ledRunning = r;
+    markDirty();
+    updateLedRunningUI();
   }
 
-  function scanWifi() {
-    let b = document.getElementById('btn_scan');
-    let sel = document.getElementById('sel_wifi');
-    b.innerText = 'Memindai...';
-    b.disabled = true;
-    sel.innerHTML = '<option value="">Sedang memindai jaringan WiFi...</option>';
+  function updateLedRunningUI() {
+    let f = document.getElementById('opt_led_fixed');
+    let r = document.getElementById('opt_led_running');
+    if (f && r) {
+      f.classList.toggle('selected', !currentConfig.ledRunning);
+      r.classList.toggle('selected', !!currentConfig.ledRunning);
+    }
+  }
 
-    function pollScan() {
-      fetch('/api/wifi-scan').then(r => r.json()).then(res => {
-        if (res.status === 'scanning') {
-          setTimeout(pollScan, 600);
-          return;
+  // Render Preset List
+  function renderPresets() {
+    let c = document.getElementById('preset_container');
+    if (!currentConfig.presets || currentConfig.presets.length === 0) return;
+    
+    let html = '';
+    currentConfig.presets.forEach((p, idx) => {
+      let isActive = (currentConfig.activePreset === idx);
+      let rgbStr = `rgb(${p.r}, ${p.g}, ${p.b})`;
+      html += `
+        <div class="preset-item ${isActive ? 'active-preset' : ''}">
+          <div class="preset-info">
+            <div class="color-dot" style="background:${rgbStr};"></div>
+            <div>
+              <div class="preset-name">${p.name || ('Preset ' + (idx + 1))}</div>
+              <div class="preset-rgb">RGB(${p.r}, ${p.g}, ${p.b})</div>
+            </div>
+          </div>
+          <div class="preset-actions">
+            ${isActive 
+              ? '<span class="tag-active">AKTIF</span>' 
+              : `<button class="btn-action" onclick="choosePreset(${idx})">Pilih</button>`}
+            <button class="btn-action" onclick="openPresetEditor(${idx})">Edit</button>
+          </div>
+        </div>
+      `;
+    });
+    c.innerHTML = html;
+
+    // Update Ringkasan Warna
+    let curP = currentConfig.presets[currentConfig.activePreset];
+    if (curP) {
+      document.getElementById('sum_color_badge').innerHTML = 
+        `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgb(${curP.r},${curP.g},${curP.b});vertical-align:middle;margin-right:4px;"></span> ${curP.name}`;
+    }
+  }
+
+  function choosePreset(idx) {
+    currentConfig.activePreset = idx;
+    renderPresets();
+    fetch(`/api/preset?val=${idx}`, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => {
+        showAlert('Warna preset berhasil dipilih & diaktifkan');
+        refresh();
+      });
+  }
+
+  // Preset Editor
+  function openPresetEditor(idx) {
+    editingPresetIndex = idx;
+    let p = currentConfig.presets[idx];
+    if (!p) return;
+    document.getElementById('edit_preset_title').innerText = `Edit Preset #${idx + 1} (${p.name})`;
+    document.getElementById('edit_p_name').value = p.name || '';
+    document.getElementById('slider_r').value = p.r;
+    document.getElementById('slider_g').value = p.g;
+    document.getElementById('slider_b').value = p.b;
+    document.getElementById('val_r').innerText = p.r;
+    document.getElementById('val_g').innerText = p.g;
+    document.getElementById('val_b').innerText = p.b;
+    updateSwatchPreview();
+    document.getElementById('preset_editor').style.display = 'block';
+  }
+
+  function closePresetEditor() {
+    document.getElementById('preset_editor').style.display = 'none';
+    editingPresetIndex = -1;
+  }
+
+  function onColorSliderChange() {
+    let r = document.getElementById('slider_r').value;
+    let g = document.getElementById('slider_g').value;
+    let b = document.getElementById('slider_b').value;
+    document.getElementById('val_r').innerText = r;
+    document.getElementById('val_g').innerText = g;
+    document.getElementById('val_b').innerText = b;
+    updateSwatchPreview();
+  }
+
+  function updateSwatchPreview() {
+    let r = document.getElementById('slider_r').value;
+    let g = document.getElementById('slider_g').value;
+    let b = document.getElementById('slider_b').value;
+    let sb = document.getElementById('swatch_preview');
+    sb.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+    let lum = (0.299 * r + 0.587 * g + 0.114 * b);
+    sb.style.color = (lum > 130) ? '#0f172a' : '#ffffff';
+    sb.innerText = `RGB(${r}, ${g}, ${b})`;
+  }
+
+  function saveEditedPreset() {
+    if (editingPresetIndex < 0 || editingPresetIndex >= currentConfig.presets.length) return;
+    let name = document.getElementById('edit_p_name').value.trim() || ('Preset ' + (editingPresetIndex + 1));
+    let r = parseInt(document.getElementById('slider_r').value);
+    let g = parseInt(document.getElementById('slider_g').value);
+    let b = parseInt(document.getElementById('slider_b').value);
+
+    currentConfig.presets[editingPresetIndex].name = name;
+    currentConfig.presets[editingPresetIndex].r = r;
+    currentConfig.presets[editingPresetIndex].g = g;
+    currentConfig.presets[editingPresetIndex].b = b;
+
+    let payload = {
+      index: editingPresetIndex,
+      name: name,
+      r: r,
+      g: g,
+      b: b
+    };
+
+    fetch('/api/preset/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      showAlert(`Preset #${editingPresetIndex + 1} berhasil disimpan!`);
+      closePresetEditor();
+      renderPresets();
+      refresh();
+    })
+    .catch(err => {
+      showAlert('Gagal menyimpan preset: ' + err, true);
+    });
+  }
+
+  // Terapkan & Simpan Semua Pengaturan (Feature Parity dengan IoT Dashboard)
+  function applyAllControlConfig() {
+    let sTime = document.getElementById('cfg_start_time').value || '18:00';
+    let eTime = document.getElementById('cfg_end_time').value || '06:00';
+    let rotInt = parseInt(document.getElementById('cfg_rot_interval').value) || 30;
+    let manInt = parseInt(document.getElementById('cfg_man_interval').value) || 15;
+    let manDur = parseInt(document.getElementById('cfg_man_duration').value) || 30;
+
+    let payload = {
+      mode: currentConfig.mode,
+      blowerMode: currentConfig.blowerMode,
+      ledRunning: currentConfig.ledRunning,
+      activePreset: currentConfig.activePreset,
+      startTime: sTime,
+      endTime: eTime,
+      ledRotationInterval: rotInt,
+      manualIntervalMin: manInt,
+      manualDurationSec: manDur
+    };
+
+    let btn = document.getElementById('btn_save_all');
+    btn.disabled = true;
+    btn.innerText = 'Menyimpan & Mensinkronkan...';
+
+    fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      showAlert('Pengaturan berhasil diterapkan & disinkronkan ke IoT Cloud!');
+      isDirty = false;
+      btn.disabled = false;
+      btn.innerText = 'Terapkan & Simpan Semua Pengaturan';
+      refresh();
+    })
+    .catch(err => {
+      showAlert('Gagal menerapkan pengaturan: ' + err, true);
+      btn.disabled = false;
+      btn.innerText = 'Terapkan & Simpan Semua Pengaturan';
+    });
+  }
+
+  // Refresh Telemetri dan Status berkala
+  function refresh() {
+    fetch('/api/status')
+      .then(res => res.json())
+      .then(d => {
+        document.getElementById('hdr_trap_name').innerText = d.trapName || 'Smart Pest Trap';
+        document.getElementById('hdr_trap_id').innerText = d.trapId || '--';
+        document.getElementById('hdr_clock').innerText = d.currentTime || '--:--:--';
+
+        let wsBadge = document.getElementById('hdr_ws_badge');
+        if (d.wsConnected) {
+          wsBadge.className = 'badge badge-ok';
+          wsBadge.innerText = 'IoT Cloud: Terhubung';
+        } else {
+          wsBadge.className = 'badge badge-bad';
+          wsBadge.innerText = 'IoT Cloud: Terputus';
         }
-        b.innerText = '🔍 Scan Ulang';
-        b.disabled = false;
-        let list = res.list || [];
-        if (list.length === 0) {
-          sel.innerHTML = '<option value="">Tidak ada WiFi terdeteksi</option>';
-          return;
+
+        let volt = parseFloat(d.batteryVoltage || d.voltage || 0);
+        document.getElementById('s_volt').innerText = volt.toFixed(2) + ' V';
+        document.getElementById('s_curr').innerText = (d.loadCurrent !== undefined ? d.loadCurrent : (d.current || 0)) + ' mA';
+        document.getElementById('s_dist').innerText = (d.currentDistance !== undefined ? d.currentDistance : (d.distance || 0)) + ' mm';
+        let cnt = (d.photoelectricCount !== undefined ? d.photoelectricCount : (d.pestCounter || 0));
+        document.getElementById('s_count').innerText = cnt;
+        let cap = Math.min(100, Math.max(0, Math.round((cnt / 500) * 100)));
+        document.getElementById('s_cap').innerText = cap + ' %';
+        document.getElementById('s_blower_txt').innerText = (d.blowerStatus || d.blowerEnabled || d.zapperActive) ? 'AKTIF' : 'STANDBY';
+
+        let uvBadge = document.getElementById('hdr_uv_badge');
+        let isUvOn = d.ledIsOn || d.ledOn;
+        if (isUvOn) {
+          uvBadge.className = 'badge badge-ok';
+          uvBadge.innerText = 'UV: MENYALA';
+        } else {
+          uvBadge.className = 'badge badge-bad';
+          uvBadge.innerText = 'UV: OFF';
         }
-        let opt = '<option value="">-- Pilih WiFi (' + list.length + ' ditemukan) --</option>';
-        list.forEach(w => {
-          let lock = w.sec ? '🔒' : '🔓';
-          opt += `<option value="${w.ssid}">${w.ssid} (${w.rssi} dBm ${lock})</option>`;
-        });
-        sel.innerHTML = opt;
-      }).catch(e => {
-        b.innerText = '🔍 Scan Ulang';
-        b.disabled = false;
-        sel.innerHTML = '<option value="">Gagal memindai</option>';
+
+        document.getElementById('btn_tog_uv').innerText = d.uvLedStatus ? 'Lampu UV: ON' : 'Lampu UV: OFF';
+        document.getElementById('btn_tog_bl').innerText = d.blowerStatus ? 'Blower: ON' : 'Blower: OFF';
+
+        let curM = d.mode || 'manual';
+        let mLabel = curM === 'manual' ? 'MANUAL' : (curM === 'otomatis' ? 'OTOMATIS (JADWAL)' : 'ROTASI LED');
+        document.getElementById('sum_mode_badge').innerText = mLabel;
+
+        if (d.presets && Array.isArray(d.presets)) {
+          currentConfig.presets = d.presets;
+        }
+
+        if (!isDirty) {
+          currentConfig.mode = (curM === 'otomatis-led' ? 'otomatis_led' : curM);
+          currentConfig.blowerMode = d.blowerMode || 'sensor';
+          currentConfig.ledRunning = !!d.ledRunning;
+          currentConfig.activePreset = (d.activePreset !== undefined) ? d.activePreset : 0;
+          currentConfig.startTime = d.startTime || '18:00';
+          currentConfig.endTime = d.endTime || '06:00';
+          currentConfig.ledRotationInterval = d.ledRotationInterval || 30;
+          currentConfig.manualIntervalMin = d.manualIntervalMin || 15;
+          currentConfig.manualDurationSec = d.manualDurationSec || 30;
+
+          document.getElementById('cfg_start_time').value = currentConfig.startTime;
+          document.getElementById('cfg_end_time').value = currentConfig.endTime;
+          document.getElementById('cfg_rot_interval').value = currentConfig.ledRotationInterval;
+          document.getElementById('cfg_man_interval').value = currentConfig.manualIntervalMin;
+          document.getElementById('cfg_man_duration').value = currentConfig.manualDurationSec;
+
+          updateModeSelectionUI();
+          updateBlowerModeUI();
+          updateLedRunningUI();
+        }
+
+        renderPresets();
+
+        if (!document.getElementById('cfg_trap_id').value) document.getElementById('cfg_trap_id').value = d.trapId || '';
+        if (!document.getElementById('cfg_trap_name').value) document.getElementById('cfg_trap_name').value = d.trapName || '';
+        if (!document.getElementById('cfg_ws_host').value) document.getElementById('cfg_ws_host').value = d.wsHost || '';
+        if (!document.getElementById('cfg_ws_port').value) document.getElementById('cfg_ws_port').value = d.wsPort || 8080;
+        if (!document.getElementById('cfg_ws_path').value) document.getElementById('cfg_ws_path').value = d.wsPath || '';
+        document.getElementById('cfg_ws_ssl').checked = !!d.wsUseSsl;
+
+        if (d.modemPulseSec && !document.getElementById('cfg_m_pulse').value) {
+          document.getElementById('cfg_m_pulse').value = d.modemPulseSec * 1000;
+          document.getElementById('cfg_m_boot').value = d.modemBootDelaySec * 1000;
+          document.getElementById('cfg_m_retry').value = d.modemRetryIntervalSec * 1000;
+          document.getElementById('cfg_m_wait').value = d.modemWaitWifiSec * 1000;
+        }
+      })
+      .catch(err => console.log('Poll err:', err));
+  }
+
+  // Saklar & Uji Manual
+  function toggleUv() {
+    fetch('/api/toggle-uv', { method: 'POST' }).then(() => refresh());
+  }
+
+  function toggleBlower() {
+    fetch('/api/toggle-blower', { method: 'POST' }).then(() => refresh());
+  }
+
+  function triggerZap() {
+    fetch('/api/zap', { method: 'POST' }).then(() => showAlert('Zap 1 siklus manual dipicu!'));
+  }
+
+  function resetCounter() {
+    if (confirm('Reset hitungan hama ke 0?')) {
+      fetch('/api/reset-counter', { method: 'POST' }).then(() => {
+        showAlert('Hitungan hama di-reset');
+        refresh();
       });
     }
-
-    pollScan();
   }
 
-  function pickWifi(val) {
-    if (val) document.getElementById('w_ssid').value = val;
+  function enterSleep() {
+    if (confirm('Masukkan ESP32 ke Deep Sleep sekarang? (Akan bangun sesuai timer atau sensor)')) {
+      fetch('/api/sleep', { method: 'POST' });
+    }
+  }
+
+  // WiFi scan & save
+  function scanWifi() {
+    let s = document.getElementById('wifi_list');
+    s.innerHTML = '<option>Memindai jaringan...</option>';
+    fetch('/api/wifi-scan')
+      .then(r => r.json())
+      .then(d => {
+        s.innerHTML = '';
+        let nets = d.list || [];
+        if (!nets || nets.length === 0) {
+          s.innerHTML = '<option>Tidak ada WiFi terdeteksi</option>';
+          return;
+        }
+        nets.forEach(n => {
+          let o = document.createElement('option');
+          o.value = n.ssid;
+          o.text = `${n.ssid} (${n.rssi} dBm)${n.sec ? ' [Terkunci]' : ''}`;
+          s.appendChild(o);
+        });
+        if (nets[0]) document.getElementById('wifi_ssid').value = nets[0].ssid;
+      });
   }
 
   function saveWifi() {
-    let ssid = document.getElementById('w_ssid').value.trim();
-    let pass = document.getElementById('w_pass').value;
-    let m = document.getElementById('msg_wifi');
-    if (!ssid) { alert('SSID WiFi tidak boleh kosong'); return; }
-
-    m.style.color = '#38bdf8';
-    m.innerText = 'Menyimpan & menghubungkan ke WiFi...';
-    fetch('/api/wifi-save', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: `ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`
-    }).then(r => r.json()).then(d => {
-      m.style.color = '#34d399';
-      m.innerText = d.message || 'Tersimpan! ESP32 akan menyambung...';
-      setTimeout(() => location.reload(), 8000);
-    }).catch(e => {
-      m.style.color = '#ef4444';
-      m.innerText = 'Error: ' + e;
-    });
+    let ssid = document.getElementById('wifi_ssid').value;
+    let pass = document.getElementById('wifi_pass').value;
+    if (!ssid) return alert('SSID tidak boleh kosong!');
+    fetch(`/api/wifi-save?ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`, { method: 'POST' })
+      .then(() => alert('WiFi disimpan. ESP32 mencoba menghubungkan...'));
   }
 
+  // Server & Modem config
   function saveServer() {
-    let id   = document.getElementById('s_id').value.trim();
-    let name = document.getElementById('s_name').value.trim();
-    let host = document.getElementById('s_host').value.trim();
-    let port = document.getElementById('s_port').value.trim();
-    let path = document.getElementById('s_path').value.trim();
-    let ssl  = document.getElementById('s_ssl').value;
-    let m    = document.getElementById('msg_server');
-
-    if (!id || !host || !port) { alert('Trap ID, Host, dan Port wajib diisi'); return; }
-    m.style.color = '#38bdf8';
-    m.innerText = 'Menyimpan konfigurasi...';
-
-    let body = `trapId=${encodeURIComponent(id)}&trapName=${encodeURIComponent(name)}&wsHost=${encodeURIComponent(host)}&wsPort=${port}&wsPath=${encodeURIComponent(path)}&wsUseSsl=${ssl}`;
-    fetch('/api/settings', {
+    let p = {
+      trapId: document.getElementById('cfg_trap_id').value,
+      trapName: document.getElementById('cfg_trap_name').value,
+      host: document.getElementById('cfg_ws_host').value,
+      port: parseInt(document.getElementById('cfg_ws_port').value) || 8080,
+      path: document.getElementById('cfg_ws_path').value,
+      ssl: document.getElementById('cfg_ws_ssl').checked
+    };
+    fetch('/api/server-save', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body
-    }).then(r => r.json()).then(d => {
-      m.style.color = '#34d399';
-      m.innerText = d.message || 'Konfigurasi server tersimpan!';
-      setTimeout(() => { m.innerText = ''; }, 4000);
-    }).catch(e => {
-      m.style.color = '#ef4444';
-      m.innerText = 'Error: ' + e;
-    });
-  }
-
-  function rebootEsp() {
-    if (confirm('Restart ESP32 sekarang?')) {
-      fetch('/api/restart', {method:'POST'}).then(r => r.json()).then(d => {
-        alert(d.message || 'ESP32 sedang merestart...');
-        setTimeout(() => location.reload(), 8000);
-      });
-    }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p)
+    }).then(() => showAlert('Konfigurasi server disimpan!'));
   }
 
   function saveModem() {
-    let pulse = document.getElementById('m_pulse').value.trim();
-    let boot  = document.getElementById('m_boot').value.trim();
-    let retry = document.getElementById('m_retry').value.trim();
-    let wait  = document.getElementById('m_wait').value.trim();
-    let m     = document.getElementById('msg_modem');
-    m.style.color = '#38bdf8';
-    m.innerText = 'Menyimpan pengaturan modem...';
-    let body = `modemPulseSec=${pulse}&modemBootDelaySec=${boot}&modemRetryIntervalSec=${retry}&modemWaitWifiSec=${wait}`;
-    fetch('/api/settings', {
+    let p = {
+      pulse: parseInt(document.getElementById('cfg_m_pulse').value),
+      boot: parseInt(document.getElementById('cfg_m_boot').value),
+      retry: parseInt(document.getElementById('cfg_m_retry').value),
+      wait: parseInt(document.getElementById('cfg_m_wait').value)
+    };
+    fetch('/api/modem-save', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body
-    }).then(r => r.json()).then(d => {
-      m.style.color = '#34d399';
-      m.innerText = d.message || 'Pengaturan modem tersimpan!';
-      setTimeout(() => { m.innerText = ''; }, 4000);
-    }).catch(e => {
-      m.style.color = '#ef4444';
-      m.innerText = 'Error: ' + e;
-    });
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p)
+    }).then(() => showAlert('Parameter modem disimpan!'));
   }
 
-  function setMode(m) { fetch('/api/mode?val=' + m, {method:'POST'}).then(() => refresh()); }
-  function toggleUv() { fetch('/api/toggle-uv', {method:'POST'}).then(() => refresh()); }
-  function toggleBlower() { fetch('/api/toggle-blower', {method:'POST'}).then(() => refresh()); }
-  function setPreset(i) { fetch('/api/preset?val=' + i, {method:'POST'}).then(() => refresh()); }
-  function saveSched() {
-    let s = document.getElementById('c_start').value, e = document.getElementById('c_end').value;
-    fetch(`/api/schedule?start=${s}&end=${e}`, {method:'POST'}).then(() => alert('Jadwal tersimpan'));
+  function restartEsp() {
+    if (confirm('Yakin ingin restart perangkat ESP32?')) {
+      fetch('/api/restart', { method: 'POST' });
+    }
   }
 
-  // Muat data awal sekali saat halaman pertama kali dibuka
+  // Auto polling setiap 3 detik
   refresh();
+  pollTimer = setInterval(refresh, 3000);
 </script>
 </body>
 </html>
@@ -1553,7 +1926,7 @@ void setupWebServer() {
       wifiPass = server.arg("pass");
     }
     savePreferences();
-    Serial.printf("📶 [WiFi Save] SSID: %s tersimpan. ESP32 merestart...\n", wifiSsid.c_str());
+    Serial.printf("[WiFi Save] SSID: %s tersimpan. ESP32 merestart...\n", wifiSsid.c_str());
     server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"WiFi tersimpan! ESP32 akan menyambung...\"}");
     shouldRestart = true;
     restartTriggerTime = millis();
@@ -1601,6 +1974,7 @@ void setupWebServer() {
     JsonArray pArr = doc.createNestedArray("presets");
     for (int i = 0; i < 5; i++) {
       JsonObject pObj = pArr.createNestedObject();
+      pObj["id"] = "preset-" + String(i + 1);
       pObj["name"] = presets[i].name;
       pObj["r"] = presets[i].r;
       pObj["g"] = presets[i].g;
@@ -1614,7 +1988,7 @@ void setupWebServer() {
 
   // API Konfigurasi JSON
   server.on("/api/config", HTTP_GET, []() {
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<1536> doc;
     doc["trapId"] = trapId;
     doc["trapName"] = trapName;
     doc["wsHost"] = wsHost;
@@ -1633,6 +2007,16 @@ void setupWebServer() {
     doc["modemBootDelaySec"] = (int)(modemBootDelayMs / 1000);
     doc["modemRetryIntervalSec"] = (int)(modemRetryIntervalMs / 1000);
     doc["modemWaitWifiSec"] = (int)(modemWaitWifiMs / 1000);
+
+    JsonArray pArr = doc.createNestedArray("presets");
+    for (int i = 0; i < 5; i++) {
+      JsonObject pObj = pArr.createNestedObject();
+      pObj["id"] = "preset-" + String(i + 1);
+      pObj["name"] = presets[i].name;
+      pObj["r"] = presets[i].r;
+      pObj["g"] = presets[i].g;
+      pObj["b"] = presets[i].b;
+    }
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
@@ -1687,7 +2071,7 @@ void setupWebServer() {
     if (updated) {
       savePreferences();
       setupWebSocket();
-      Serial.println("⚙️ [Web Config] Konfigurasi trapId & WebSocket tersimpan!");
+      Serial.println("[Web Config] Konfigurasi trapId & WebSocket tersimpan!");
       server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Pengaturan server berhasil disimpan!\"}");
     } else {
       server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Tidak ada parameter valid\"}");
@@ -1701,10 +2085,134 @@ void setupWebServer() {
     restartTriggerTime = millis();
   });
 
+  // API Kontrol Komprehensif (Sinkron Penuh dengan IoT Web Dashboard)
+  server.on("/api/control", HTTP_POST, []() {
+    bool updated = false;
+
+    if (server.hasArg("plain")) {
+      StaticJsonDocument<1024> doc;
+      if (!deserializeJson(doc, server.arg("plain"))) {
+        if (doc.containsKey("mode")) {
+          String m = doc["mode"].as<String>();
+          if (m == "manual") { currentMode = MODE_MANUAL; lastManualCycleStart = millis(); }
+          else if (m == "otomatis") currentMode = MODE_OTOMATIS;
+          else if (m == "otomatis-led" || m == "otomatis_led") currentMode = MODE_OTOMATIS_LED;
+          updated = true;
+        }
+        if (doc.containsKey("blowerMode")) {
+          blowerMode = doc["blowerMode"].as<String>();
+          updated = true;
+        }
+        if (doc.containsKey("ledRunning")) {
+          ledRunning = doc["ledRunning"].as<bool>();
+          updated = true;
+        }
+        if (doc.containsKey("activePreset")) {
+          int p = doc["activePreset"].as<int>();
+          if (p >= 0 && p < 5) activePreset = p;
+          updated = true;
+        }
+        if (doc.containsKey("startTime")) {
+          String s = doc["startTime"].as<String>();
+          int c = s.indexOf(':');
+          if (c > 0) { startHour = s.substring(0, c).toInt(); startMin = s.substring(c + 1).toInt(); updated = true; }
+        }
+        if (doc.containsKey("endTime")) {
+          String e = doc["endTime"].as<String>();
+          int c = e.indexOf(':');
+          if (c > 0) { endHour = e.substring(0, c).toInt(); endMin = e.substring(c + 1).toInt(); updated = true; }
+        }
+        if (doc.containsKey("ledRotationInterval")) {
+          int r = doc["ledRotationInterval"].as<int>();
+          if (r >= 1 && r <= 180) { ledRotationInterval = r; updated = true; }
+        }
+        if (doc.containsKey("manualIntervalMin")) {
+          int mi = doc["manualIntervalMin"].as<int>();
+          if (mi >= 1 && mi <= 1440) { manualIntervalMin = mi; updated = true; }
+        }
+        if (doc.containsKey("manualDurationSec")) {
+          int md = doc["manualDurationSec"].as<int>();
+          if (md >= 1 && md <= 3600) { manualDurationSec = md; updated = true; }
+        }
+        if (doc.containsKey("presets")) {
+          JsonArray pArr = doc["presets"].as<JsonArray>();
+          int i = 0;
+          for (JsonObject pItem : pArr) {
+            if (i >= 5) break;
+            if (pItem.containsKey("name")) {
+              String n = pItem["name"].as<String>();
+              strncpy(presets[i].name, n.c_str(), sizeof(presets[i].name) - 1);
+              presets[i].name[sizeof(presets[i].name) - 1] = '\0';
+            }
+            if (pItem.containsKey("r")) presets[i].r = pItem["r"].as<int>();
+            if (pItem.containsKey("g")) presets[i].g = pItem["g"].as<int>();
+            if (pItem.containsKey("b")) presets[i].b = pItem["b"].as<int>();
+            i++;
+          }
+          updated = true;
+        }
+    }
+    
+    // Fallback: baca form parameter jika tidak menggunakan JSON body
+    if (server.hasArg("mode")) {
+      String m = server.arg("mode");
+      if (m == "manual") { currentMode = MODE_MANUAL; lastManualCycleStart = millis(); }
+      else if (m == "otomatis") currentMode = MODE_OTOMATIS;
+      else if (m == "otomatis-led" || m == "otomatis_led") currentMode = MODE_OTOMATIS_LED;
+      updated = true;
+    }
+    if (server.hasArg("blowerMode")) {
+      blowerMode = server.arg("blowerMode");
+      updated = true;
+    }
+    if (server.hasArg("ledRunning")) {
+      ledRunning = (server.arg("ledRunning") == "true" || server.arg("ledRunning") == "1");
+      updated = true;
+    }
+    if (server.hasArg("activePreset")) {
+      int p = server.arg("activePreset").toInt();
+      if (p >= 0 && p < 5) { activePreset = p; updated = true; }
+    }
+    if (server.hasArg("startTime")) {
+      String s = server.arg("startTime");
+      int c = s.indexOf(':');
+      if (c > 0) { startHour = s.substring(0, c).toInt(); startMin = s.substring(c + 1).toInt(); updated = true; }
+    }
+    if (server.hasArg("endTime")) {
+      String e = server.arg("endTime");
+      int c = e.indexOf(':');
+      if (c > 0) { endHour = e.substring(0, c).toInt(); endMin = e.substring(c + 1).toInt(); updated = true; }
+    }
+    if (server.hasArg("ledRotationInterval")) {
+      int r = server.arg("ledRotationInterval").toInt();
+      if (r >= 1 && r <= 180) { ledRotationInterval = r; updated = true; }
+    }
+    if (server.hasArg("manualIntervalMin")) {
+      int mi = server.arg("manualIntervalMin").toInt();
+      if (mi >= 1 && mi <= 1440) { manualIntervalMin = mi; updated = true; }
+    }
+    if (server.hasArg("manualDurationSec")) {
+      int md = server.arg("manualDurationSec").toInt();
+      if (md >= 1 && md <= 3600) { manualDurationSec = md; updated = true; }
+    }
+
+    if (updated) {
+      updateActuators();
+      savePreferences();
+      sendTelemetryToEws();
+      server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Semua konfigurasi berhasil diterapkan & disinkronkan\"}");
+    } else {
+      server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Format JSON tidak valid\"}");
+    }
+  });
+
   // API Ganti Mode
   server.on("/api/mode", HTTP_POST, []() {
-    if (server.hasArg("val")) {
-      String m = server.arg("val");
+    String m = "";
+    if (server.hasArg("val")) m = server.arg("val");
+    else if (server.hasArg("mode")) m = server.arg("mode");
+
+    if (m.length() > 0) {
       if (m == "manual") {
         currentMode = MODE_MANUAL;
         lastManualCycleStart = millis();
@@ -1728,34 +2236,60 @@ void setupWebServer() {
 
   // API Pilih Preset
   server.on("/api/preset", HTTP_POST, []() {
-    if (server.hasArg("val")) {
-      int idx = server.arg("val").toInt();
-      if (idx >= 0 && idx < 5) {
-        activePreset = idx;
-        updateActuators();
-        savePreferences();
-        sendTelemetryToEws();
-        server.send(200, "application/json", "{\"status\":\"ok\"}");
-        return;
-      }
+    int idx = -1;
+    if (server.hasArg("val")) idx = server.arg("val").toInt();
+    else if (server.hasArg("id")) idx = server.arg("id").toInt();
+
+    if (idx >= 0 && idx < 5) {
+      activePreset = idx;
+      updateActuators();
+      savePreferences();
+      sendTelemetryToEws();
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+    } else {
+      server.send(400, "application/json", "{\"status\":\"error\"}");
     }
-    server.send(400, "application/json", "{\"status\":\"error\"}");
   });
 
-  // API Edit Preset Nilai RGB
+  // API Edit Preset Nilai RGB & Nama
   server.on("/api/preset/edit", HTTP_POST, []() {
-    if (server.hasArg("idx") && server.hasArg("r") && server.hasArg("g") && server.hasArg("b")) {
-      int idx = server.arg("idx").toInt();
-      if (idx >= 0 && idx < 5) {
-        presets[idx].r = server.arg("r").toInt();
-        presets[idx].g = server.arg("g").toInt();
-        presets[idx].b = server.arg("b").toInt();
-        updateActuators();
-        savePreferences();
-        sendTelemetryToEws();
-        server.send(200, "application/json", "{\"status\":\"ok\"}");
-        return;
+    int idx = -1;
+    String name = "";
+    int r = -1, g = -1, b = -1;
+
+    if (server.hasArg("plain")) {
+      StaticJsonDocument<256> doc;
+      if (!deserializeJson(doc, server.arg("plain"))) {
+        if (doc.containsKey("index")) idx = doc["index"].as<int>();
+        else if (doc.containsKey("idx")) idx = doc["idx"].as<int>();
+        if (doc.containsKey("name")) name = doc["name"].as<String>();
+        if (doc.containsKey("r")) r = doc["r"].as<int>();
+        if (doc.containsKey("g")) g = doc["g"].as<int>();
+        if (doc.containsKey("b")) b = doc["b"].as<int>();
       }
+    }
+
+    if (server.hasArg("idx")) idx = server.arg("idx").toInt();
+    else if (server.hasArg("index")) idx = server.arg("index").toInt();
+    if (server.hasArg("name")) name = server.arg("name");
+    if (server.hasArg("r")) r = server.arg("r").toInt();
+    if (server.hasArg("g")) g = server.arg("g").toInt();
+    if (server.hasArg("b")) b = server.arg("b").toInt();
+
+    if (idx >= 0 && idx < 5) {
+      if (name.length() > 0) {
+        strncpy(presets[idx].name, name.c_str(), sizeof(presets[idx].name) - 1);
+        presets[idx].name[sizeof(presets[idx].name) - 1] = '\0';
+      }
+      if (r >= 0 && r <= 255) presets[idx].r = r;
+      if (g >= 0 && g <= 255) presets[idx].g = g;
+      if (b >= 0 && b <= 255) presets[idx].b = b;
+
+      updateActuators();
+      savePreferences();
+      sendTelemetryToEws();
+      server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Preset berhasil diperbarui\"}");
+      return;
     }
     server.send(400, "application/json", "{\"status\":\"error\"}");
   });
@@ -1823,6 +2357,70 @@ void setupWebServer() {
     server.send(200, "application/json", "{\"status\":\"ok\",\"blowerStatus\":" + String(blowerEnabled ? "true" : "false") + "}");
   });
 
+  // API Trigger Zap Manual
+  server.on("/api/zap", HTTP_POST, []() {
+    triggerZapperCycle();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Siklus zap dipicu\"}");
+  });
+
+  // API Reset Counter Hama
+  server.on("/api/reset-counter", HTTP_POST, []() {
+    pestCounter = 0;
+    savePreferences();
+    sendTelemetryToEws();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Counter direset\"}");
+  });
+
+  // API Masuk Mode Sleep
+  server.on("/api/sleep", HTTP_POST, []() {
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Entering sleep\"}");
+    delay(200);
+    enterDeepSleep();
+  });
+
+  // API Simpan Konfigurasi Server
+  server.on("/api/server-save", HTTP_POST, []() {
+    bool updated = false;
+    if (server.hasArg("plain")) {
+      StaticJsonDocument<512> doc;
+      if (!deserializeJson(doc, server.arg("plain"))) {
+        if (doc.containsKey("trapId"))   { trapId   = doc["trapId"].as<String>(); trapId.trim(); updated = true; }
+        if (doc.containsKey("trapName")) { trapName = doc["trapName"].as<String>(); trapName.trim(); updated = true; }
+        if (doc.containsKey("host"))     { wsHost   = doc["host"].as<String>(); wsHost.trim(); updated = true; }
+        if (doc.containsKey("port"))     { wsPort   = doc["port"].as<int>(); updated = true; }
+        if (doc.containsKey("path"))     { wsPath   = doc["path"].as<String>(); wsPath.trim(); updated = true; }
+        if (doc.containsKey("ssl"))      { wsUseSsl = doc["ssl"].as<bool>(); updated = true; }
+      }
+    }
+    if (updated) {
+      savePreferences();
+      setupWebSocket();
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+    } else {
+      server.send(400, "application/json", "{\"status\":\"error\"}");
+    }
+  });
+
+  // API Simpan Parameter Modem
+  server.on("/api/modem-save", HTTP_POST, []() {
+    bool updated = false;
+    if (server.hasArg("plain")) {
+      StaticJsonDocument<256> doc;
+      if (!deserializeJson(doc, server.arg("plain"))) {
+        if (doc.containsKey("pulse")) { modemPulseMs = doc["pulse"].as<unsigned long>(); updated = true; }
+        if (doc.containsKey("boot"))  { modemBootDelayMs = doc["boot"].as<unsigned long>(); updated = true; }
+        if (doc.containsKey("retry")) { modemRetryIntervalMs = doc["retry"].as<unsigned long>(); updated = true; }
+        if (doc.containsKey("wait"))  { modemWaitWifiMs = doc["wait"].as<unsigned long>(); updated = true; }
+      }
+    }
+    if (updated) {
+      savePreferences();
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+    } else {
+      server.send(400, "application/json", "{\"status\":\"error\"}");
+    }
+  });
+
   // Catch-all 404 handler untuk redirect captive portal
   server.onNotFound([]() {
     server.sendHeader("Location", "/", true);
@@ -1835,7 +2433,7 @@ void setupWebServer() {
 // ==============================================================================
 void setupWebSocket() {
   if (wsHost.length() == 0) {
-    Serial.println("⚠️ [WS] Host WebSocket belum disetting, lewati koneksi.");
+    Serial.println("[WARN] [WS] Host WebSocket belum disetting, lewati koneksi.");
     return;
   }
 
@@ -1849,10 +2447,10 @@ void setupWebSocket() {
   webSocket.onEvent([](WStype_t type, uint8_t * payload, size_t length) {
     switch(type) {
       case WStype_DISCONNECTED:
-        Serial.println("❌ [WS] Terputus dari Server EWS");
+        Serial.println("[ERROR] [WS] Terputus dari Server EWS");
         break;
       case WStype_CONNECTED: {
-        Serial.println("✅ [WS] Terhubung ke Server EWS!");
+        Serial.println("[OK] [WS] Terhubung ke Server EWS!");
         // Berlangganan (Subscribe) ke topik perintah kontrol trap: traps/{trapId}/command
         String cmdTopic = "traps/" + trapId + "/command";
         StaticJsonDocument<256> subDoc;
@@ -1861,7 +2459,7 @@ void setupWebSocket() {
         String subMsg;
         serializeJson(subDoc, subMsg);
         webSocket.sendTXT(subMsg);
-        Serial.print("📡 [WS Subscribe] ");
+        Serial.print("[WS Subscribe] ");
         Serial.println(cmdTopic);
 
         // Kirim telemetri awal segera setelah koneksi sukses
@@ -1889,7 +2487,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
   StaticJsonDocument<1024> doc;
   DeserializationError error = deserializeJson(doc, payload, length);
   if (error) {
-    Serial.print("⚠️ [WS JSON Error] ");
+    Serial.print("[WARN] [WS JSON Error] ");
     Serial.println(error.c_str());
     return;
   }
@@ -1906,7 +2504,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     if (uvLedEnabled) {
       lastManualCycleStart = millis(); // Reset siklus agar langsung menyala saat diaktifkan
     }
-    Serial.print("💡 [WS] Saklar UV LED: ");
+    Serial.print("[WS] Saklar UV LED: ");
     Serial.println(uvLedEnabled ? "ON" : "OFF");
   } else if (data.containsKey("ledIsOn")) {
     uvLedEnabled = data["ledIsOn"].as<bool>();
@@ -1922,7 +2520,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
       blowerEnabled = true;
       zapperActive = true;
       blowerOffTime = millis() + ((unsigned long)manualDurationSec * 1000UL);
-      Serial.print("🌀 [WS] Blower ON selama ");
+      Serial.print("[WS] Blower ON selama ");
       Serial.print(manualDurationSec);
       Serial.println(" detik (perintah dari Web)");
     } else if (!blowerCmd) {
@@ -1930,7 +2528,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
       digitalWrite(PIN_RELAY_1, LOW);
       blowerEnabled = false;
       zapperActive = false;
-      Serial.println("🌀 [WS] Blower MATI (perintah dari Web)");
+      Serial.println("[WS] Blower MATI (perintah dari Web)");
     }
   }
 
@@ -1995,9 +2593,21 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     int i = 0;
     for (JsonObject pItem : pArr) {
       if (i >= 5) break;
-      if (pItem.containsKey("r")) presets[i].r = pItem["r"].as<int>();
-      if (pItem.containsKey("g")) presets[i].g = pItem["g"].as<int>();
-      if (pItem.containsKey("b")) presets[i].b = pItem["b"].as<int>();
+      int targetIdx = i;
+      if (pItem.containsKey("index")) targetIdx = pItem["index"].as<int>();
+      else if (pItem.containsKey("idx")) targetIdx = pItem["idx"].as<int>();
+      else if (pItem.containsKey("id")) targetIdx = pItem["id"].as<int>() - 1; // Jika ID berbasis 1..5
+
+      if (targetIdx >= 0 && targetIdx < 5) {
+        if (pItem.containsKey("name")) {
+          String n = pItem["name"].as<String>();
+          strncpy(presets[targetIdx].name, n.c_str(), sizeof(presets[targetIdx].name) - 1);
+          presets[targetIdx].name[sizeof(presets[targetIdx].name) - 1] = '\0';
+        }
+        if (pItem.containsKey("r")) presets[targetIdx].r = pItem["r"].as<int>();
+        if (pItem.containsKey("g")) presets[targetIdx].g = pItem["g"].as<int>();
+        if (pItem.containsKey("b")) presets[targetIdx].b = pItem["b"].as<int>();
+      }
       i++;
     }
   }
@@ -2008,10 +2618,10 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     if (cmd == "FAST_TELEMETRY" || cmd == "REQUEST_DATA" || cmd == "REQUEST_TELEMETRY") {
       lastClientActivityTime = millis();
       forceTelemetryPublish = true;
-      Serial.println("📡 [WS] Perintah telemetri cepat on-demand diterima dari Web!");
+      Serial.println("[WS] Perintah telemetri cepat on-demand diterima dari Web!");
     } else if (cmd == "CLIENT_HEARTBEAT") {
       lastClientActivityTime = millis();
-      Serial.println("💓 [HEARTBEAT] Sinyal client web aktif memantau perangkap.");
+      Serial.println("[HEARTBEAT] Sinyal client web aktif memantau perangkap.");
     } else if (cmd == "TRIGGER_ZAP") {
       digitalWrite(PIN_RELAY_1, HIGH);
       blowerEnabled = true;
@@ -2043,7 +2653,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
 void sendTelemetryToEws() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  StaticJsonDocument<1024> root;
+  StaticJsonDocument<1536> root;
   root["action"] = "publish";
   root["topic"]  = "traps/" + trapId + "/telemetry";
 
@@ -2077,6 +2687,16 @@ void sendTelemetryToEws() {
   p["startTime"] = sTime;
   p["endTime"] = eTime;
   p["ledRotationInterval"] = ledRotationInterval;
+
+  JsonArray pArr = p.createNestedArray("presets");
+  for (int i = 0; i < 5; i++) {
+    JsonObject pObj = pArr.createNestedObject();
+    pObj["id"] = "preset-" + String(i + 1);
+    pObj["name"] = presets[i].name;
+    pObj["r"] = presets[i].r;
+    pObj["g"] = presets[i].g;
+    pObj["b"] = presets[i].b;
+  }
 
   String out;
   serializeJson(root, out);
@@ -2120,6 +2740,12 @@ void loadPreferences() {
 
   // Load custom presets jika ada
   for (int i = 0; i < 5; i++) {
+    String kN = "pr_n_" + String(i);
+    String savedName = prefs.getString(kN.c_str(), "");
+    if (savedName.length() > 0) {
+      strncpy(presets[i].name, savedName.c_str(), sizeof(presets[i].name) - 1);
+      presets[i].name[sizeof(presets[i].name) - 1] = '\0';
+    }
     String kR = "pr_r_" + String(i);
     String kG = "pr_g_" + String(i);
     String kB = "pr_b_" + String(i);
@@ -2161,6 +2787,8 @@ void savePreferences() {
   // blowerEnabled tidak perlu disimpan karena selalu MATI saat boot
 
   for (int i = 0; i < 5; i++) {
+    String kN = "pr_n_" + String(i);
+    prefs.putString(kN.c_str(), presets[i].name);
     String kR = "pr_r_" + String(i);
     String kG = "pr_g_" + String(i);
     String kB = "pr_b_" + String(i);
@@ -2172,10 +2800,10 @@ void savePreferences() {
 }
 
 // ==============================================================================
-// SINKRONISASI WAKTU NTP → RTC DS3231 (atau internal clock jika tidak ada RTC)
+// SINKRONISASI WAKTU NTP -> RTC DS3231 (atau internal clock jika tidak ada RTC)
 // ==============================================================================
 void syncTimeFromNTP() {
-  Serial.println("🕐 [NTP] Memulai sinkronisasi waktu dari internet...");
+  Serial.println("[NTP] Memulai sinkronisasi waktu dari internet...");
 
   // Konfigurasi NTP: GMT+7 (WIB = 25200 detik), tanpa DST
   configTime(25200, 0, "pool.ntp.org", "time.nist.gov", "id.pool.ntp.org");
@@ -2190,7 +2818,7 @@ void syncTimeFromNTP() {
   Serial.println();
 
   if (retries >= 10) {
-    Serial.println("❌ [NTP] Gagal mendapatkan waktu dari NTP server");
+    Serial.println("[ERROR] [NTP] Gagal mendapatkan waktu dari NTP server");
     return;
   }
 
@@ -2199,7 +2827,7 @@ void syncTimeFromNTP() {
   // Format waktu untuk log
   char timeBuf[32];
   strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-  Serial.print("✅ [NTP] Waktu NTP diterima: ");
+  Serial.print("[OK] [NTP] Waktu NTP diterima: ");
   Serial.println(timeBuf);
 
   // Update variabel waktu global
@@ -2220,8 +2848,8 @@ void syncTimeFromNTP() {
       timeinfo.tm_min,
       timeinfo.tm_sec
     ));
-    Serial.println("✅ [NTP→RTC] Waktu RTC DS3231 berhasil disinkronkan dari NTP");
+    Serial.println("[OK] [NTP->RTC] Waktu RTC DS3231 berhasil disinkronkan dari NTP");
   } else {
-    Serial.println("ℹ️ [NTP] RTC tidak ada, menggunakan jam internal ESP32 (NTP-synced)");
+    Serial.println("[INFO] [NTP] RTC tidak ada, menggunakan jam internal ESP32 (NTP-synced)");
   }
 }
