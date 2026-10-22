@@ -1199,52 +1199,70 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     <!-- Mode Kerja Operasional (Sama seperti IoT Dashboard) -->
     <div class="card">
-      <div class="card-title">Mode Kerja Operasional</div>
-      <div style="display:flex; flex-direction:column; gap:8px;">
+      <div class="card-title">
+        <span>Pilih Mode Kerja Sistem</span>
+        <span class="badge" id="badge_mode_draft" style="font-size:10px;">MODE: MANUAL</span>
+      </div>
+      <div class="grid-2">
         <div class="mode-card" id="mode_card_manual" onclick="selectMode('manual')">
-          <h4>Manual (Interval & Durasi)</h4>
-          <p>Aktuator menyala berkala selama durasi tertentu setiap interval waktu yang ditentukan.</p>
+          <h4>1. Mode Manual</h4>
+          <p>Lampu penarik hama aktif menyala terus (24 jam non-stop). Blower dan rotasi lampu bekerja mengikuti parameter yang dikonfigurasi di bawah.</p>
         </div>
         <div class="mode-card" id="mode_card_otomatis" onclick="selectMode('otomatis')">
-          <h4>Otomatis (Jadwal RTC)</h4>
-          <p>Lampu dan blower aktif otomatis mengikuti jam operasional malam hari (Start s/d End).</p>
-        </div>
-        <div class="mode-card" id="mode_card_otomatis_led" onclick="selectMode('otomatis_led')">
-          <h4>Otomatis + Rotasi LED</h4>
-          <p>Aktif mengikuti jadwal malam hari dengan rotasi warna preset RGB bergantian secara berkala.</p>
+          <h4>2. Mode Otomatis (Jadwal RTC DS3231)</h4>
+          <p>Lampu dan blower aktif otomatis mengikuti jam operasional malam hari (Start s/d End). Di luar jam tersebut sistem hemat daya/standby.</p>
         </div>
       </div>
     </div>
 
-    <!-- Parameter Blower & Lampu LED (Sama seperti IoT Dashboard) -->
+    <!-- Parameter Blower & Lampu LED (Sama persis seperti IoT Dashboard) -->
     <div class="card">
-      <div class="card-title">Parameter Blower & Lampu LED</div>
-      
-      <div style="margin-bottom:12px;">
-        <label>Mode Pemicu Blower</label>
-        <div class="grid-2">
-          <div class="opt-card" id="opt_bl_sensor" onclick="selectBlowerMode('sensor')">
-            <h4>Sensor Deteksi</h4>
-            <p>Blower aktif hanya saat sensor mendeteksi serangga masuk.</p>
-          </div>
-          <div class="opt-card" id="opt_bl_time" onclick="selectBlowerMode('time')">
-            <h4>Selalu Aktif</h4>
-            <p>Blower aktif terus-menerus selama lampu atraktor menyala.</p>
-          </div>
-        </div>
+      <div class="card-title">
+        <span>Pengaturan Parameter Blower &amp; Lampu LED</span>
+        <span style="font-size:10px; color:var(--text-muted); font-weight:normal;">Klik "Simpan Pengaturan" untuk sinkron</span>
       </div>
+      
+      <div class="grid-2">
+        <!-- Opsi Pemicu Blower -->
+        <div style="background:rgba(15,23,42,0.5); padding:12px; border-radius:10px; border:1px solid var(--border);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <label style="margin:0; font-weight:bold; color:#fff; font-size:12px;">Pilihan Pemicu Blower</label>
+            <span id="badge_blower_mode" class="badge" style="background:rgba(6,182,212,0.15); color:#22d3ee; border:1px solid rgba(6,182,212,0.4); font-size:10px;">Sensor VL53L0X</span>
+          </div>
+          <div class="grid-2">
+            <div class="opt-card" id="opt_bl_sensor" onclick="selectBlowerMode('sensor')">
+              <h4>Sensor Jarak</h4>
+              <p>Nyala saat hama mendekat</p>
+            </div>
+            <div class="opt-card" id="opt_bl_time" onclick="selectBlowerMode('time')">
+              <h4>Siklus Waktu</h4>
+              <p>Nyala berkala tiap interval</p>
+            </div>
+          </div>
+          <p id="txt_blower_desc" style="font-size:11px; color:var(--text-muted); margin:10px 0 0 0; line-height:1.4;">
+            --
+          </p>
+        </div>
 
-      <div>
-        <label>Mode Pergantian Lampu LED</label>
-        <div class="grid-2">
-          <div class="opt-card" id="opt_led_fixed" onclick="selectLedRunning(false)">
-            <h4>1 Warna Statis</h4>
-            <p>LED menyala menggunakan preset warna pilihan tetap.</p>
+        <!-- Opsi Rotasi Lampu LED (Running) -->
+        <div style="background:rgba(15,23,42,0.5); padding:12px; border-radius:10px; border:1px solid var(--border);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <label style="margin:0; font-weight:bold; color:#fff; font-size:12px;">Mode Rotasi Warna Lampu (LED Running)</label>
+            <span id="badge_led_running" class="badge" style="background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.4); font-size:10px;">ON (Berganti Warna)</span>
           </div>
-          <div class="opt-card" id="opt_led_running" onclick="selectLedRunning(true)">
-            <h4>Berganti (Running)</h4>
-            <p>Warna LED berganti otomatis antar preset setiap interval rotasi.</p>
+          <div class="grid-2">
+            <div class="opt-card" id="opt_led_running" onclick="selectLedRunning(true)">
+              <h4>LED Running: ON</h4>
+              <p>Berganti warna otomatis</p>
+            </div>
+            <div class="opt-card" id="opt_led_fixed" onclick="selectLedRunning(false)">
+              <h4>LED Running: OFF</h4>
+              <p>1 warna preset tetap</p>
+            </div>
           </div>
+          <p id="txt_led_desc" style="font-size:11px; color:var(--text-muted); margin:10px 0 0 0; line-height:1.4;">
+            --
+          </p>
         </div>
       </div>
     </div>
@@ -1292,37 +1310,51 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </div>
     </div>
 
-    <!-- Detail Konfigurasi Waktu & Durasi (Sama seperti IoT Dashboard) -->
+    <!-- Detail Konfigurasi Waktu & Durasi (Sama persis seperti IoT Dashboard) -->
     <div class="card">
-      <div class="card-title">Detail Konfigurasi Waktu & Durasi</div>
+      <div class="card-title">
+        <span>Detail Konfigurasi Waktu &amp; Durasi</span>
+        <span style="font-size:10px; color:var(--text-muted); font-weight:normal;">Sinkron dengan Modul RTC DS3231 &amp; ESP32</span>
+      </div>
       
-      <div class="grid-2">
+      <div class="grid-2" style="margin-bottom:8px;">
         <div class="form-group">
-          <label>Jam Mulai (Start)</label>
+          <label>Jam Mulai Aktif</label>
           <input type="time" id="cfg_start_time" onchange="markDirty()">
+          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Waktu perangkap mulai menyala (Sore/Malam)</small>
         </div>
         <div class="form-group">
-          <label>Jam Selesai (End)</label>
+          <label>Jam Selesai Aktif</label>
           <input type="time" id="cfg_end_time" onchange="markDirty()">
+          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Waktu perangkap otomatis mati (Pagi hari)</small>
         </div>
       </div>
 
       <div class="form-group">
-        <label>Interval Rotasi LED (Menit)</label>
-        <input type="number" id="cfg_rot_interval" min="1" max="180" onchange="markDirty()">
-        <small style="font-size:10px; color:var(--text-muted);">Aktif saat Mode Rotasi LED atau Lampu Running menyala (1 - 180 mnt).</small>
+        <label>Rotasi Lampu (LED Running)</label>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="number" id="cfg_rot_interval" min="1" max="180" oninput="onTimeConfigChange()" onchange="markDirty()">
+          <span style="font-size:12px; color:var(--text-muted); font-weight:600;">Menit</span>
+        </div>
+        <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Warna berganti setiap sekian menit jika LED Running ON</small>
       </div>
 
       <div class="grid-2">
         <div class="form-group">
-          <label>Interval Siklus Manual (Menit)</label>
-          <input type="number" id="cfg_man_interval" min="1" max="1440" onchange="markDirty()">
-          <small style="font-size:10px; color:var(--text-muted);">Jeda antar siklus aktif.</small>
+          <label id="lbl_man_interval">Interval Siklus Blower</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="number" id="cfg_man_interval" min="1" max="1440" oninput="onTimeConfigChange()" onchange="markDirty()">
+            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">Menit</span>
+          </div>
+          <small id="hint_man_interval" style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Blower nyala berkala tiap menit ini</small>
         </div>
         <div class="form-group">
-          <label>Durasi Aktif Manual (Detik)</label>
-          <input type="number" id="cfg_man_duration" min="1" max="3600" onchange="markDirty()">
-          <small style="font-size:10px; color:var(--text-muted);">Lama aktif per siklus.</small>
+          <label>Durasi Nyala Blower</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="number" id="cfg_man_duration" min="1" max="3600" oninput="onTimeConfigChange()" onchange="markDirty()">
+            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">Detik</span>
+          </div>
+          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Lama blower berputar dalam satu siklus/triger</small>
         </div>
       </div>
     </div>
@@ -1497,6 +1529,12 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       f.classList.toggle('selected', !currentConfig.ledRunning);
       r.classList.toggle('selected', !!currentConfig.ledRunning);
     }
+  }
+
+  function onTimeConfigChange() {
+    let manInt = document.getElementById('cfg_man_interval').value || 15;
+    let hintInt = document.getElementById('hint_man_interval');
+    if (hintInt) hintInt.innerText = 'Blower nyala berkala tiap ' + manInt + ' menit';
   }
 
   // Render Preset List
@@ -1740,6 +1778,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
           updateModeSelectionUI();
           updateBlowerModeUI();
           updateLedRunningUI();
+          onTimeConfigChange();
         }
 
         renderPresets();
