@@ -29,5 +29,6 @@ dist/
 **/.env.local
 !**/.contoh-env.example
 
-# Telemetry export dumps
-dokumen/*.csv
+# Dokumen & File besar
+dokumen/
+*.pptx
