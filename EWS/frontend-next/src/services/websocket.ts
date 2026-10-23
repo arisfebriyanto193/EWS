@@ -29,7 +29,7 @@ class FrontendWebSocket {
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
-        console.log('⚡ [Frontend WS] Terhubung ke WebSocket Gateway:', this.url);
+        console.log('[WS:EWS] Terhubung ke WebSocket Gateway:', this.url);
         this.setStatus('connected');
 
         // Berlangganan (Subscribe) ke seluruh topik telemetri EWS dan topik sensor per-data
@@ -82,12 +82,12 @@ class FrontendWebSocket {
             this.notifyListeners(`system:${type}`, msg);
           }
         } catch (err) {
-          console.warn('⚠️ [Frontend WS] Gagal membaca pesan:', event.data);
+          console.warn('[WS:EWS] Gagal membaca pesan:', event.data);
         }
       };
 
       this.ws.onclose = () => {
-        console.log('❌ [Frontend WS] Terputus dari server');
+        console.log('[WS:EWS] Terputus dari server');
         this.setStatus('disconnected');
         this.ws = null;
         if (this.shouldReconnect) {
@@ -96,7 +96,7 @@ class FrontendWebSocket {
       };
 
       this.ws.onerror = (err) => {
-        console.warn('⚠️ [Frontend WS] Kesalahan koneksi:', err);
+        console.warn('[WS:EWS] Kesalahan koneksi:', err);
       };
     } catch (err) {
       console.error('Fatal WebSocket Init Error:', err);
@@ -117,7 +117,7 @@ class FrontendWebSocket {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ action: 'publish', topic, payload }));
     } else {
-      console.warn('⚠️ [Frontend WS] Gagal kirim: WebSocket belum terhubung');
+      console.warn('[WS:EWS] Gagal kirim: WebSocket belum terhubung');
     }
   }
 

@@ -375,7 +375,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
                 <Target className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>🎯 Kalibrasi Posisi Aman (1-Klik Auto-Capture)</span>
+                <span>Kalibrasi Posisi Aman (1-Klik Auto-Capture)</span>
               </div>
               <span className="text-[11px] px-2.5 py-0.5 rounded-full font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-semibold border border-blue-200 dark:border-blue-800">
                 Status Sensor: Real-Time Aktif
@@ -454,7 +454,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                 ) : (
                   <>
                     <Zap className="w-4 h-4" />
-                    <span>⚡ Kalibrasi Aman &amp; Simpan ke EEPROM</span>
+                    <span>Kalibrasi Aman &amp; Simpan ke EEPROM</span>
                   </>
                 )}
               </button>
@@ -855,14 +855,22 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     />
                   </button>
                 </div>
-                <p className={`text-[10px] font-bold mt-1.5 ${
+                <p className={`text-[10px] font-bold mt-1.5 flex items-center gap-1.5 ${
                   thresholds.forceAlarmOnLowBatt
                     ? 'text-amber-600 dark:text-amber-400'
                     : 'text-emerald-600 dark:text-emerald-400'
                 }`}>
-                  {thresholds.forceAlarmOnLowBatt
-                    ? '⚠️ Alarm TETAP AKTIF walau baterai lemah — Risiko aki rusak!'
-                    : '🛡️ Relay DIMATIKAN otomatis saat baterai lemah — Aki terlindungi'}
+                  {thresholds.forceAlarmOnLowBatt ? (
+                    <>
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Alarm TETAP AKTIF walau baterai lemah — Risiko aki rusak!</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>Relay DIMATIKAN otomatis saat baterai lemah — Aki terlindungi</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -980,7 +988,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                 ) : (
                   <>
                     <Radio className="w-4 h-4" />
-                    <span>💾 Simpan Kalibrasi ke EEPROM</span>
+                    <span>Simpan Kalibrasi ke EEPROM</span>
                   </>
                 )}
               </button>

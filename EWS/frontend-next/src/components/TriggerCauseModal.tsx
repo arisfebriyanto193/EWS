@@ -13,6 +13,7 @@ import {
   Radio,
   RefreshCw,
   ShieldAlert,
+  ShieldCheck,
   Sliders,
   Volume2,
   VolumeX,
@@ -246,8 +247,9 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
             {status === 'baterai_lemah' && (
               <div className="mt-3 pt-2.5 border-t border-orange-200 dark:border-orange-800/60 text-[11px] text-orange-800 dark:text-orange-300 space-y-1">
-                <p>
-                  🛡️ <strong>Catatan Keamanan & Proteksi Sistem:</strong>
+                <p className="flex items-center gap-1.5 font-semibold">
+                  <ShieldCheck className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 shrink-0" />
+                  <span>Catatan Keamanan &amp; Proteksi Sistem:</span>
                 </p>
                 <p className="leading-relaxed">
                   Tegangan aki / sensor INA terdeteksi <strong>{f2(sensorData.batteryVoltage)}V</strong>. Kondisi ini <strong>BUKAN tanda bahaya bencana alam</strong>. Relay sirine dan lampu strobo di lapangan sengaja dinonaktifkan (OFF) agar aki terlindungi dari kerusakan deep discharge dan tidak membunyikan alarm palsu di pemukiman warga.

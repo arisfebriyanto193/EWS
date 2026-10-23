@@ -491,7 +491,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h4 className="text-sm font-bold text-red-800 dark:text-red-200">
-                  🚨 BAHAYA ANOMALI EKSTREM - SIRINE & STROBO AKTIF!
+                  BAHAYA ANOMALI EKSTREM - SIRINE &amp; STROBO AKTIF!
                 </h4>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-red-600 text-white font-mono font-bold uppercase">
                   EMERGENCY ALARM
@@ -526,7 +526,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h4 className="text-sm font-bold text-amber-800 dark:text-amber-200">
-                  ⚠️ STATUS SIAGA - RELAY LAPANGAN MATI (OFF)
+                  STATUS SIAGA - RELAY LAPANGAN MATI (OFF)
                 </h4>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-white font-mono font-bold uppercase">
                   RELAY OFF
@@ -561,7 +561,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h4 className="text-sm font-bold text-orange-800 dark:text-orange-200">
-                  ℹ️ PERINGATAN DAYA / TEGANGAN AKI (HANYA NOTIFIKASI WEB)
+                  PERINGATAN DAYA / TEGANGAN AKI (HANYA NOTIFIKASI WEB)
                 </h4>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-orange-600 text-white font-mono font-bold uppercase">
                   RELAY DIJAMIN MATI (OFF)
@@ -846,7 +846,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
             </div>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-1 block">
               {ews.sensorData.batteryVoltage <= 0.5
-                ? '⚠️ Tegangan 0.00V: Relay diproteksi OFF (Hanya Peringatan Web)'
+                ? 'Tegangan 0.00V: Relay diproteksi OFF (Hanya Peringatan Web)'
                 : `Ambang Batas Siaga: ${ews.thresholds.batteryLowVoltage} V`}
             </span>
           </div>

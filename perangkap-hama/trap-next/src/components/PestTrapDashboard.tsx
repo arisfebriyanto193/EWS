@@ -10,6 +10,7 @@ import {
   Sun,
   Wind,
   Plus,
+  Radar,
   Trash2,
   Clock,
   Palette,
@@ -641,7 +642,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 }`}
               >
                 <Zap className={`w-3.5 h-3.5 ${isFastModeActive ? 'animate-bounce' : ''}`} />
-                <span>{isFastModeActive ? 'Perpanjang Realtime' : '⚡ Percepat Data'}</span>
+                <span>{isFastModeActive ? 'Perpanjang Realtime' : 'Percepat Data'}</span>
               </button>
 
               <button
@@ -806,7 +807,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">🎯 Sensor Jarak</span>
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Radar className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                      <span>Sensor Jarak</span>
+                    </span>
                     <span className="text-[10px] font-normal text-slate-500">Nyala saat hama mendekat</span>
                   </button>
 
@@ -819,7 +823,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">⏱️ Siklus Waktu</span>
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Clock className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                      <span>Siklus Waktu</span>
+                    </span>
                     <span className="text-[10px] font-normal text-slate-500">Nyala berkala tiap interval</span>
                   </button>
                 </div>
@@ -855,7 +862,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">🌈 LED Running: ON</span>
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>Rotasi Warna: ON</span>
+                    </span>
                     <span className="text-[10px] font-normal text-slate-500">Berganti warna otomatis</span>
                   </button>
 
@@ -868,7 +878,10 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                         : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">💡 LED Running: OFF</span>
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Sun className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Rotasi Warna: OFF</span>
+                    </span>
                     <span className="text-[10px] font-normal text-slate-500">1 warna preset tetap</span>
                   </button>
                 </div>
