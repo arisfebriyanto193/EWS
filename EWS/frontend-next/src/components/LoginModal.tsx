@@ -1,39 +1,28 @@
 'use client';
-
 import React, { useState } from 'react';
-import { UserAccount } from '../types';
 import { api } from '../services/api';
+import { UserAccount } from '../types';
 import { useTheme } from '../context/ThemeContext';
-import {
-  Eye,
-  EyeOff,
-  Loader2,
-  Moon,
-  Shield,
-  ShieldAlert,
-  Sun,
-  GraduationCap,
-  Lock,
-  X,
-  ArrowLeft,
-} from 'lucide-react';
+import { Lock, User, Eye, EyeOff, Loader2, ShieldAlert, GraduationCap, X, Moon, Sun, ArrowLeft } from 'lucide-react';
 
 interface LoginModalProps {
-  onLogin: (user: UserAccount, token: string) => void;
-  onClose?: () => void;
+  onLogin?: (user: UserAccount, token: string) => void;
+  onLoginSuccess?: (user: UserAccount) => void;
   notice?: string;
+  onClose?: () => void;
   isOverlay?: boolean;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
   onLogin,
-  onClose,
+  onLoginSuccess,
   notice,
+  onClose,
   isOverlay = false,
 }) => {
   const { theme, toggleTheme } = useTheme();
-  const [username, setUsername] = useState('admin_bpbd');
-  const [password, setPassword] = useState('ews123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,50 +33,55 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setLoading(true);
 
     try {
-      const response = await api.login(username.trim(), password);
-      if (response.success && response.user) {
-        localStorage.setItem('ews_token', response.token);
-        localStorage.setItem('ews_user', JSON.stringify(response.user));
-        onLogin(response.user, response.token);
+      const res = await api.login(username, password);
+      if (res && res.token && res.user) {
+        localStorage.setItem('ews_token', res.token);
+        localStorage.setItem('ews_user', JSON.stringify(res.user));
+        if (onLogin) onLogin(res.user, res.token);
+        if (onLoginSuccess) onLoginSuccess(res.user);
+        if (onClose) onClose();
       } else {
-        setError(response.message || 'Autentikasi gagal. Periksa username dan password.');
+        setError('Otentikasi gagal. Respon dari server tidak valid.');
       }
     } catch (err: any) {
-      setError(err.message || 'Gagal terhubung ke gateway telemetri backend');
+      console.error('Login error:', err);
+      setError(
+        err.message || 'Gagal terhubung ke gateway pusat. Periksa username dan password.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const setCredentials = (user: string, pass: string) => {
-    setUsername(user);
-    setPassword(pass);
+  const setCredentials = (u: string, p: string) => {
+    setUsername(u);
+    setPassword(p);
     setError('');
   };
 
   const modalContent = (
-    <div className="w-full max-w-md bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-2xl shadow-xl p-6 sm:p-8 transition-all relative">
+    <div className="w-full max-w-md bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-6 sm:p-8 transition-all relative">
       {/* Tombol Close / Batal jika dipanggil sebagai overlay */}
       {onClose && (
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           title="Tutup & kembali ke monitoring"
         >
           <X className="w-5 h-5" />
         </button>
       )}
 
-      {/* Header Akademik */}
+      {/* Header */}
       <div className="text-center mb-5">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-purple-700 text-white shadow-sm mb-3">
-          <GraduationCap className="w-6 h-6" />
+        <div className="inline-flex items-center justify-center w-11 h-11 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 shadow-xs mb-3">
+          <GraduationCap className="w-5 h-5" />
         </div>
-        <div className="inline-block px-2.5 py-0.5 mb-1.5 rounded-full bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-900/60 text-[11px] font-semibold tracking-wide uppercase">
+        <div className="inline-block px-2.5 py-0.5 mb-1.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60 text-[11px] font-semibold tracking-wide uppercase">
           Laboratorium Instrumentasi &amp; Geoteknik
         </div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+        <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight">
           Otorisasi &amp; Akses Petugas
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -97,15 +91,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       {/* Notice Banner jika ada aksi konfigurasi yang memicu login */}
       {notice && (
-        <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/80 rounded-xl text-purple-800 dark:text-purple-200 text-xs flex items-center gap-2.5 shadow-xs">
-          <Lock className="w-4 h-4 shrink-0 text-purple-600 dark:text-purple-400" />
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900/60 rounded-lg text-blue-800 dark:text-blue-200 text-xs flex items-center gap-2.5 shadow-xs">
+          <Lock className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
           <span className="font-medium leading-relaxed">{notice}</span>
         </div>
       )}
 
       {/* Quick Role Fillers */}
-      <div className="mb-4 p-2 rounded-xl bg-slate-50 dark:bg-[#1b172e] border border-slate-200/80 dark:border-purple-900/30">
-        <span className="text-[10px] font-semibold text-slate-500 dark:text-purple-300/80 uppercase tracking-wider block px-1 mb-1.5">
+      <div className="mb-4 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block px-1 mb-1.5">
           Pilihan Akses Cepat:
         </span>
         <div className="grid grid-cols-2 gap-1.5 text-xs">
@@ -114,8 +108,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             onClick={() => setCredentials('admin_bpbd', 'ews123')}
             className={`px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer border ${
               username === 'admin_bpbd'
-                ? 'bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-700 text-purple-900 dark:text-purple-200 font-semibold'
-                : 'bg-white dark:bg-[#141122] border-slate-200 dark:border-purple-900/40 text-slate-700 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+                ? 'bg-blue-50 dark:bg-blue-950/80 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200 font-semibold'
+                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             <div className="font-medium text-[11px]">Superadmin</div>
@@ -126,8 +120,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             onClick={() => setCredentials('operator_ews01', 'ews123')}
             className={`px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer border ${
               username === 'operator_ews01'
-                ? 'bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-700 text-purple-900 dark:text-purple-200 font-semibold'
-                : 'bg-white dark:bg-[#141122] border-slate-200 dark:border-purple-900/40 text-slate-700 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+                ? 'bg-blue-50 dark:bg-blue-950/80 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200 font-semibold'
+                : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             <div className="font-medium text-[11px]">Operator Pos 1</div>
@@ -138,7 +132,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       {/* Error Alert */}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-300 text-xs flex items-center gap-2">
+        <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-lg text-red-600 dark:text-red-300 text-xs flex items-center gap-2">
           <ShieldAlert className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
@@ -155,7 +149,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username akun"
-            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/50 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-600/30 focus:border-purple-600 transition-all font-mono"
+            className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all font-mono"
             required
           />
         </div>
@@ -170,13 +164,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Kata sandi"
-              className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/50 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-600/30 focus:border-purple-600 transition-all"
+              className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors p-1 cursor-pointer"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-1 cursor-pointer"
               tabIndex={-1}
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -187,7 +181,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         <button
           type="submit"
           disabled={loading}
-          className="w-full mt-2 py-2.5 px-4 bg-purple-700 hover:bg-purple-800 active:scale-[0.99] text-white font-semibold text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          className="w-full mt-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
         >
           {loading ? (
             <>
@@ -205,11 +199,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       {/* Tombol Lanjut Mode Monitoring jika modal ditutup */}
       {onClose && (
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-purple-900/30 text-center">
+        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-purple-300/70 hover:text-purple-700 dark:hover:text-purple-200 font-medium cursor-pointer transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium cursor-pointer transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Kembali ke Mode Monitoring (Tamu)</span>
@@ -217,7 +211,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         </div>
       )}
 
-      {/* Footer Akademik */}
+      {/* Footer */}
       <div className="mt-4 text-center">
         <p className="text-[10.5px] text-slate-400 dark:text-slate-500">
           Standar Mitigasi SNI 8460:2017 &bull; Gateway IoT IP65
@@ -229,7 +223,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   if (isOverlay || onClose) {
     return (
       <div
-        className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 selection:bg-purple-700 selection:text-white"
+        className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 selection:bg-blue-600 selection:text-white"
         onClick={(e) => {
           if (e.target === e.currentTarget && onClose) {
             onClose();
@@ -242,16 +236,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-50 dark:bg-[#0c0a15] relative selection:bg-purple-700 selection:text-white transition-colors duration-200">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-50 dark:bg-[#0b0f19] relative selection:bg-blue-600 selection:text-white transition-colors duration-200">
       {/* Theme Toggle Button */}
       <button
         type="button"
         onClick={toggleTheme}
-        className="absolute top-5 right-5 p-2 rounded-xl bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 text-slate-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors shadow-xs cursor-pointer"
+        className="absolute top-5 right-5 p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
         title="Ganti tema visual"
         aria-label="Toggle theme"
       >
-        {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-purple-700" />}
+        {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-600" />}
       </button>
 
       {modalContent}

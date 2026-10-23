@@ -81,7 +81,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const currentEws = ewsNodes.find((e) => e.id === activeTab);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0c0a15] text-slate-800 dark:text-slate-100 flex font-sans selection:bg-purple-700 selection:text-white transition-colors duration-150">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 flex font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150">
       {/* Sidebar Navigasi Samping Kiri */}
       <Sidebar
         currentUser={currentUser}
@@ -131,14 +131,14 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           {children}
         </main>
 
-        {/* Clean Academic Footer */}
-        <footer className="border-t border-slate-200 dark:border-purple-950/40 bg-white dark:bg-[#110e1f] py-5 text-xs text-slate-500 dark:text-purple-300/70 transition-colors mt-auto">
+        {/* Clean Engineering Footer */}
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] py-5 text-xs text-slate-500 dark:text-slate-400 transition-colors mt-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div>
               <p className="font-semibold text-slate-800 dark:text-slate-200">
                 Pusat Kendali Riset Geoteknik &amp; Landslide Early Warning System (EWS)
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-purple-300/60">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Multi-Node Telemetry &bull; Standar SNI 8460:2017 &bull; Sirine Lokal 12V 110dB &bull; Bot Telegram &amp; Kuota Telkomsel
               </p>
             </div>
@@ -147,12 +147,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
               <button
                 type="button"
                 onClick={() => setIsDocsOpen(true)}
-                className="hover:text-purple-700 dark:hover:text-purple-300 underline font-medium cursor-pointer transition-colors"
+                className="hover:text-blue-600 dark:hover:text-blue-400 underline font-medium cursor-pointer transition-colors"
               >
                 Spesifikasi Teknis &amp; CAD
               </button>
               <span>&bull;</span>
-              <span className="font-mono text-slate-600 dark:text-purple-300/80">
+              <span className="font-mono text-slate-600 dark:text-slate-300">
                 Gateway: WebSocket /ws &bull; Port 5000
               </span>
             </div>

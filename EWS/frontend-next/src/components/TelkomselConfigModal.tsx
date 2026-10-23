@@ -24,14 +24,14 @@ import { formatWIB } from '../utils/date';
 
 interface TelkomselConfigModalProps {
   ews: EWSNode;
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   onSave: (updatedConfig: TelkomselConfig) => void;
 }
 
 export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
   ews,
-  isOpen,
+  isOpen = true,
   onClose,
   onSave,
 }) => {
@@ -188,7 +188,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] transition-colors">
+      <div className="w-full max-w-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] transition-colors">
         
         {/* Header with Telkomsel Red Accent */}
         <div className="p-5 bg-gradient-to-r from-red-600 to-rose-700 text-white flex items-center justify-between shadow-md">
@@ -226,7 +226,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                 : message.type === 'error'
                 ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
             }`}
           >
             {message.type === 'success' ? (
@@ -247,7 +247,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
             /* ================= STATE 1: SUDAH TERHUBUNG ================= */
             <div className="space-y-6">
               {/* Account Quick Info Card */}
-              <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-[#0c0a15]/80 border border-slate-200 dark:border-purple-900/30 flex flex-wrap items-center justify-between gap-4">
+              <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center font-bold text-sm">
                     T
@@ -388,11 +388,11 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
                           </div>
 
                           {hasItems ? (
-                            <div className="space-y-1.5 mt-2 border-t border-slate-200 dark:border-purple-900/30 pt-2">
+                            <div className="space-y-1.5 mt-2 border-t border-slate-200 dark:border-slate-800 pt-2">
                               {group.items.map((item, itemIdx) => (
                                 <div
                                   key={itemIdx}
-                                  className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white dark:bg-[#18142a] border border-slate-100 dark:border-purple-900/30"
+                                  className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-100 dark:border-slate-800"
                                 >
                                   <div>
                                     <span className="font-medium text-slate-800 dark:text-slate-200">
@@ -454,7 +454,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
                         placeholder="82246637292 atau 0822..."
                         value={phoneNumberInput}
                         onChange={(e) => setPhoneNumberInput(e.target.value)}
-                        className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18142a] border border-slate-300 dark:border-purple-900/40 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-colors"
+                        className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-colors"
                         autoFocus
                       />
                     </div>
@@ -503,7 +503,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
                       placeholder="Contoh: 123456"
                       value={otpInput}
                       onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                      className="w-full px-4 py-3 text-center tracking-widest text-2xl font-mono font-extrabold rounded-xl bg-slate-50 dark:bg-[#18142a] border border-slate-300 dark:border-purple-900/40 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 transition-colors"
+                      className="w-full px-4 py-3 text-center tracking-widest text-2xl font-mono font-extrabold rounded-xl bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-colors"
                       autoFocus
                     />
                     <p className="text-[11px] text-slate-400 mt-1 text-center">
@@ -516,7 +516,7 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
                       type="button"
                       onClick={handleRequestOtp}
                       disabled={isLoading}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-[#18142a] hover:bg-slate-200 dark:hover:bg-purple-900/30 text-slate-700 dark:text-slate-200 font-semibold text-xs border border-slate-200 dark:border-purple-900/30 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Kirim Ulang OTP</span>
@@ -546,14 +546,14 @@ export const TelkomselConfigModal: React.FC<TelkomselConfigModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 dark:bg-[#0c0a15] border-t border-slate-200 dark:border-purple-900/30 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50 dark:bg-[#0b0f19] border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="text-[11px] text-slate-400 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
             <span>Terhubung ke API Resmi MyTelkomsel CIAM & TDW</span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-[#18142a] border border-transparent dark:border-purple-900/40 hover:bg-slate-300 dark:hover:bg-purple-900/30 text-slate-800 dark:text-slate-200 font-semibold text-xs transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 border border-transparent dark:border-slate-700 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-xs transition-colors cursor-pointer"
           >
             Tutup
           </button>

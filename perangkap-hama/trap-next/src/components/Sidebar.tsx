@@ -74,14 +74,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-white dark:bg-[#110e1f] border-r border-slate-200 dark:border-purple-950/40 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-white dark:bg-[#0b0f19] border-r border-slate-200 dark:border-slate-800 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Brand / Logo Header */}
-        <div className="h-16 px-4 border-b border-slate-200 dark:border-purple-950/40 flex items-center justify-between shrink-0">
+        <div className="h-16 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
               <Bug className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -89,11 +89,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight leading-none">
                   PERANGKAP HAMA
                 </h1>
-                <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50">
                   IOT
                 </span>
               </div>
-              <span className="text-[11px] text-slate-500 dark:text-purple-300/70 font-medium">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Pusat Kendali Fototaksis
               </span>
             </div>
@@ -102,16 +102,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Mobile Close Button */}
           <button
             onClick={onCloseMobile}
-            className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-emerald-50 dark:hover:bg-purple-950/50 cursor-pointer"
+            className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Live Clock & Node Quick Stats */}
-        <div className="px-4 py-3 bg-slate-50 dark:bg-[#161226] border-b border-slate-200 dark:border-purple-950/40 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 text-slate-600 dark:text-purple-300/80 font-mono text-[11px]">
-            <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-purple-400" />
+        <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+            <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
             <span>{currentTime || 'Memuat...'}</span>
           </div>
           <div className="flex items-center gap-1">
@@ -124,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'bg-rose-500'
               }`}
             />
-            <span className="text-[10px] font-mono text-slate-500 dark:text-purple-300/70 uppercase">
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase">
               {wsStatus}
             </span>
           </div>
@@ -134,33 +134,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
           {/* Main Navigation */}
           <div>
-            <div className="px-3 mb-2 text-[10px] font-bold text-slate-400 dark:text-purple-400/60 uppercase tracking-wider">
+            <div className="px-3 mb-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Menu Utama
             </div>
             <nav className="space-y-1">
               <button
                 onClick={() => handleNavClick('pest-traps')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                   activeTab === 'pest-traps' || activeTab === 'overview'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-700 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-950/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-blue-600 dark:hover:text-blue-400'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Bug className="w-4 h-4" />
                   <span>Dashboard Perangkap</span>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono bg-white/20">
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                    activeTab === 'pest-traps' || activeTab === 'overview'
+                      ? 'bg-blue-700 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
                   {activeTraps}/{totalTraps}
                 </span>
               </button>
 
               <button
                 onClick={() => handleNavClick('account-settings')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                   activeTab === 'account-settings'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-700 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-950/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-blue-600 dark:hover:text-blue-400'
                 }`}
               >
                 <User className="w-4 h-4" />
@@ -172,10 +178,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Node Traps Quick Switcher */}
           <div>
             <div className="px-3 mb-2 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 dark:text-purple-400/60 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Daftar Perangkat
               </span>
-              <span className="text-[10px] font-mono text-slate-400 dark:text-purple-400/60">
+              <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
                 {pestTraps.length} unit
               </span>
             </div>
@@ -185,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   key={trap.id}
                   onClick={() => handleNavClick('pest-traps')}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg text-xs bg-slate-50 dark:bg-[#161226]/60 border border-slate-100 dark:border-purple-950/30 cursor-pointer hover:bg-emerald-50/50 dark:hover:bg-purple-950/40 transition-colors"
+                  className="flex items-center justify-between px-3 py-2 rounded-lg text-xs bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-2">
                     <span
@@ -197,13 +203,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {trap.name || trap.id}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 dark:text-purple-300/70">
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 dark:text-slate-400">
                     <span>{trap.batteryVoltage?.toFixed(1) || '12.6'}V</span>
                     <span
                       className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${
                         trap.mode === 'otomatis'
-                          ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                          : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40'
+                          : 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/40'
                       }`}
                     >
                       {trap.mode || 'auto'}
@@ -216,29 +222,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Footer Settings & User Auth */}
-        <div className="p-3 border-t border-slate-200 dark:border-purple-950/40 bg-slate-50 dark:bg-[#161226] shrink-0 space-y-2">
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-[#0f172a] shrink-0 space-y-2">
           {/* Theme Switcher */}
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-purple-300 hover:bg-white dark:hover:bg-purple-950/50 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2">
-              {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              {theme === 'dark' ? <Moon className="w-4 h-4 text-blue-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
               <span>Mode Tampilan</span>
             </div>
-            <span className="text-[10px] font-mono capitalize px-2 py-0.5 rounded bg-slate-200 dark:bg-purple-900 text-slate-700 dark:text-purple-200">
+            <span className="text-[10px] font-mono capitalize px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               {theme}
             </span>
           </button>
 
           {/* User Section */}
           {currentUser ? (
-            <div className="pt-2 border-t border-slate-200 dark:border-purple-950/40 flex items-center justify-between">
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="truncate">
                 <div className="text-xs font-bold text-slate-800 dark:text-white truncate">
                   {currentUser.fullName || currentUser.username}
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/70 capitalize">
+                <div className="text-[10px] text-blue-600 dark:text-blue-400 capitalize">
                   {currentUser.role}
                 </div>
               </div>
@@ -253,7 +259,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ) : (
             <button
               onClick={() => onRequireLogin?.('Silakan login untuk mengakses fitur administrasi.')}
-              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>Login Petugas</span>

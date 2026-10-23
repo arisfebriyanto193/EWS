@@ -3,27 +3,27 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --bg-app: #fbfbfe;
+  --bg-app: #f8fafc;
   --bg-card: #ffffff;
   --text-app: #0f172a;
   --border-subtle: #e2e8f0;
-  --purple-accent: #6b21a8;
-  --purple-hover: #581c87;
-  --purple-light: #f5f3ff;
+  --blue-accent: #2563eb;
+  --blue-hover: #1d4ed8;
+  --blue-light: #eff6ff;
 }
 
 .dark {
-  --bg-app: #0c0a15;
-  --bg-card: #141122;
+  --bg-app: #0b0f19;
+  --bg-card: #111827;
   --text-app: #f8fafc;
-  --border-subtle: #27223b;
-  --purple-accent: #9333ea;
-  --purple-hover: #a855f7;
-  --purple-light: #1e1833;
+  --border-subtle: #1f2937;
+  --blue-accent: #3b82f6;
+  --blue-hover: #2563eb;
+  --blue-light: #1e293b;
 }
 
 ::selection {
-  background-color: #7e22ce;
+  background-color: #2563eb;
   color: #ffffff;
 }
 
@@ -56,20 +56,20 @@ code, pre, .font-mono {
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #3b2d54;
+  background: #334155;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a855f7;
+  background: #2563eb;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #6b21a8;
+  background: #3b82f6;
 }
 
 /* Interactive focus indicators */
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid #7e22ce;
+  outline: 2px solid #2563eb;
   outline-offset: 1px;
 }

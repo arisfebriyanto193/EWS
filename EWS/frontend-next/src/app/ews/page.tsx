@@ -21,7 +21,7 @@ export default function EWSIndexPage() {
 
   if (!activeEws) {
     return (
-      <div className="p-8 text-center bg-white dark:bg-[#141122] rounded-xl border border-slate-200 dark:border-purple-900/40">
+      <div className="p-8 text-center bg-white dark:bg-[#111827] rounded-xl border border-slate-200 dark:border-slate-800">
         <p className="text-sm text-slate-500">Memuat data stasiun EWS...</p>
       </div>
     );
@@ -31,7 +31,7 @@ export default function EWSIndexPage() {
     <div className="space-y-4">
       {/* Quick Node Selector Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <span className="text-xs font-semibold text-slate-500 dark:text-purple-300/70 shrink-0">
+        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">
           Pilih Titik Pantau:
         </span>
         {ewsNodes.map((node) => (
@@ -41,8 +41,8 @@ export default function EWSIndexPage() {
             onClick={() => router.push(`/ews/${node.id}`)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               node.id === activeEws.id
-                ? 'bg-purple-700 text-white shadow-xs'
-                : 'bg-white dark:bg-[#141122] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-purple-900/40 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             <Radio className="w-3.5 h-3.5" />

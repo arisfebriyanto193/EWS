@@ -4,6 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useEWS } from '@/context/EWSContext';
 import { OverviewAllEWS } from '@/components/OverviewAllEWS';
+import { EWSNode } from '@/types';
 
 export default function HomePage() {
   const router = useRouter();
@@ -23,8 +24,8 @@ export default function HomePage() {
       ewsNodes={ewsNodes}
       currentUser={currentUser}
       onSelectEws={(ewsId) => router.push(`/ews/${ewsId}`)}
-      onOpenTelegramConfig={(ews) => setEditingTelegramEws(ews)}
-      onOpenTelkomselConfig={(ews) => setEditingTelkomselEws(ews)}
+      onOpenTelegramConfig={(ews: EWSNode) => setEditingTelegramEws(ews)}
+      onOpenTelkomselConfig={(ews: EWSNode) => setEditingTelkomselEws(ews)}
       onAddEwsClick={() =>
         requireAuth(
           () => setIsAddEWSOpen(true),

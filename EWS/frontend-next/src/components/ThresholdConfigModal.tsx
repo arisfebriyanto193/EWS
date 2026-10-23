@@ -308,21 +308,21 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/40 rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div className="relative w-full max-w-3xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
         {/* Header Modal */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-purple-900/30 flex items-center justify-between bg-slate-50 dark:bg-[#0c0a15]">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-[#0b0f19]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center justify-center shadow-xs">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 flex items-center justify-center shadow-xs">
               <Sliders className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>Atur Ambang Batas &amp; Kalibrasi Sensor</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-mono font-bold">
+                <span className="text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50 font-mono font-bold">
                   {ews.id}
                 </span>
               </h3>
-              <p className="text-xs text-slate-500 dark:text-purple-300/70">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Nilai kalibrasi disinkronkan langsung ke <strong>Web Server ESP32</strong> &amp; disimpan permanen di <strong>EEPROM Flash (NVS)</strong>
               </p>
             </div>
@@ -330,7 +330,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-purple-50 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -362,8 +362,8 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           )}
 
           {quickCalibToast && (
-            <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-300 dark:border-purple-800 text-purple-900 dark:text-purple-200 text-xs flex items-center gap-2 animate-in fade-in">
-              <Info className="w-4 h-4 text-purple-600 shrink-0" />
+            <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/50 text-blue-900 dark:text-blue-200 text-xs flex items-center gap-2 animate-in fade-in">
+              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
               <span>{quickCalibToast}</span>
             </div>
           )}
@@ -371,59 +371,59 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           {/* ========================================================================= */}
           {/* PANEL UTAMA: KALIBRASI POSISI AMAN 1-KLIK (INSTANT AUTO-CAPTURE)           */}
           {/* ========================================================================= */}
-          <div className="p-4 rounded-2xl border-2 border-purple-500/30 dark:border-purple-500/40 bg-gradient-to-br from-purple-50/80 via-white to-indigo-50/50 dark:from-[#1b1531] dark:via-[#141122] dark:to-[#171329] shadow-sm space-y-3.5">
+          <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/40 dark:bg-blue-950/20 space-y-3.5">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
-                <Target className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <Target className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span>🎯 Kalibrasi Posisi Aman (1-Klik Auto-Capture)</span>
               </div>
-              <span className="text-[11px] px-2.5 py-0.5 rounded-full font-mono bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-semibold border border-purple-200 dark:border-purple-800">
+              <span className="text-[11px] px-2.5 py-0.5 rounded-full font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-semibold border border-blue-200 dark:border-blue-800">
                 Status Sensor: Real-Time Aktif
               </span>
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-purple-200/80 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Posisikan tiang / modul EWS pada posisi tegak lereng yang stabil dan aman. Klik tombol di bawah untuk menyerap langsung sudut pitch, roll, dan kelembapan tanah saat ini sebagai <strong>titik acuan 0° aman</strong> ke EEPROM.
             </p>
 
             {/* Live Values Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-              <div className="bg-white/80 dark:bg-[#1f1a36] p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/40 text-center">
-                <span className="text-[10px] text-slate-500 dark:text-purple-300 font-medium block">Pitch Sensor</span>
-                <span className="text-sm font-mono font-bold text-purple-700 dark:text-purple-300">
+              <div className="bg-white dark:bg-[#111827] p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">Pitch Sensor</span>
+                <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
                   {livePitch > 0 ? `+${livePitch.toFixed(2)}` : livePitch.toFixed(2)}°
                 </span>
-                <span className="text-[9px] text-slate-400 dark:text-purple-400/70 block mt-0.5">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 block mt-0.5">
                   Dev: {pitchDev.toFixed(2)}°
                 </span>
               </div>
 
-              <div className="bg-white/80 dark:bg-[#1f1a36] p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/40 text-center">
-                <span className="text-[10px] text-slate-500 dark:text-purple-300 font-medium block">Roll Sensor</span>
-                <span className="text-sm font-mono font-bold text-purple-700 dark:text-purple-300">
+              <div className="bg-white dark:bg-[#111827] p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">Roll Sensor</span>
+                <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
                   {liveRoll > 0 ? `+${liveRoll.toFixed(2)}` : liveRoll.toFixed(2)}°
                 </span>
-                <span className="text-[9px] text-slate-400 dark:text-purple-400/70 block mt-0.5">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 block mt-0.5">
                   Dev: {rollDev.toFixed(2)}°
                 </span>
               </div>
 
-              <div className="bg-white/80 dark:bg-[#1f1a36] p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/40 text-center">
-                <span className="text-[10px] text-slate-500 dark:text-purple-300 font-medium block">Tanah Saat Ini</span>
+              <div className="bg-white dark:bg-[#111827] p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">Tanah Saat Ini</span>
                 <span className="text-sm font-mono font-bold text-teal-600 dark:text-teal-400">
                   {liveSoil.toFixed(1)}%
                 </span>
-                <span className="text-[9px] text-slate-400 dark:text-teal-400/70 block mt-0.5">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 block mt-0.5">
                   Dev: {soilDev.toFixed(1)}%
                 </span>
               </div>
 
-              <div className="bg-white/80 dark:bg-[#1f1a36] p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/40 text-center">
-                <span className="text-[10px] text-slate-500 dark:text-purple-300 font-medium block">Tegangan Aki</span>
+              <div className="bg-white dark:bg-[#111827] p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">Tegangan Aki</span>
                 <span className="text-sm font-mono font-bold text-amber-600 dark:text-amber-400">
                   {(ews.sensorData?.batteryVoltage ?? 12.8).toFixed(2)} V
                 </span>
-                <span className="text-[9px] text-slate-400 dark:text-amber-400/70 block mt-0.5">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 block mt-0.5">
                   Getaran: {(ews.sensorData?.vibrationLevel ?? 0).toFixed(2)} g
                 </span>
               </div>
@@ -434,17 +434,17 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
               <button
                 type="button"
                 onClick={captureCurrentAsSafeBaseline}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/50 dark:hover:bg-purple-900/80 text-purple-900 dark:text-purple-200 text-xs font-bold flex items-center justify-center gap-2 border border-purple-300 dark:border-purple-700 transition-all cursor-pointer shadow-xs active:scale-[0.99]"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-300 dark:border-slate-700 transition-all cursor-pointer shadow-xs active:scale-[0.99]"
               >
-                <Target className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>🎯 Ambil Nilai Sensor Sebagai Titik Aman</span>
+                <Target className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>Ambil Nilai Sensor Sebagai Titik Aman</span>
               </button>
 
               <button
                 type="button"
                 disabled={isSaving}
                 onClick={handleInstantCalibrateAndSave}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50 active:scale-[0.99]"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50 active:scale-[0.99]"
               >
                 {isSaving ? (
                   <>
@@ -464,13 +464,13 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           {/* ========================================================================= */}
           {/* SECTION 1: INCLINOMETER MPU-6050 (TITIK AMAN, TOLERANSI & AMBANG SUDUT)     */}
           {/* ========================================================================= */}
-          <div className="p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 bg-slate-50 dark:bg-[#1a162b] space-y-3">
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs uppercase tracking-wide">
-                <Compass className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span>1. Inclinometer Dua Sumbu MPU-6050 (Pitch &amp; Roll)</span>
               </div>
-              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono">
+              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono">
                 Formula: |θ - Titik Aman| &ge; Ambang
               </span>
             </div>
@@ -487,7 +487,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.safeTiltPitch}
                     onChange={(e) => handleChange('safeTiltPitch', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-purple-700 dark:text-purple-300 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">°</span>
                 </div>
@@ -505,7 +505,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.safeTiltRoll}
                     onChange={(e) => handleChange('safeTiltRoll', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-purple-700 dark:text-purple-300 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">°</span>
                 </div>
@@ -525,7 +525,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.tiltTolerance}
                     onChange={(e) => handleChange('tiltTolerance', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-purple-700 dark:text-purple-300 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">±°</span>
                 </div>
@@ -533,7 +533,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60 dark:border-purple-900/20">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200 dark:border-slate-800">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Simpangan Sudut Siaga (°)
@@ -547,7 +547,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.tiltWarning}
                     onChange={(e) => handleChange('tiltWarning', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">°</span>
                 </div>
@@ -567,7 +567,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.tiltDanger}
                     onChange={(e) => handleChange('tiltDanger', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">°</span>
                 </div>
@@ -579,7 +579,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           {/* ========================================================================= */}
           {/* SECTION 2: SENSOR CURAH HUJAN (RAIN RATE & KALIBRASI TIPPING BUCKET)       */}
           {/* ========================================================================= */}
-          <div className="p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 bg-slate-50 dark:bg-[#1a162b] space-y-3">
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
             <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs uppercase tracking-wide">
               <Droplets className="w-4 h-4 text-teal-600 dark:text-teal-400" />
               <span>2. Sensor Curah Hujan &amp; Kalibrasi Jungkitan (Tipping Bucket)</span>
@@ -599,7 +599,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.rainWarning}
                     onChange={(e) => handleChange('rainWarning', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-teal-600 dark:text-teal-400 focus:ring-1 focus:ring-teal-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-teal-600 dark:text-teal-400 focus:ring-1 focus:ring-teal-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">mm/h</span>
                 </div>
@@ -619,7 +619,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.rainDanger}
                     onChange={(e) => handleChange('rainDanger', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">mm/h</span>
                 </div>
@@ -639,7 +639,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.rainCalibPerTip}
                     onChange={(e) => handleChange('rainCalibPerTip', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-teal-700 dark:text-teal-300 focus:ring-1 focus:ring-teal-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-teal-700 dark:text-teal-300 focus:ring-1 focus:ring-teal-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">mm</span>
                 </div>
@@ -651,9 +651,9 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           {/* ========================================================================= */}
           {/* SECTION 3: SENSOR KELEMBAPAN TANAH & KALIBRASI ADC (KTANAH)                */}
           {/* ========================================================================= */}
-          <div className="p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 bg-slate-50 dark:bg-[#1a162b] space-y-3">
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
             <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs uppercase tracking-wide">
-              <Droplets className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <Droplets className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>3. Kelembapan Tanah &amp; Kalibrasi Rentang ADC (Ktanah GPIO 17)</span>
             </div>
 
@@ -671,7 +671,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.safeSoilMoisture}
                     onChange={(e) => handleChange('safeSoilMoisture', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">%</span>
                 </div>
@@ -691,7 +691,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.soilMoistureTolerance}
                     onChange={(e) => handleChange('soilMoistureTolerance', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">±%</span>
                 </div>
@@ -711,7 +711,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.soilMoistureWarning}
                     onChange={(e) => handleChange('soilMoistureWarning', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">%</span>
                 </div>
@@ -719,7 +719,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60 dark:border-purple-900/20">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200 dark:border-slate-800">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   ADC Saat Kering Kerontang (0%)
@@ -733,7 +733,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.soilAdcDry}
                     onChange={(e) => handleChange('soilAdcDry', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">ADC</span>
                 </div>
@@ -753,7 +753,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.soilAdcWet}
                     onChange={(e) => handleChange('soilAdcWet', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">ADC</span>
                 </div>
@@ -767,12 +767,12 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           {/* ========================================================================= */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Sensor Getaran Digital 801S */}
-            <div className="p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 bg-slate-50 dark:bg-[#1a162b] space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs uppercase tracking-wide">
-                <Activity className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span>4. Getaran Bahaya (801S GPIO 7)</span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-purple-300/70">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Batas frekuensi pulsa getaran atau magnitudo getaran lereng.
               </p>
 
@@ -789,7 +789,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.vibrationDanger}
                     onChange={(e) => handleChange('vibrationDanger', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-purple-700 dark:text-purple-300 focus:ring-1 focus:ring-purple-600 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 focus:ring-1 focus:ring-blue-600 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">g / Pulsa</span>
                 </div>
@@ -798,12 +798,12 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
             </div>
 
             {/* Proteksi Baterai Aki 12V */}
-            <div className="p-4 rounded-xl border border-slate-200/80 dark:border-purple-900/30 bg-slate-50 dark:bg-[#1a162b] space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-xs uppercase tracking-wide">
                 <Battery className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 <span>5. Proteksi Aki 12V (INA219/INA226)</span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-purple-300/70">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Batas cut-off tegangan aki lemah untuk proteksi sel baterai.
               </p>
 
@@ -820,7 +820,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.batteryLowVoltage}
                     onChange={(e) => handleChange('batteryLowVoltage', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">V</span>
                 </div>
@@ -832,7 +832,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex-1">
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Paksa Alarm Saat Baterai Lemah</p>
-                    <p className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-0.5">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                       Jika aktif, sirine & strobo <strong>tetap menyala</strong> saat bahaya walaupun tegangan aki di bawah batas.
                       Jika nonaktif, relay <strong>dimatikan otomatis</strong> untuk melindungi aki dari kerusakan.
                     </p>
@@ -840,7 +840,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setThresholds((prev) => ({ ...prev, forceAlarmOnLowBatt: !prev.forceAlarmOnLowBatt }))}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-[#1a162b] ${
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-[#111827] ${
                       thresholds.forceAlarmOnLowBatt
                         ? 'bg-amber-500'
                         : 'bg-slate-300 dark:bg-slate-600'
@@ -878,7 +878,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                 <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200">
                   5. Siklus Otomatis &amp; Timer Alarm (Sirine)
                 </h4>
-                <p className="text-[10px] text-slate-500 dark:text-purple-300/70">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   Alarm tidak berbunyi tanpa henti. Atur durasi aktif sirine dan jeda istirahat jika anomali masih berlanjut.
                 </p>
               </div>
@@ -899,7 +899,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.alarmDuration ?? 60}
                     onChange={(e) => handleChange('alarmDuration', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-red-600 dark:text-red-400 focus:ring-1 focus:ring-red-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">Detik (s)</span>
                 </div>
@@ -922,7 +922,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
                     value={thresholds.alarmPause ?? 30}
                     onChange={(e) => handleChange('alarmPause', e.target.value)}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#141122] border border-slate-300 dark:border-purple-900/50 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
                   />
                   <span className="absolute right-3 top-2 text-xs text-slate-400 font-mono">Detik (s)</span>
                 </div>
@@ -934,25 +934,25 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
           </div>
 
           {/* Hardware & EEPROM Info Ribbon */}
-          <div className="p-3 rounded-xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-xs flex flex-wrap items-center justify-between gap-2 text-purple-900 dark:text-purple-200">
+          <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs flex flex-wrap items-center justify-between gap-2 text-slate-700 dark:text-slate-300">
             <div className="flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-purple-700 dark:text-purple-400 shrink-0" />
+              <HardDrive className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
               <span>
                 Penyimpanan: <strong>ESP32 Flash NVS (EEPROM Namespace: ews_thresh)</strong>
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] font-mono text-purple-700 dark:text-purple-300">
+            <div className="flex items-center gap-1.5 text-[11px] font-mono text-blue-600 dark:text-blue-400">
               <Cpu className="w-3.5 h-3.5" />
               <span>ESP32-S3 Auto-Sync &amp; REST DB</span>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 dark:border-purple-900/30">
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
               onClick={handleResetDefaults}
-              className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-purple-300/70 dark:hover:text-white flex items-center gap-1.5 hover:bg-slate-100 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset Standar Pabrik</span>
@@ -962,7 +962,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-purple-300/70 hover:bg-purple-50 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Batal
               </button>
@@ -970,7 +970,7 @@ export const ThresholdConfigModal: React.FC<ThresholdConfigModalProps> = ({
               <button
                 type="submit"
                 disabled={isSaving}
-                className="px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
               >
                 {isSaving ? (
                   <>

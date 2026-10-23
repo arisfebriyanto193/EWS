@@ -35,21 +35,21 @@ export const Header: React.FC<HeaderProps> = ({
   }
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#110e1f]/95 backdrop-blur-xs border-b border-slate-200 dark:border-purple-950/40 transition-colors duration-150">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-xs border-b border-slate-200 dark:border-slate-800 transition-colors duration-150">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Left: Mobile Menu Trigger + Breadcrumb Title */}
           <div className="flex items-center gap-3">
             <button
               onClick={onOpenMobileMenu}
-              className="lg:hidden p-2 rounded-lg text-slate-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 cursor-pointer"
+              className="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               aria-label="Buka Menu Navigasi"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                 <Icon className="w-4 h-4" />
               </div>
               <div>
@@ -69,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {wsStatus === 'connected' ? 'Live Telemetry' : wsStatus}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-purple-300/70 hidden sm:block line-clamp-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block line-clamp-1">
                   {subtitle}
                 </p>
               </div>
@@ -82,16 +82,16 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onRequireLogin?.('Silakan login untuk mengatur parameter perangkap hama.')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span className="hidden xs:inline">Login Petugas</span>
                 <span className="xs:hidden">Login</span>
               </button>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#1a152e] border border-slate-200 dark:border-purple-950/50">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-medium text-slate-700 dark:text-purple-200">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
                   {currentUser.fullName || currentUser.username}
                 </span>
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">

@@ -138,14 +138,14 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
       aria-modal="true"
     >
       <div
-        className="bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-800/40 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200"
+        className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Modal */}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-purple-900/30 flex items-center justify-between gap-3 bg-slate-50/90 dark:bg-[#17142b]/90">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50 dark:bg-[#0b0f19]">
           <div className="flex items-center gap-3">
             <div
-              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
                 status === 'bahaya'
                   ? 'bg-red-100 text-red-600 dark:bg-red-950/80 dark:text-red-400 ring-2 ring-red-500/30'
                   : status === 'siaga'
@@ -184,7 +184,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                   {status === 'baterai_lemah' ? 'PERINGATAN PEMELIHARAAN' : status.toUpperCase()}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-purple-300/70 font-mono mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                 Perangkat: <strong>{ews.id}</strong> &bull; {ews.name} {ews.location ? `(${ews.location})` : ''}
               </p>
             </div>
@@ -192,7 +192,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-purple-950/60 transition-colors cursor-pointer"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             title="Tutup (ESC)"
           >
             <X className="w-5 h-5" />
@@ -262,7 +262,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <span>Analisis Pembacaan Seluruh Sensor vs Ambang Batas</span>
               </h4>
-              <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Kartu bergaris tebal menandakan sensor pemicu aktif
               </span>
             </div>
@@ -273,16 +273,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <div
                 className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isPitchDanger
-                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-xs'
                     : isPitchWarning
-                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
-                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-xs'
+                    : 'bg-slate-50/90 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <Compass className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                       Kemiringan Pitch (X)
                     </span>
                     <span
@@ -302,13 +302,13 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
                       {sensorData.pitchAngle > 0 ? `+${f2(sensorData.pitchAngle)}°` : `${f2(sensorData.pitchAngle)}°`}
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Simpangan: {f2(pitchDev)}°
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                   Aman: {safePitch > 0 ? `+${f2(safePitch)}` : f2(safePitch)}° (±{f2(thresholds.tiltTolerance ?? 2)}°) &bull; Siaga: {f2(thresholds.tiltWarning)}° &bull; Bahaya: {f2(thresholds.tiltDanger)}°
                 </div>
               </div>
@@ -317,16 +317,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <div
                 className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isRollDanger
-                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-xs'
                     : isRollWarning
-                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
-                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-xs'
+                    : 'bg-slate-50/90 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Compass className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <Compass className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                       Kemiringan Roll (Y)
                     </span>
                     <span
@@ -346,13 +346,13 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
                       {sensorData.rollAngle > 0 ? `+${f2(sensorData.rollAngle)}°` : `${f2(sensorData.rollAngle)}°`}
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Simpangan: {f2(rollDev)}°
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                   Aman: {safeRoll > 0 ? `+${f2(safeRoll)}` : f2(safeRoll)}° (±{f2(thresholds.tiltTolerance ?? 2)}°) &bull; Siaga: {f2(thresholds.tiltWarning)}° &bull; Bahaya: {f2(thresholds.tiltDanger)}°
                 </div>
               </div>
@@ -361,16 +361,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <div
                 className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isRainDanger
-                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-xs'
                     : isRainWarning
-                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
-                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-xs'
+                    : 'bg-slate-50/90 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Droplets className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                      <Droplets className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                       Curah Hujan (Tipping)
                     </span>
                     <span
@@ -391,13 +391,13 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                       {f2(sensorData.rainfallRate)}{' '}
                       <span className="text-xs font-normal text-slate-500">mm/jam</span>
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Total: {f2(sensorData.rainfallCumulative)} mm
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                   Siaga: {f2(thresholds.rainWarning)} mm/jam &bull; Bahaya: {f2(thresholds.rainDanger)} mm/jam
                 </div>
               </div>
@@ -406,8 +406,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <div
                 className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isSoilWarning
-                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-sm'
-                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/40 shadow-xs'
+                    : 'bg-slate-50/90 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <div>
@@ -429,13 +429,13 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
                       {f2(sensorData.soilMoisture)}%
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Suhu: {f2(sensorData.soilTemperature ?? 25.2)}°C
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                   Aman: {f2(safeSoil)}% (±{f2(soilTol)}%) &bull; Batas Jenuh: {f2(thresholds.soilMoistureWarning)}%
                 </div>
               </div>
@@ -444,8 +444,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <div
                 className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isVibDanger
-                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-sm'
-                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 ring-2 ring-red-500/40 shadow-xs'
+                    : 'bg-slate-50/90 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <div>
@@ -468,13 +468,13 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                       {f2(sensorData.vibrationLevel)}{' '}
                       <span className="text-xs font-normal text-slate-500">g</span>
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Ambang: {f2(thresholds.vibrationDanger)}g
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                   Sensor Getaran Digital & Akselerometer 801S
                 </div>
               </div>
@@ -483,8 +483,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
               <div
                 className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
                   isBattZeroOrDisconnected || isBattLow
-                    ? 'bg-orange-50/80 dark:bg-orange-950/40 border-orange-500 ring-2 ring-orange-500/50 shadow-sm'
-                    : 'bg-slate-50/90 dark:bg-[#1a162b] border-slate-200 dark:border-purple-900/30'
+                    ? 'bg-orange-50/80 dark:bg-orange-950/40 border-orange-500 ring-2 ring-orange-500/50 shadow-xs'
+                    : 'bg-slate-50/90 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <div>
@@ -514,13 +514,13 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                     <span className="text-xl font-bold text-slate-900 dark:text-white">
                       {f2(sensorData.batteryVoltage)} V
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-purple-300/70 font-sans">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
                       {sensorData.batteryVoltage <= 0.5 ? 'Terputus / 0V' : 'Catu Daya Siaga'}
                     </span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-slate-500 dark:text-purple-300/60 mt-2 pt-1 border-t border-slate-200 dark:border-purple-900/20">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                   Ambang Bawah: {f2(thresholds.batteryLowVoltage)}V &bull; Relay: MATI (OFF)
                 </div>
               </div>
@@ -529,7 +529,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
           </div>
 
           {/* 3. Status Aktuator Fisik di Lapangan (Relay GPIO 46) */}
-          <div className="p-3.5 rounded-xl bg-slate-50/90 dark:bg-[#17142b] border border-slate-200 dark:border-purple-900/30">
+          <div className="p-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between mb-2.5">
               <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
                 <Zap className="w-3.5 h-3.5 text-yellow-500" />
@@ -541,8 +541,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center font-mono">
-              <div className="p-2.5 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block mb-0.5">
+              <div className="p-2.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
                   Sirine 12V 110dB
                 </span>
                 <span
@@ -558,8 +558,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </span>
               </div>
 
-              <div className="p-2.5 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block mb-0.5">
+              <div className="p-2.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
                   Lampu Strobo 12V
                 </span>
                 <span
@@ -573,8 +573,8 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                 </span>
               </div>
 
-              <div className="col-span-2 sm:col-span-1 p-2.5 rounded-lg bg-white dark:bg-[#120f24] border border-slate-200 dark:border-purple-900/30">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-purple-300/70 block mb-0.5">
+              <div className="col-span-2 sm:col-span-1 p-2.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
                   Siklus Timer Sirine
                 </span>
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -587,7 +587,7 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-5 py-3.5 border-t border-slate-200 dark:border-purple-900/30 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50/90 dark:bg-[#17142b]/90">
+        <div className="px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 dark:bg-[#0b0f19]">
           <div className="flex items-center gap-2">
             {onToggleMute && (
               <button
@@ -624,16 +624,16 @@ export const TriggerCauseModal: React.FC<TriggerCauseModalProps> = ({
                   onClose();
                   onOpenThresholdConfig();
                 }}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#1e1933] hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-purple-900/50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Sliders className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>Atur Ambang Batas</span>
               </button>
             )}
 
             <button
               onClick={onClose}
-              className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-sm"
+              className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
             >
               Tutup
             </button>

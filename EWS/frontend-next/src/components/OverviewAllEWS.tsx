@@ -2,53 +2,94 @@
 import React, { useState, useMemo } from 'react';
 import { EWSNode, UserAccount } from '../types';
 import {
-  AlertTriangle,
-  ArrowRight,
-  Battery,
-  Bot,
+  Radio,
   CheckCircle,
+  AlertTriangle,
+  ShieldAlert,
+  ArrowRight,
+  Plus,
+  Bot,
+  MapPin,
   Compass,
+  Droplets,
+  Battery,
+  Wifi,
+  Send,
+  Layers,
+  Search,
   Copy,
   Check,
-  Download,
-  Droplets,
-  Layers,
-  MapPin,
-  Plus,
-  Radio,
-  Search,
-  Send,
   Smartphone,
-  ShieldAlert,
   Trash2,
-  Filter,
-  Wifi,
+  Download,
 } from 'lucide-react';
+import { TelegramConfigModal } from './TelegramConfigModal';
+import { TelkomselConfigModal } from './TelkomselConfigModal';
 
 interface OverviewAllEWSProps {
   ewsNodes: EWSNode[];
+  onSelectEws: (id: string) => void;
+  onAddEwsClick?: () => void;
+  onDeleteEws?: (id: string) => void;
   currentUser?: UserAccount | null;
-  onSelectEws: (ewsId: string) => void;
-  onOpenTelegramConfig: (ews: EWSNode) => void;
-  onOpenTelkomselConfig?: (ews: EWSNode) => void;
-  onAddEwsClick: () => void;
-  onDeleteEws?: (ewsId: string) => void;
   onRequireLogin?: (notice?: string) => void;
+  onOpenTelegramConfig?: (ews: EWSNode) => void;
+  onOpenTelkomselConfig?: (ews: EWSNode) => void;
 }
 
 export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
   ewsNodes,
-  currentUser,
   onSelectEws,
-  onOpenTelegramConfig,
-  onOpenTelkomselConfig,
   onAddEwsClick,
   onDeleteEws,
+  currentUser,
   onRequireLogin,
+  onOpenTelegramConfig,
+  onOpenTelkomselConfig,
 }) => {
+  const [selectedTelegramEws, setSelectedTelegramEws] = useState<EWSNode | null>(null);
+  const [selectedTelkomselEws, setSelectedTelkomselEws] = useState<EWSNode | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'aman' | 'siaga' | 'bahaya'>('all');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Hitung status agregat
+  const safeCount = ewsNodes.filter((e) => e.status === 'aman').length;
+  const siagaCount = ewsNodes.filter((e) => e.status === 'siaga').length;
+  const dangerCount = ewsNodes.filter((e) => e.status === 'bahaya').length;
+  const telegramActiveCount = ewsNodes.filter((e) => e.telegramConfig && e.telegramConfig.chatId).length;
+
+  const handleCopyCoords = (ews: EWSNode, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = `${ews.coordinates.lat.toFixed(6)}, ${ews.coordinates.lng.toFixed(6)}`;
+    navigator.clipboard.writeText(text);
+    setCopiedId(ews.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleTelegramClick = (ews: EWSNode) => {
+    if (onOpenTelegramConfig) {
+      onOpenTelegramConfig(ews);
+      return;
+    }
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login untuk mengatur Bot Telegram stasiun EWS.');
+      return;
+    }
+    setSelectedTelegramEws(ews);
+  };
+
+  const handleTelkomselClick = (ews: EWSNode) => {
+    if (onOpenTelkomselConfig) {
+      onOpenTelkomselConfig(ews);
+      return;
+    }
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login untuk mengakses konfigurasi SIM & Paket Telkomsel IoT.');
+      return;
+    }
+    setSelectedTelkomselEws(ews);
+  };
 
   const handleAddClick = () => {
     if (!currentUser) {
@@ -56,55 +97,32 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
       return;
     }
     if (currentUser.role !== 'superadmin') {
-      alert('Hanya akun Superadmin yang berwenang menambah titik EWS baru.');
+      alert('Hanya akun Superadmin yang memiliki wewenang untuk mendaftarkan titik pantau EWS baru.');
       return;
     }
-    onAddEwsClick();
+    onAddEwsClick?.();
   };
 
   const handleDeleteClick = (id: string) => {
     if (!currentUser) {
-      onRequireLogin?.('Silakan login untuk menghapus titik pantau EWS.');
+      onRequireLogin?.('Silakan login sebagai Superadmin untuk menghapus stasiun EWS.');
       return;
     }
-    if (onDeleteEws) onDeleteEws(id);
-  };
-
-  const handleTelegramClick = (node: EWSNode) => {
-    if (!currentUser) {
-      onRequireLogin?.('Silakan login untuk mengonfigurasi Bot Telegram.');
+    if (currentUser.role !== 'superadmin') {
+      alert('Hanya akun Superadmin yang memiliki wewenang untuk menghapus titik EWS.');
       return;
     }
-    onOpenTelegramConfig(node);
+    onDeleteEws?.(id);
   };
 
-  const handleTelkomselClick = (node: EWSNode) => {
-    if (!currentUser) {
-      onRequireLogin?.('Silakan login untuk mengonfigurasi Paket & Kuota Telkomsel.');
-      return;
-    }
-    if (onOpenTelkomselConfig) onOpenTelkomselConfig(node);
-  };
-
-  const safeCount = ewsNodes.filter((e) => e.status === 'aman').length;
-  const siagaCount = ewsNodes.filter((e) => e.status === 'siaga').length;
-  const dangerCount = ewsNodes.filter((e) => e.status === 'bahaya').length;
-  const telegramActiveCount = ewsNodes.filter((e) => e.telegramConfig && e.telegramConfig.enabled).length;
-
-  const handleCopyCoords = (ews: EWSNode, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const text = `${ews.coordinates?.lat ?? '-'}, ${ews.coordinates?.lng ?? '-'}`;
-    navigator.clipboard.writeText(text);
-    setCopiedId(ews.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
+  // Filtered nodes
   const filteredNodes = useMemo(() => {
     return ewsNodes.filter((ews) => {
       const matchSearch =
         ews.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ews.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ews.location.toLowerCase().includes(searchQuery.toLowerCase());
+
       const matchStatus = statusFilter === 'all' || ews.status === statusFilter;
       return matchSearch && matchStatus;
     });
@@ -115,9 +133,9 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
       {/* Top Academic Status Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {/* Safe */}
-        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
           <div>
-            <span className="text-xs text-slate-500 dark:text-purple-300/70 font-medium">Status Normal</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Status Normal</span>
             <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
               {safeCount} <span className="text-xs font-sans font-normal text-slate-500 dark:text-slate-400">Titik</span>
             </div>
@@ -129,9 +147,9 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
         </div>
 
         {/* Siaga */}
-        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
           <div>
-            <span className="text-xs text-slate-500 dark:text-purple-300/70 font-medium">Status Waspada</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Status Waspada</span>
             <div className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
               {siagaCount} <span className="text-xs font-sans font-normal text-slate-500 dark:text-slate-400">Titik</span>
             </div>
@@ -143,9 +161,9 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
         </div>
 
         {/* Bahaya */}
-        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
           <div>
-            <span className="text-xs text-slate-500 dark:text-purple-300/70 font-medium">Status Bahaya</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Status Bahaya</span>
             <div className="text-2xl font-bold font-mono text-red-600 dark:text-red-400 mt-0.5">
               {dangerCount} <span className="text-xs font-sans font-normal text-slate-500 dark:text-slate-400">Titik</span>
             </div>
@@ -157,16 +175,16 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
         </div>
 
         {/* Telegram Bot & Jaringan */}
-        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex items-center justify-between transition-colors">
           <div>
-            <span className="text-xs text-slate-500 dark:text-purple-300/70 font-medium">Transmisi Bot Telegram</span>
-            <div className="text-2xl font-bold font-mono text-purple-700 dark:text-purple-300 mt-0.5">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Transmisi Bot Telegram</span>
+            <div className="text-2xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-0.5">
               {telegramActiveCount} / {ewsNodes.length}{' '}
               <span className="text-xs font-sans font-normal text-slate-500 dark:text-slate-400">Aktif</span>
             </div>
             <span className="text-[11px] text-slate-400 dark:text-slate-500">Transmisi bot terhubung</span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
             <Bot className="w-5 h-5" />
           </div>
         </div>
@@ -177,15 +195,15 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Radio className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+              <Radio className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Titik Pemantauan Geoteknik &amp; Early Warning System</span>
               {ewsNodes.length > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-900 font-mono font-medium">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900 font-mono font-medium">
                   {ewsNodes.length} Perangkat
                 </span>
               )}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-purple-300/70">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Pusat kendali dan telemetri multi-node mitigasi bencana pergerakan lereng tanah
             </p>
           </div>
@@ -194,17 +212,17 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
             <a
               href="/api/logs/export/csv"
               download
-              className="self-start sm:self-auto px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-purple-950/60 hover:bg-slate-200 dark:hover:bg-purple-900/80 text-slate-700 dark:text-purple-200 border border-slate-300 dark:border-purple-800 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              className="self-start sm:self-auto px-3.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
               title="Ekspor seluruh rekaman telemetri sensor semua stasiun (.CSV)"
             >
-              <Download className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <Download className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Ekspor Semua CSV</span>
             </a>
 
             <button
               type="button"
               onClick={handleAddClick}
-              className="self-start sm:self-auto px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 active:scale-[0.98] text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              className="self-start sm:self-auto px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-semibold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Tambah Titik EWS</span>
@@ -213,7 +231,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
         </div>
 
         {/* Interactive Filter & Search Bar */}
-        <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-3 mb-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-3 mb-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs">
           {/* Status Segmented Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
             <button
@@ -221,8 +239,8 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
               onClick={() => setStatusFilter('all')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 statusFilter === 'all'
-                  ? 'bg-purple-700 text-white shadow-xs'
-                  : 'bg-slate-50 dark:bg-[#1b172e] text-slate-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               Semua ({ewsNodes.length})
@@ -233,7 +251,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 statusFilter === 'aman'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-slate-50 dark:bg-[#1b172e] text-slate-600 dark:text-purple-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
               }`}
             >
               Normal ({safeCount})
@@ -244,7 +262,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 statusFilter === 'siaga'
                   ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-slate-50 dark:bg-[#1b172e] text-slate-600 dark:text-purple-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
               }`}
             >
               Waspada ({siagaCount})
@@ -255,7 +273,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 statusFilter === 'bahaya'
                   ? 'bg-red-600 text-white shadow-xs'
-                  : 'bg-slate-50 dark:bg-[#1b172e] text-slate-600 dark:text-purple-300 hover:bg-red-50 dark:hover:bg-red-950/30'
+                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/30'
               }`}
             >
               Bahaya ({dangerCount})
@@ -270,21 +288,21 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari ID, nama lereng..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-[#1a162b] border border-slate-200 dark:border-purple-900/40 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-600"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
             />
           </div>
         </div>
 
         {/* Empty State vs Node Cards */}
         {filteredNodes.length === 0 ? (
-          <div className="bg-white dark:bg-[#141122] border-2 border-dashed border-slate-200 dark:border-purple-900/30 rounded-2xl p-8 sm:p-12 text-center transition-colors">
-            <div className="w-14 h-14 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center mx-auto mb-3">
+          <div className="bg-white dark:bg-[#111827] border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-8 sm:p-12 text-center transition-colors">
+            <div className="w-14 h-14 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-3">
               <Radio className="w-6 h-6" />
             </div>
             <h4 className="text-base font-bold text-slate-900 dark:text-white">
               Tidak Ada Titik Pemantauan yang Cocok
             </h4>
-            <p className="text-xs text-slate-500 dark:text-purple-300/70 max-w-md mx-auto mt-1 mb-4">
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1 mb-4">
               {searchQuery || statusFilter !== 'all'
                 ? 'Tidak ditemukan titik EWS yang sesuai dengan kata kunci pencarian atau filter status yang dipilih.'
                 : 'Sistem monitoring saat ini siap menerima perangkat baru. Silakan tambahkan stasiun pemantauan lereng EWS pertama.'}
@@ -296,7 +314,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                   setSearchQuery('');
                   setStatusFilter('all');
                 }}
-                className="px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer"
               >
                 Reset Filter Pencarian
               </button>
@@ -304,7 +322,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
               <button
                 type="button"
                 onClick={handleAddClick}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Perangkat EWS</span>
@@ -327,32 +345,32 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                 ? 'border-red-300 dark:border-red-900/60'
                 : isSiaga
                 ? 'border-amber-300 dark:border-amber-900/60'
-                : 'border-slate-200 dark:border-purple-900/30';
+                : 'border-slate-200 dark:border-slate-800';
 
               return (
                 <div
                   key={ews.id}
-                  className={`bg-white dark:bg-[#141122] rounded-xl border ${cardBorder} hover:border-purple-300 dark:hover:border-purple-700 p-5 transition-all duration-150 shadow-xs hover:shadow-md flex flex-col justify-between`}
+                  className={`bg-white dark:bg-[#111827] rounded-xl border ${cardBorder} hover:border-blue-400 dark:hover:border-blue-600 p-5 transition-all duration-150 shadow-xs hover:shadow-md flex flex-col justify-between`}
                 >
                   <div>
                     {/* Card top */}
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-purple-50 dark:bg-[#1e1933] text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800/60">
+                          <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
                             {ews.id}
                           </span>
                           <h4 className="text-sm font-bold text-slate-900 dark:text-white">{ews.name}</h4>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <p className="text-xs text-slate-500 dark:text-purple-300/70 flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                          <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                             <span className="truncate">{ews.location}</span>
                           </p>
                           <button
                             type="button"
                             onClick={(e) => handleCopyCoords(ews, e)}
-                            className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-purple-700 dark:hover:text-purple-300 cursor-pointer font-mono"
+                            className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer font-mono"
                             title="Salin Koordinat WGS84"
                           >
                             {copiedId === ews.id ? (
@@ -389,9 +407,9 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
 
                     {/* Sensor highlights */}
                     <div className="grid grid-cols-3 gap-2 my-4">
-                      <div className="bg-slate-50 dark:bg-[#1a162b] p-2.5 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
-                        <span className="text-[10px] text-slate-500 dark:text-purple-300/70 flex items-center justify-center gap-1">
-                          <Compass className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                      <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-center">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1">
+                          <Compass className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                           Kemiringan
                         </span>
                         <div className="text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white mt-1">
@@ -399,9 +417,9 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         </div>
                       </div>
 
-                      <div className="bg-slate-50 dark:bg-[#1a162b] p-2.5 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
-                        <span className="text-[10px] text-slate-500 dark:text-purple-300/70 flex items-center justify-center gap-1">
-                          <Droplets className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                      <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-center">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1">
+                          <Droplets className="w-3 h-3 text-blue-500 dark:text-blue-400" />
                           Curah Hujan
                         </span>
                         <div className="text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white mt-1">
@@ -409,8 +427,8 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         </div>
                       </div>
 
-                      <div className="bg-slate-50 dark:bg-[#1a162b] p-2.5 rounded-lg border border-slate-200/80 dark:border-purple-900/30 text-center">
-                        <span className="text-[10px] text-slate-500 dark:text-purple-300/70 flex items-center justify-center gap-1">
+                      <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-center">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1">
                           <Battery className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           Baterai VRLA
                         </span>
@@ -427,13 +445,13 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                     </div>
 
                     {/* Network WiFi & IP Address strip */}
-                    <div className="p-2.5 bg-slate-50 dark:bg-[#1a162b] rounded-lg border border-slate-200/80 dark:border-purple-900/30 flex items-center justify-between text-xs mb-2">
-                      <div className="flex items-center gap-2 text-slate-700 dark:text-purple-200">
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs mb-2">
+                      <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                         <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[130px]">
                           {ews.sensorData?.wifiSsid || 'WiFi EWS'}
                         </span>
-                        <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800/50">
+                        <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-900/50">
                           {ews.sensorData?.ipAddress || '192.168.1.1'}
                         </span>
                       </div>
@@ -443,9 +461,9 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                     </div>
 
                     {/* Telegram channel info */}
-                    <div className="p-2.5 bg-slate-50 dark:bg-[#1a162b] rounded-lg border border-slate-200/80 dark:border-purple-900/30 flex items-center justify-between text-xs mb-2">
-                      <div className="flex items-center gap-2 text-slate-700 dark:text-purple-200">
-                        <Send className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs mb-2">
+                      <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                        <Send className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                         <span className="truncate max-w-[200px] text-[11px] font-mono">
                           {ews.telegramConfig ? ews.telegramConfig.channelName : 'Belum Dikonfigurasi'}
                         </span>
@@ -453,7 +471,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                       <button
                         type="button"
                         onClick={() => handleTelegramClick(ews)}
-                        className="text-[11px] font-medium text-purple-700 dark:text-purple-300 hover:underline cursor-pointer"
+                        className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                       >
                         Konfigurasi Bot
                       </button>
@@ -482,7 +500,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                   {/* Bottom CTA to view dedicated dashboard */}
                   <button
                     onClick={() => onSelectEws(ews.id)}
-                    className="w-full py-2.5 px-3 rounded-lg bg-slate-50 hover:bg-purple-50 dark:bg-[#1a162b] dark:hover:bg-purple-950/60 text-purple-900 dark:text-purple-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer group border border-slate-200 dark:border-purple-900/40 hover:border-purple-300 dark:hover:border-purple-700"
+                    className="w-full py-2.5 px-3 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-950/70 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer group border border-blue-200/80 dark:border-blue-900/60"
                   >
                     <span>Buka Analisis &amp; Kendali {ews.id}</span>
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -495,17 +513,17 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
       </div>
 
       {/* Peta Sebaran Stasiun Lapangan */}
-      <div className="bg-white dark:bg-[#141122] border border-slate-200 dark:border-purple-900/30 rounded-xl p-5 sm:p-6 shadow-xs transition-colors">
+      <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-xs transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Layers className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+              <Layers className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>
                 Peta Sebaran Stasiun Lapangan{' '}
                 {ewsNodes.length > 0 ? `(${ewsNodes.length} Titik EWS)` : '(Menunggu Perangkat)'}
               </span>
             </h3>
-            <p className="text-xs text-slate-500 dark:text-purple-300/70">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Distribusi spasial pemantauan lereng mitigasi bencana tanah longsor mandiri tenaga surya
             </p>
           </div>
@@ -528,17 +546,17 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
         </div>
 
         {/* Map Canvas Illustration */}
-        <div className="relative h-72 sm:h-80 w-full bg-slate-50 dark:bg-[#0c0a15] rounded-xl border border-slate-200 dark:border-purple-900/30 overflow-hidden p-5 flex flex-col justify-between">
+        <div className="relative h-72 sm:h-80 w-full bg-slate-50 dark:bg-[#0b0f19] rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden p-5 flex flex-col justify-between">
           {/* Topographical grid pattern background */}
           <div
-            className="absolute inset-0 opacity-25 pointer-events-none"
+            className="absolute inset-0 opacity-20 pointer-events-none"
             style={{
-              backgroundImage: 'radial-gradient(#8b5cf6 0.8px, transparent 0.8px)',
+              backgroundImage: 'radial-gradient(#3b82f6 0.8px, transparent 0.8px)',
               backgroundSize: '28px 28px',
             }}
           />
 
-          <div className="relative z-10 flex justify-between text-[10px] sm:text-[11px] font-mono text-slate-500 dark:text-purple-300/60">
+          <div className="relative z-10 flex justify-between text-[10px] sm:text-[11px] font-mono text-slate-500 dark:text-slate-400">
             <span>SEKTOR LERENG KRITIS &bull; ZONA A-IV</span>
             <span>SKALA 1:5,000 &bull; DATUM WGS-84</span>
           </div>
@@ -546,8 +564,8 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
           {/* Clean Academic Nodes Pins (Non AI-blink) */}
           <div className="relative z-10 h-44 sm:h-52 w-full flex items-center justify-center">
             {ewsNodes.length === 0 ? (
-              <div className="text-center p-4 max-w-sm bg-white/90 dark:bg-[#141122]/90 backdrop-blur rounded-xl border border-slate-200 dark:border-purple-900/30 shadow-xs">
-                <MapPin className="w-6 h-6 text-purple-400 mx-auto mb-2" />
+              <div className="text-center p-4 max-w-sm bg-white/90 dark:bg-[#111827]/90 backdrop-blur rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                <MapPin className="w-6 h-6 text-blue-500 mx-auto mb-2" />
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Peta Siap Memetakan Koordinat
                 </p>
@@ -576,7 +594,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                   ? 'bg-red-600 text-white'
                   : isAmber
                   ? 'bg-amber-600 text-white'
-                  : 'bg-purple-700 text-white';
+                  : 'bg-blue-600 text-white';
 
                 return (
                   <div
@@ -590,25 +608,25 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         <span className="absolute w-7 h-7 rounded-full opacity-60 bg-red-500 animate-ping" />
                       )}
                       <div
-                        className={`w-6 h-6 rounded-full border-2 border-white dark:border-[#0c0a15] flex items-center justify-center shadow-md font-bold text-[10px] ${pinBg} transition-transform group-hover:scale-110`}
+                        className={`w-6 h-6 rounded-full border-2 border-white dark:border-[#0b0f19] flex items-center justify-center shadow-md font-bold text-[10px] ${pinBg} transition-transform group-hover:scale-110`}
                       >
                         {idx + 1}
                       </div>
                     </div>
 
                     {/* Clean Academic Tooltip on hover */}
-                    <div className="hidden group-hover:block absolute bottom-8 left-1/2 -translate-x-1/2 z-30 min-w-[200px] bg-white dark:bg-[#1c182e] border border-slate-200 dark:border-purple-800/80 p-3 rounded-xl shadow-lg text-left">
+                    <div className="hidden group-hover:block absolute bottom-8 left-1/2 -translate-x-1/2 z-30 min-w-[200px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-xl shadow-lg text-left">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{ews.name}</span>
-                        <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                        <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50">
                           {ews.id}
                         </span>
                       </div>
-                      <span className="text-[10px] text-slate-500 dark:text-purple-300/70 block">{ews.location}</span>
-                      <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-purple-900/40 text-[10px] text-purple-700 dark:text-purple-300 font-mono">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 block">{ews.location}</span>
+                      <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-blue-600 dark:text-blue-400 font-mono">
                         Sudut: {ews.sensorData.pitchAngle?.toFixed(2) ?? '0.00'}° &bull; Hujan: {(ews.sensorData.rainfallRate ?? 0).toFixed(2)} mm/j
                       </div>
-                      <span className="text-[9px] text-slate-400 dark:text-purple-400/60 block mt-1">
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 block mt-1">
                         Klik untuk membuka analisis lengkap &rarr;
                       </span>
                     </div>
@@ -618,12 +636,38 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
             )}
           </div>
 
-          <div className="relative z-10 flex justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-purple-300/60">
+          <div className="relative z-10 flex justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
             <span>Elevasi Zona: 850 - 1,200 mdpl (Mitigasi Geoteknik)</span>
             <span>Sensor Inclinometer RS485 &bull; Tipping Bucket Rain Gauge</span>
           </div>
         </div>
       </div>
+
+      {/* Telegram Config Modal */}
+      {selectedTelegramEws && (
+        <TelegramConfigModal
+          ews={selectedTelegramEws}
+          isOpen={true}
+          onClose={() => setSelectedTelegramEws(null)}
+          onSave={(newCfg) => {
+            selectedTelegramEws.telegramConfig = newCfg;
+            setSelectedTelegramEws(null);
+          }}
+        />
+      )}
+
+      {/* Telkomsel Config Modal */}
+      {selectedTelkomselEws && (
+        <TelkomselConfigModal
+          ews={selectedTelkomselEws}
+          isOpen={true}
+          onClose={() => setSelectedTelkomselEws(null)}
+          onSave={(newCfg) => {
+            selectedTelkomselEws.telkomselConfig = newCfg;
+            setSelectedTelkomselEws(null);
+          }}
+        />
+      )}
     </div>
   );
 };
