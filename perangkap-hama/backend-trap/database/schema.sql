@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS `pest_traps` (
   `battery_voltage` DECIMAL(5, 2) NOT NULL DEFAULT 12.60 COMMENT 'Tegangan Baterai / Aki INA226 (V)',
   `solar_charging_current` INT NOT NULL DEFAULT 1400 COMMENT 'Arus Panel / Beban INA226 (mA)',
   `current_distance` INT NOT NULL DEFAULT 0 COMMENT 'Jarak Deteksi VL53L0X (mm)',
+  `dist_threshold_mm` INT NOT NULL DEFAULT 150 COMMENT 'Batas Ambang Jarak Maksimal Deteksi Hama (mm)',
+  `dist_min_mm` INT NOT NULL DEFAULT 10 COMMENT 'Batas Jarak Minimal Deteksi Hama (mm)',
   `mode` VARCHAR(30) NOT NULL DEFAULT 'otomatis' COMMENT 'manual, otomatis, otomatis-led',
   `status` ENUM('aktif', 'standby', 'wadah_penuh', 'baterai_lemah', 'offline') NOT NULL DEFAULT 'aktif',
   `active_preset` INT NOT NULL DEFAULT 0 COMMENT 'Indeks Preset Warna LED (0-4)',

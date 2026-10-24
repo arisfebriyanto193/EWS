@@ -163,6 +163,8 @@ export interface PestTrapNode {
   batteryVoltage: number; // INA226 / ADC
   solarChargingCurrent: number; // INA226 Solar / Battery current (mA)
   currentDistance?: number; // VL53L0X distance in mm
+  distThresholdMm?: number; // Ambang batas maksimal deteksi hama (mm)
+  distMinMm?: number; // Batas minimal deteksi hama (mm)
   mode: 'manual' | 'otomatis' | 'otomatis_led' | 'otomatis_malam' | 'hemat_energi' | 'standby';
   status: 'aktif' | 'standby' | 'wadah_penuh' | 'baterai_lemah' | 'mati';
   activePreset?: number;

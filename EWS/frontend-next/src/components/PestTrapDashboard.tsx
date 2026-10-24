@@ -237,6 +237,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     manualIntervalMin: activeTrap?.manualIntervalMin || 15,
     manualDurationSec: activeTrap?.manualDurationSec || 3,
     sensorCooldownSec: activeTrap?.sensorCooldownSec || 5,
+    distThresholdMm: activeTrap?.distThresholdMm !== undefined ? activeTrap.distThresholdMm : 150,
+    distMinMm: activeTrap?.distMinMm !== undefined ? activeTrap.distMinMm : 10,
     activePreset: activeTrap?.activePreset !== undefined ? activeTrap.activePreset : 0,
     presets: activeTrap?.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
   }));
@@ -261,6 +263,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
         manualIntervalMin: activeTrap.manualIntervalMin || 15,
         manualDurationSec: activeTrap.manualDurationSec || 3,
         sensorCooldownSec: activeTrap.sensorCooldownSec || 5,
+        distThresholdMm: activeTrap.distThresholdMm !== undefined ? activeTrap.distThresholdMm : 150,
+        distMinMm: activeTrap.distMinMm !== undefined ? activeTrap.distMinMm : 10,
         activePreset: activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0,
         presets: activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
       });
@@ -306,6 +310,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
       manualIntervalMin: activeTrap.manualIntervalMin || 15,
       manualDurationSec: activeTrap.manualDurationSec || 3,
       sensorCooldownSec: activeTrap.sensorCooldownSec || 5,
+      distThresholdMm: activeTrap.distThresholdMm !== undefined ? activeTrap.distThresholdMm : 150,
+      distMinMm: activeTrap.distMinMm !== undefined ? activeTrap.distMinMm : 10,
       activePreset: activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0,
       presets: activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
     });
@@ -323,6 +329,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
       draftConfig.manualIntervalMin !== (activeTrap.manualIntervalMin || 15) ||
       draftConfig.manualDurationSec !== (activeTrap.manualDurationSec || 3) ||
       draftConfig.sensorCooldownSec !== (activeTrap.sensorCooldownSec || 5) ||
+      draftConfig.distThresholdMm !== (activeTrap.distThresholdMm !== undefined ? activeTrap.distThresholdMm : 150) ||
+      draftConfig.distMinMm !== (activeTrap.distMinMm !== undefined ? activeTrap.distMinMm : 10) ||
       draftConfig.activePreset !== (activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0) ||
       JSON.stringify(draftConfig.presets) !== JSON.stringify(activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS)
     )
@@ -348,6 +356,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
         manualIntervalMin: draftConfig.manualIntervalMin,
         manualDurationSec: draftConfig.manualDurationSec,
         sensorCooldownSec: draftConfig.sensorCooldownSec,
+        distThresholdMm: draftConfig.distThresholdMm,
+        distMinMm: draftConfig.distMinMm,
         activePreset: draftConfig.activePreset,
         ledColor: selectedPreset?.name || activeTrap.ledColor,
         presets: draftConfig.presets,
@@ -475,6 +485,8 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
           manualIntervalMin: 15,
           manualDurationSec: 3,
           sensorCooldownSec: 5,
+          distThresholdMm: 150,
+          distMinMm: 10,
           presets: DEFAULT_PRESETS,
         });
         setSelectedTrapId(newTrapId.trim().toUpperCase());
@@ -839,7 +851,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   {draftConfig.blowerMode === 'time'
                     ? `Blower akan otomatis menyala selama ${draftConfig.manualDurationSec || 3} detik setiap ${draftConfig.manualIntervalMin || 15} menit sekali.`
-                    : `Blower akan menyala selama ${draftConfig.manualDurationSec || 3} detik saat sensor jarak mendeteksi hama (jeda sensor ${draftConfig.sensorCooldownSec || 5} detik).`}
+                    : `Blower akan menyala selama ${draftConfig.manualDurationSec || 3} detik saat sensor jarak mendeteksi hama di rentang ${draftConfig.distMinMm || 10} - ${draftConfig.distThresholdMm || 150} mm (jeda sensor ${draftConfig.sensorCooldownSec || 5} detik).`}
                 </p>
               </div>
 
@@ -1023,6 +1035,50 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Detik</span>
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">Lama blower berputar dalam satu siklus/triger</span>
+              </div>
+
+              {/* Jarak Deteksi Maksimal (Ambang Batas) */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Gauge className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  Jarak Deteksi Maksimal
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={10}
+                    max={2000}
+                    value={draftConfig.distThresholdMm || 150}
+                    onChange={(e) => handleDraftChange('distThresholdMm', Math.max(10, parseInt(e.target.value, 10) || 10))}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">mm</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Batas jarak terjauh deteksi hama (Default: 150 mm / 15 cm)
+                </span>
+              </div>
+
+              {/* Jarak Deteksi Minimal (Filter Noise) */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Jarak Deteksi Minimal
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={500}
+                    value={draftConfig.distMinMm !== undefined ? draftConfig.distMinMm : 10}
+                    onChange={(e) => handleDraftChange('distMinMm', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">mm</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Batas jarak minimal filter noise (Default: 10 mm / 1 cm)
+                </span>
               </div>
             </div>
           </div>

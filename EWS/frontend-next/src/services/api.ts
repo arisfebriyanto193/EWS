@@ -278,6 +278,8 @@ export const api = {
       manualIntervalMin?: number;
       manualDurationSec?: number;
       sensorCooldownSec?: number;
+      distThresholdMm?: number;
+      distMinMm?: number;
       blowerMode?: 'sensor' | 'time';
       ledRunning?: boolean;
       ledColor?: string;
@@ -311,6 +313,8 @@ export const api = {
       manualIntervalMin?: number;
       manualDurationSec?: number;
       sensorCooldownSec?: number;
+      distThresholdMm?: number;
+      distMinMm?: number;
       ledColor?: string;
       presets?: any[];
       command?: string;

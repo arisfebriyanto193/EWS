@@ -113,6 +113,8 @@ class ESP32TrapSimulator:
         self.manual_interval_min = 15
         self.manual_duration_sec = 3
         self.sensor_cooldown_sec = 5
+        self.dist_threshold_mm = 150
+        self.dist_min_mm = 10
         self.blower_mode = "sensor"  # sensor | time
         self.led_running = False
 
@@ -209,6 +211,8 @@ class ESP32TrapSimulator:
             "manualIntervalMin": self.manual_interval_min,
             "manualDurationSec": self.manual_duration_sec,
             "sensorCooldownSec": self.sensor_cooldown_sec,
+            "distThresholdMm": self.dist_threshold_mm,
+            "distMinMm": self.dist_min_mm,
             "blowerMode": self.blower_mode,
             "ledRunning": self.led_running,
             "isFastTelemetry": is_client_active,
@@ -298,6 +302,14 @@ class ESP32TrapSimulator:
             modified = True
         if "sensorCooldownSec" in data or "sensor_cooldown_sec" in data:
             self.sensor_cooldown_sec = int(data.get("sensorCooldownSec") or data.get("sensor_cooldown_sec"))
+            modified = True
+        if "distThresholdMm" in data or "dist_threshold_mm" in data:
+            self.dist_threshold_mm = int(data.get("distThresholdMm") or data.get("dist_threshold_mm"))
+            self.log("CONTROL", f"Batas Jarak Maksimal diubah -> {self.dist_threshold_mm} mm", C_BLUE)
+            modified = True
+        if "distMinMm" in data or "dist_min_mm" in data:
+            self.dist_min_mm = int(data.get("distMinMm") or data.get("dist_min_mm"))
+            self.log("CONTROL", f"Batas Jarak Minimal diubah -> {self.dist_min_mm} mm", C_BLUE)
             modified = True
 
         # 6. Mode Blower & LED Running
