@@ -31,6 +31,7 @@ function formatTrapNode(trap) {
     ledRotationInterval: parseInt(trap.led_rotation_interval || 15, 10),
     manualIntervalMin: parseInt(trap.manual_interval_min || 15, 10),
     manualDurationSec: parseInt(trap.manual_duration_sec || 3, 10),
+    sensorCooldownSec: parseInt(trap.sensor_cooldown_sec || 5, 10),
     ledColor: trap.led_color || '#3b82f6',
     blowerMode: trap.blower_mode || 'sensor',
     ledRunning: trap.led_running !== null && trap.led_running !== undefined ? Boolean(trap.led_running) : false,
@@ -89,6 +90,7 @@ exports.createTrap = async (req, res) => {
       ledRotationInterval = 15,
       manualIntervalMin = 15,
       manualDurationSec = 3,
+      sensorCooldownSec = 5,
       ledColor = '#3b82f6',
       presets = null,
     } = req.body;
@@ -117,13 +119,13 @@ exports.createTrap = async (req, res) => {
         pir_trigger_count, photoelectric_count, container_capacity_percent,
         battery_voltage, solar_charging_current, current_distance,
         mode, status, active_preset, start_time, end_time,
-        led_rotation_interval, manual_interval_min, manual_duration_sec, led_color, presets_json
+        led_rotation_interval, manual_interval_min, manual_duration_sec, sensor_cooldown_sec, led_color, presets_json
       ) VALUES (
         ?, ?, ?, 1, 0,
         0, 0, 0,
         12.60, 0, 0,
         ?, 'aktif', ?, ?, ?,
-        ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?
       )`,
       [
         id,
@@ -136,6 +138,7 @@ exports.createTrap = async (req, res) => {
         ledRotationInterval,
         manualIntervalMin,
         manualDurationSec,
+        sensorCooldownSec,
         ledColor,
         presetsJsonStr,
       ]
@@ -173,6 +176,7 @@ exports.updateTrap = async (req, res) => {
       ledRotationInterval,
       manualIntervalMin,
       manualDurationSec,
+      sensorCooldownSec,
       ledColor,
       blowerMode,
       ledRunning,
@@ -193,6 +197,7 @@ exports.updateTrap = async (req, res) => {
         led_rotation_interval = COALESCE(?, led_rotation_interval),
         manual_interval_min = COALESCE(?, manual_interval_min),
         manual_duration_sec = COALESCE(?, manual_duration_sec),
+        sensor_cooldown_sec = COALESCE(?, sensor_cooldown_sec),
         led_color = COALESCE(?, led_color),
         blower_mode = COALESCE(?, blower_mode),
         led_running = COALESCE(?, led_running),
@@ -208,6 +213,7 @@ exports.updateTrap = async (req, res) => {
         ledRotationInterval !== undefined ? ledRotationInterval : null,
         manualIntervalMin !== undefined ? manualIntervalMin : null,
         manualDurationSec !== undefined ? manualDurationSec : null,
+        sensorCooldownSec !== undefined ? sensorCooldownSec : null,
         ledColor || null,
         blowerMode !== undefined ? blowerMode : null,
         ledRunning !== undefined ? (ledRunning ? 1 : 0) : null,
@@ -282,6 +288,7 @@ exports.controlTrap = async (req, res) => {
       ledRotationInterval,
       manualIntervalMin,
       manualDurationSec,
+      sensorCooldownSec,
       ledColor,
       blowerMode,
       ledRunning,
@@ -298,8 +305,8 @@ exports.controlTrap = async (req, res) => {
         `INSERT INTO pest_traps (
           id, name, location, uv_led_status, blower_status,
           mode, status, active_preset, start_time, end_time,
-          led_rotation_interval, manual_interval_min, manual_duration_sec, led_color, blower_mode, led_running, presets_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          led_rotation_interval, manual_interval_min, manual_duration_sec, sensor_cooldown_sec, led_color, blower_mode, led_running, presets_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           `Perangkap Hama ${id}`,
@@ -314,6 +321,7 @@ exports.controlTrap = async (req, res) => {
           ledRotationInterval !== undefined ? ledRotationInterval : 15,
           manualIntervalMin !== undefined ? manualIntervalMin : 15,
           manualDurationSec !== undefined ? manualDurationSec : 3,
+          sensorCooldownSec !== undefined ? sensorCooldownSec : 5,
           ledColor || '#3b82f6',
           blowerMode || 'sensor',
           ledRunning !== undefined ? (ledRunning ? 1 : 0) : 0,
@@ -333,6 +341,7 @@ exports.controlTrap = async (req, res) => {
           led_rotation_interval = COALESCE(?, led_rotation_interval),
           manual_interval_min = COALESCE(?, manual_interval_min),
           manual_duration_sec = COALESCE(?, manual_duration_sec),
+          sensor_cooldown_sec = COALESCE(?, sensor_cooldown_sec),
           led_color = COALESCE(?, led_color),
           blower_mode = COALESCE(?, blower_mode),
           led_running = COALESCE(?, led_running),
@@ -349,6 +358,7 @@ exports.controlTrap = async (req, res) => {
           ledRotationInterval !== undefined ? ledRotationInterval : null,
           manualIntervalMin !== undefined ? manualIntervalMin : null,
           manualDurationSec !== undefined ? manualDurationSec : null,
+          sensorCooldownSec !== undefined ? sensorCooldownSec : null,
           ledColor || null,
           blowerMode !== undefined ? blowerMode : null,
           ledRunning !== undefined ? (ledRunning ? 1 : 0) : null,
@@ -375,6 +385,7 @@ exports.controlTrap = async (req, res) => {
       ledRotationInterval,
       manualIntervalMin,
       manualDurationSec,
+      sensorCooldownSec,
       ledColor,
       blowerMode,
       ledRunning,
@@ -391,6 +402,7 @@ exports.controlTrap = async (req, res) => {
         ledRotationInterval,
         manualIntervalMin,
         manualDurationSec,
+        sensorCooldownSec,
         ledColor,
         blowerMode,
         ledRunning,
@@ -421,7 +433,6 @@ exports.getBatteryHistory = async (req, res) => {
     }
 
     const { id } = req.params;
-    // Default: 24 jam terakhir, bisa diganti dengan query ?hours=48 atau ?days=7
     const hours = parseInt(req.query.hours || '24', 10);
     const days = parseInt(req.query.days || '0', 10);
     const totalHours = days > 0 ? days * 24 : hours;

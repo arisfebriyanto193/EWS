@@ -171,6 +171,7 @@ export interface PestTrapNode {
   ledRotationInterval?: number; // menit
   manualIntervalMin?: number; // Cooldown antar trigger blower (menit) atau interval berkala blower
   manualDurationSec?: number; // Durasi blower nyala saat deteksi hama / pemicu waktu (detik)
+  sensorCooldownSec?: number; // Jeda sensor setelah blower mati sebelum bisa mendeteksi lagi (detik)
   ledColor?: string; // Hex kode / warna LED aktif
   blowerMode?: 'sensor' | 'time'; // Pemicu blower: sensor VL53L0X atau interval waktu berkala
   ledRunning?: boolean; // True jika warna LED berganti berkala, false jika 1 warna statis

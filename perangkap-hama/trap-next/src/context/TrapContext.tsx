@@ -169,6 +169,7 @@ export const TrapProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ledRotationInterval: updated.ledRotationInterval,
       manualIntervalMin: updated.manualIntervalMin,
       manualDurationSec: updated.manualDurationSec,
+      sensorCooldownSec: updated.sensorCooldownSec,
       ledColor: updated.ledColor,
       blowerMode: updated.blowerMode,
       ledRunning: updated.ledRunning,

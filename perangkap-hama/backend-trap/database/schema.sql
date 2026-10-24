@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS `pest_traps` (
   `active_preset` INT NOT NULL DEFAULT 0 COMMENT 'Indeks Preset Warna LED (0-4)',
   `manual_interval_min` INT NOT NULL DEFAULT 15 COMMENT 'Interval Siklus Mode Manual (menit)',
   `manual_duration_sec` INT NOT NULL DEFAULT 3 COMMENT 'Durasi Nyala Mode Manual (detik)',
+  `sensor_cooldown_sec` INT NOT NULL DEFAULT 5 COMMENT 'Jeda Sensor Cooldown Setelah Blower Mati (detik)',
   `blower_mode` VARCHAR(20) NOT NULL DEFAULT 'sensor' COMMENT 'sensor / time',
   `led_running` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1: ganti warna per rotasi, 0: 1 warna statis',
   `led_color` VARCHAR(50) DEFAULT 'UV / Ungu' COMMENT 'Nama/Label Spektrum Warna LED Aktif',

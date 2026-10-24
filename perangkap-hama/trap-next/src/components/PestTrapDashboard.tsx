@@ -236,6 +236,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     ledRotationInterval: activeTrap?.ledRotationInterval || 15,
     manualIntervalMin: activeTrap?.manualIntervalMin || 15,
     manualDurationSec: activeTrap?.manualDurationSec || 3,
+    sensorCooldownSec: activeTrap?.sensorCooldownSec || 5,
     activePreset: activeTrap?.activePreset !== undefined ? activeTrap.activePreset : 0,
     presets: activeTrap?.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
   }));
@@ -259,6 +260,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
         ledRotationInterval: activeTrap.ledRotationInterval || 15,
         manualIntervalMin: activeTrap.manualIntervalMin || 15,
         manualDurationSec: activeTrap.manualDurationSec || 3,
+        sensorCooldownSec: activeTrap.sensorCooldownSec || 5,
         activePreset: activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0,
         presets: activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
       });
@@ -303,6 +305,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
       ledRotationInterval: activeTrap.ledRotationInterval || 15,
       manualIntervalMin: activeTrap.manualIntervalMin || 15,
       manualDurationSec: activeTrap.manualDurationSec || 3,
+      sensorCooldownSec: activeTrap.sensorCooldownSec || 5,
       activePreset: activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0,
       presets: activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS,
     });
@@ -319,6 +322,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
       draftConfig.ledRotationInterval !== (activeTrap.ledRotationInterval || 15) ||
       draftConfig.manualIntervalMin !== (activeTrap.manualIntervalMin || 15) ||
       draftConfig.manualDurationSec !== (activeTrap.manualDurationSec || 3) ||
+      draftConfig.sensorCooldownSec !== (activeTrap.sensorCooldownSec || 5) ||
       draftConfig.activePreset !== (activeTrap.activePreset !== undefined ? activeTrap.activePreset : 0) ||
       JSON.stringify(draftConfig.presets) !== JSON.stringify(activeTrap.presets && activeTrap.presets.length > 0 ? activeTrap.presets : DEFAULT_PRESETS)
     )
@@ -343,6 +347,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
         ledRotationInterval: draftConfig.ledRotationInterval,
         manualIntervalMin: draftConfig.manualIntervalMin,
         manualDurationSec: draftConfig.manualDurationSec,
+        sensorCooldownSec: draftConfig.sensorCooldownSec,
         activePreset: draftConfig.activePreset,
         ledColor: selectedPreset?.name || activeTrap.ledColor,
         presets: draftConfig.presets,
@@ -469,6 +474,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
           ledRotationInterval: 15,
           manualIntervalMin: 15,
           manualDurationSec: 3,
+          sensorCooldownSec: 5,
           presets: DEFAULT_PRESETS,
         });
         setSelectedTrapId(newTrapId.trim().toUpperCase());
@@ -833,7 +839,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   {draftConfig.blowerMode === 'time'
                     ? `Blower akan otomatis menyala selama ${draftConfig.manualDurationSec || 3} detik setiap ${draftConfig.manualIntervalMin || 15} menit sekali.`
-                    : `Blower akan menyala selama ${draftConfig.manualDurationSec || 3} detik saat sensor jarak mendeteksi objek hama (dengan jeda cooldown ${draftConfig.manualIntervalMin || 15} menit).`}
+                    : `Blower akan menyala selama ${draftConfig.manualDurationSec || 3} detik saat sensor jarak mendeteksi hama (jeda sensor ${draftConfig.sensorCooldownSec || 5} detik).`}
                 </p>
               </div>
 
@@ -955,11 +961,11 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                 <span className="text-[10px] text-slate-500 mt-1 block">Warna berganti setiap sekian menit jika LED Running ON</span>
               </div>
 
-              {/* Manual Mode: Interval Siklus / Cooldown */}
+              {/* Manual Mode: Interval Siklus Blower (Waktu) */}
               <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <Timer className="w-3.5 h-3.5 text-emerald-600" />
-                  {draftConfig.blowerMode === 'time' ? 'Interval Siklus Blower' : 'Jeda Cooldown Blower'}
+                  Interval Siklus Blower (Waktu)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -973,7 +979,29 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Menit</span>
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  {draftConfig.blowerMode === 'time' ? 'Blower nyala berkala tiap menit ini' : 'Jeda minimum antar deteksi sensor'}
+                  Blower menyala berkala tiap interval ini saat Mode Waktu
+                </span>
+              </div>
+
+              {/* Jeda Sensor Cooldown */}
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <Radar className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                  Jeda Sensor (Cooldown)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={draftConfig.sensorCooldownSec || 5}
+                    onChange={(e) => handleDraftChange('sensorCooldownSec', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">Detik</span>
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Jeda siap deteksi ulang setelah blower mati (Default: 5 detik)
                 </span>
               </div>
 

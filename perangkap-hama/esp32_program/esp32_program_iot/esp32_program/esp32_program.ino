@@ -121,9 +121,11 @@ uint8_t endMin    = 0;
 // Interval Ganti Warna (Menit) untuk Mode LED Running
 uint16_t ledRotationInterval = 15;
 
-// Pengaturan Blower: Durasi nyala & cooldown / interval berkala
-uint16_t manualIntervalMin   = 15; // Cooldown minimal antar trigger sensor atau interval siklus blower (menit)
+// Pengaturan Blower: Durasi nyala, cooldown sensor & interval berkala
+uint16_t manualIntervalMin   = 15; // Interval siklus blower saat mode waktu (menit)
 uint16_t manualDurationSec   = 3;  // Durasi blower menyala saat deteksi hama / siklus waktu (detik)
+uint16_t sensorCooldownSec   = 5;  // Jeda sensor setelah blower mati sebelum bisa mendeteksi lagi (detik)
+unsigned long lastBlowerStop = 0;  // Waktu blower mati (untuk menghitung cooldown sensor)
 
 // Pengaturan Modem WiFi Trigger (GPIO 16) - Bisa diatur via Web Server
 unsigned long modemPulseMs       = 3000;    // Durasi sinyal LOW untuk trigger modem (ms) - default 3 detik
@@ -455,6 +457,7 @@ void loop() {
     digitalWrite(PIN_RELAY_1, LOW);
     blowerEnabled = false;
     zapperActive = false;
+    lastBlowerStop = now;
     Serial.println(" [Blower] Durasi habis, blower MATI");
   }
 
@@ -743,10 +746,10 @@ void readSensors() {
           canTrigger = true; // Otomatis: hanya trigger saat dalam jadwal
         }
 
-        // Cooldown: cek apakah sudah lewat interval minimum antar trigger
+        // Cooldown: cek apakah sudah lewat jeda sensorCooldownSec detik sejak blower mati
         unsigned long nowMs = millis();
-        unsigned long cooldownMs = (unsigned long)manualIntervalMin * 60000UL;
-        bool cooldownPassed = (nowMs - lastBlowerTrigger >= cooldownMs) || (lastBlowerTrigger == 0);
+        unsigned long cooldownMs = (unsigned long)sensorCooldownSec * 1000UL;
+        bool cooldownPassed = (lastBlowerStop == 0) || ((nowMs - lastBlowerStop) >= cooldownMs);
 
         if (canTrigger && !blowerEnabled && cooldownPassed &&
             currentDistance > 10 && currentDistance <= distThreshold_mm) {
@@ -761,7 +764,9 @@ void readSensors() {
           Serial.print(currentDistance);
           Serial.print(" mm | Blower ON selama ");
           Serial.print(manualDurationSec);
-          Serial.print(" detik | Total Hama: ");
+          Serial.print(" detik (Jeda: ");
+          Serial.print(sensorCooldownSec);
+          Serial.print("s) | Total Hama: ");
           Serial.println(pestCounter);
           savePreferences(); // Simpan counter
           sendTelemetryToEws(); // Laporkan ke server
@@ -1341,12 +1346,20 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       <div class="grid-2">
         <div class="form-group">
-          <label id="lbl_man_interval">Interval Siklus Blower</label>
+          <label id="lbl_man_interval">Interval Siklus Blower (Mode Waktu)</label>
           <div style="display:flex; align-items:center; gap:8px;">
             <input type="number" id="cfg_man_interval" min="1" max="1440" oninput="onTimeConfigChange()" onchange="markDirty()">
             <span style="font-size:12px; color:var(--text-muted); font-weight:600;">Menit</span>
           </div>
-          <small id="hint_man_interval" style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Blower nyala berkala tiap menit ini</small>
+          <small id="hint_man_interval" style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Blower nyala berkala tiap interval ini saat Mode Waktu</small>
+        </div>
+        <div class="form-group">
+          <label>Jeda Sensor Cooldown (Mode Sensor)</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="number" id="cfg_sensor_cooldown" min="1" max="300" oninput="onTimeConfigChange()" onchange="markDirty()">
+            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">Detik</span>
+          </div>
+          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Jeda siap deteksi ulang setelah blower mati (default 5 detik)</small>
         </div>
         <div class="form-group">
           <label>Durasi Nyala Blower</label>
@@ -1454,6 +1467,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     ledRotationInterval: 30,
     manualIntervalMin: 15,
     manualDurationSec: 30,
+    sensorCooldownSec: 5,
     presets: []
   };
 
@@ -1672,6 +1686,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let rotInt = parseInt(document.getElementById('cfg_rot_interval').value) || 30;
     let manInt = parseInt(document.getElementById('cfg_man_interval').value) || 15;
     let manDur = parseInt(document.getElementById('cfg_man_duration').value) || 30;
+    let sensorCd = parseInt(document.getElementById('cfg_sensor_cooldown').value) || 5;
 
     let payload = {
       mode: currentConfig.mode,
@@ -1682,7 +1697,8 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       endTime: eTime,
       ledRotationInterval: rotInt,
       manualIntervalMin: manInt,
-      manualDurationSec: manDur
+      manualDurationSec: manDur,
+      sensorCooldownSec: sensorCd
     };
 
     let btn = document.getElementById('btn_save_all');
@@ -1768,12 +1784,14 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
           currentConfig.ledRotationInterval = d.ledRotationInterval || 30;
           currentConfig.manualIntervalMin = d.manualIntervalMin || 15;
           currentConfig.manualDurationSec = d.manualDurationSec || 30;
+          currentConfig.sensorCooldownSec = d.sensorCooldownSec || 5;
 
           document.getElementById('cfg_start_time').value = currentConfig.startTime;
           document.getElementById('cfg_end_time').value = currentConfig.endTime;
           document.getElementById('cfg_rot_interval').value = currentConfig.ledRotationInterval;
           document.getElementById('cfg_man_interval').value = currentConfig.manualIntervalMin;
           document.getElementById('cfg_man_duration').value = currentConfig.manualDurationSec;
+          if (document.getElementById('cfg_sensor_cooldown')) document.getElementById('cfg_sensor_cooldown').value = currentConfig.sensorCooldownSec;
 
           updateModeSelectionUI();
           updateBlowerModeUI();
@@ -2011,6 +2029,7 @@ void setupWebServer() {
     doc["ledRotationInterval"] = ledRotationInterval;
     doc["manualIntervalMin"] = manualIntervalMin;
     doc["manualDurationSec"] = manualDurationSec;
+    doc["sensorCooldownSec"] = sensorCooldownSec;
     doc["ledColor"] = presets[activePreset].name;
     doc["blowerMode"] = blowerMode;
     doc["ledRunning"] = ledRunning;
@@ -2049,6 +2068,7 @@ void setupWebServer() {
     doc["ledRotationInterval"] = ledRotationInterval;
     doc["manualIntervalMin"] = manualIntervalMin;
     doc["manualDurationSec"] = manualDurationSec;
+    doc["sensorCooldownSec"] = sensorCooldownSec;
     doc["blowerMode"] = blowerMode;
     doc["ledRunning"] = ledRunning;
     doc["modemPulseSec"] = (int)(modemPulseMs / 1000);
@@ -2182,6 +2202,10 @@ void setupWebServer() {
           int md = doc["manualDurationSec"].as<int>();
           if (md >= 1 && md <= 3600) { manualDurationSec = md; updated = true; }
         }
+        if (doc.containsKey("sensorCooldownSec")) {
+          int sc = doc["sensorCooldownSec"].as<int>();
+          if (sc >= 1 && sc <= 300) { sensorCooldownSec = sc; updated = true; }
+        }
         if (doc.containsKey("presets")) {
           JsonArray pArr = doc["presets"].as<JsonArray>();
           int i = 0;
@@ -2243,6 +2267,10 @@ void setupWebServer() {
     if (server.hasArg("manualDurationSec")) {
       int md = server.arg("manualDurationSec").toInt();
       if (md >= 1 && md <= 3600) { manualDurationSec = md; updated = true; }
+    }
+    if (server.hasArg("sensorCooldownSec")) {
+      int sc = server.arg("sensorCooldownSec").toInt();
+      if (sc >= 1 && sc <= 300) { sensorCooldownSec = sc; updated = true; }
     }
 
     if (updated) {
@@ -2635,6 +2663,13 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     int mDur = data["manualDurationSec"].as<int>();
     if (mDur >= 1 && mDur <= 3600) manualDurationSec = mDur;
   }
+  if (data.containsKey("sensorCooldownSec")) {
+    int sCd = data["sensorCooldownSec"].as<int>();
+    if (sCd >= 1 && sCd <= 300) sensorCooldownSec = sCd;
+  } else if (data.containsKey("sensor_cooldown_sec")) {
+    int sCd = data["sensor_cooldown_sec"].as<int>();
+    if (sCd >= 1 && sCd <= 300) sensorCooldownSec = sCd;
+  }
 
   // 8. Update Preset Warna dari Web Dashboard
   if (data.containsKey("presets")) {
@@ -2722,6 +2757,7 @@ void sendTelemetryToEws() {
   p["ledColor"] = presets[activePreset].name;
   p["manualIntervalMin"] = manualIntervalMin;
   p["manualDurationSec"] = manualDurationSec;
+  p["sensorCooldownSec"] = sensorCooldownSec;
   p["blowerMode"] = blowerMode;
   p["ledRunning"] = ledRunning;
 
@@ -2775,6 +2811,7 @@ void loadPreferences() {
   ledRotationInterval  = prefs.getUShort("rot_int", 15);
   manualIntervalMin    = prefs.getUShort("m_int", 15);
   manualDurationSec    = prefs.getUShort("m_dur", 3);
+  sensorCooldownSec    = prefs.getUShort("s_cd", 5);
   pestCounter          = prefs.getUInt("p_count", 0);
   uvLedEnabled         = prefs.getBool("uv_en", true);
   ledRunning           = prefs.getBool("led_run", false);
@@ -2825,6 +2862,7 @@ void savePreferences() {
   prefs.putUShort("rot_int", ledRotationInterval);
   prefs.putUShort("m_int", manualIntervalMin);
   prefs.putUShort("m_dur", manualDurationSec);
+  prefs.putUShort("s_cd", sensorCooldownSec);
   prefs.putUInt("p_count", pestCounter);
   prefs.putBool("uv_en", uvLedEnabled);
   prefs.putBool("led_run", ledRunning);

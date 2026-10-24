@@ -112,6 +112,7 @@ class ESP32TrapSimulator:
         self.led_rotation_interval = 15
         self.manual_interval_min = 15
         self.manual_duration_sec = 3
+        self.sensor_cooldown_sec = 5
         self.blower_mode = "sensor"  # sensor | time
         self.led_running = False
 
@@ -207,6 +208,7 @@ class ESP32TrapSimulator:
             "ledColor": preset_name,
             "manualIntervalMin": self.manual_interval_min,
             "manualDurationSec": self.manual_duration_sec,
+            "sensorCooldownSec": self.sensor_cooldown_sec,
             "blowerMode": self.blower_mode,
             "ledRunning": self.led_running,
             "isFastTelemetry": is_client_active,
@@ -293,6 +295,9 @@ class ESP32TrapSimulator:
             modified = True
         if "manualDurationSec" in data:
             self.manual_duration_sec = int(data["manualDurationSec"])
+            modified = True
+        if "sensorCooldownSec" in data or "sensor_cooldown_sec" in data:
+            self.sensor_cooldown_sec = int(data.get("sensorCooldownSec") or data.get("sensor_cooldown_sec"))
             modified = True
 
         # 6. Mode Blower & LED Running
