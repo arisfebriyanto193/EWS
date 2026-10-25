@@ -53,7 +53,8 @@
 #define PIN_I2C_SDA         21   // D21 - I2C SDA
 #define PIN_I2C_SCL         22   // D22 - I2C SCL
 
-#define PIN_RELAY_1         13   // in1 - Relay 1 (Blower Penghisap Hama)
+#define PIN_RELAY_1         13 
+#define PIN_RELAY_2         2   // in1 - Relay 1 (Blower Penghisap Hama)
 #define PIN_WS2812B         12   // in2 / D12 - Data LED WS2812B Lampu Atraktor
 #define NUM_WS2812B         30   // Jumlah mata LED NeoPixel (sesuaikan strip Anda)
 
@@ -280,7 +281,9 @@ void setup() {
 
   // Inisialisasi Pin GPIO
   pinMode(PIN_RELAY_1, OUTPUT);
-  digitalWrite(PIN_RELAY_1, LOW); // Blower default MATI saat pertama kali nyala
+  pinMode(PIN_RELAY_2, OUTPUT);
+  digitalWrite(PIN_RELAY_1, LOW);
+  digitalWrite(PIN_RELAY_2, LOW);  // Blower default MATI saat pertama kali nyala
 
   pinMode(PIN_BT1, INPUT_PULLUP);
   pinMode(PIN_BT2, INPUT_PULLUP);
@@ -386,6 +389,7 @@ void setup() {
   blowerEnabled = false;
   zapperActive = false;
   digitalWrite(PIN_RELAY_1, LOW);
+  digitalWrite(PIN_RELAY_2, LOW); 
   updateActuators();
   if (wifiConnected) {
     sendTelemetryToEws(); // Publish status awal ke server jika terhubung
@@ -456,6 +460,7 @@ void loop() {
   // 7. Auto Turn-off Blower setelah durasi habis
   if (blowerEnabled && (now >= blowerOffTime)) {
     digitalWrite(PIN_RELAY_1, LOW);
+    digitalWrite(PIN_RELAY_2, LOW);
     blowerEnabled = false;
     zapperActive = false;
     lastBlowerStop = now;
@@ -756,6 +761,7 @@ void readSensors() {
             currentDistance >= distMin_mm && currentDistance <= distThreshold_mm) {
           // TRIGGER BLOWER! Hama terdeteksi mendekat!
           digitalWrite(PIN_RELAY_1, HIGH);
+          digitalWrite(PIN_RELAY_2, HIGH);
           blowerEnabled = true;
           zapperActive = true;
           blowerOffTime = nowMs + ((unsigned long)manualDurationSec * 1000UL);
@@ -859,6 +865,7 @@ void updateActuators() {
       unsigned long cycleIntervalMs = (unsigned long)manualIntervalMin * 60000UL;
       if (cycleIntervalMs > 0 && (now - lastBlowerTimeCycle >= cycleIntervalMs || lastBlowerTimeCycle == 0)) {
         digitalWrite(PIN_RELAY_1, HIGH);
+        digitalWrite(PIN_RELAY_2, HIGH);
         blowerEnabled = true;
         zapperActive = true;
         blowerOffTime = now + ((unsigned long)manualDurationSec * 1000UL);
@@ -873,6 +880,7 @@ void updateActuators() {
 
 void triggerZapperCycle() {
   digitalWrite(PIN_RELAY_1, HIGH);
+  digitalWrite(PIN_RELAY_2, HIGH);
   blowerEnabled = true;
   zapperActive = true;
   blowerOffTime = millis() + ((unsigned long)manualDurationSec * 1000UL);
@@ -974,6 +982,7 @@ void enterDeepSleep() {
 
   // 2. Matikan Relay Zapper
   digitalWrite(PIN_RELAY_1, LOW);
+  digitalWrite(PIN_RELAY_2, LOW);
 
   // 3. Matikan Layar OLED SSD1306
   if (oledReady) {
@@ -2487,6 +2496,7 @@ void setupWebServer() {
       blowerEnabled = !blowerEnabled;
     }
     digitalWrite(PIN_RELAY_1, blowerEnabled ? HIGH : LOW);
+    digitalWrite(PIN_RELAY_2, blowerEnabled ? HIGH : LOW);
     zapperActive = blowerEnabled;
     savePreferences();
     sendTelemetryToEws();
@@ -2653,6 +2663,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     if (blowerCmd && !blowerEnabled) {
       // Nyalakan blower selama manualDurationSec detik (sama seperti trigger sensor)
       digitalWrite(PIN_RELAY_1, HIGH);
+      digitalWrite(PIN_RELAY_2, HIGH);
       blowerEnabled = true;
       zapperActive = true;
       blowerOffTime = millis() + ((unsigned long)manualDurationSec * 1000UL);
@@ -2662,6 +2673,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     } else if (!blowerCmd) {
       // Matikan blower langsung
       digitalWrite(PIN_RELAY_1, LOW);
+      digitalWrite(PIN_RELAY_2, LOW);
       blowerEnabled = false;
       zapperActive = false;
       Serial.println("[WS] Blower MATI (perintah dari Web)");
@@ -2781,6 +2793,7 @@ void handleWsMessage(uint8_t *payload, size_t length) {
       Serial.println("[HEARTBEAT] Sinyal client web aktif memantau perangkap.");
     } else if (cmd == "TRIGGER_ZAP") {
       digitalWrite(PIN_RELAY_1, HIGH);
+      digitalWrite(PIN_RELAY_2, HIGH);
       blowerEnabled = true;
       zapperActive = true;
       blowerOffTime = millis() + ((unsigned long)manualDurationSec * 1000UL);
