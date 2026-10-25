@@ -135,8 +135,9 @@ unsigned long modemRetryIntervalMs = 30000; // Interval retry trigger modem (ms)
 unsigned long modemWaitWifiMs     = 120000; // Tunggu WiFi setelah trigger pertama (ms) - default 2 menit
 
 // Parameter Deteksi Hama
-uint16_t distThreshold_mm = 150;   // Ambang batas jarak maksimal deteksi hama (mm)
-uint16_t distMin_mm       = 10;    // Batas jarak minimal deteksi hama (mm) filter noise
+// distMin_mm = batas jarak (mm): jika jarak sensor < nilai ini, blower aktif (hama masuk perangkap)
+// Contoh: distMin_mm = 100 -> blower nyala jika jarak < 100mm
+uint16_t distMin_mm       = 100;   // Batas jarak trigger blower (mm) - blower ON jika jarak < nilai ini
 uint32_t pestCounter      = 0;     // Total hama terperangkap
 unsigned long blowerOffTime = 0;   // Waktu mati otomatis blower (ms timestamp)
 unsigned long lastBlowerTrigger = 0; // Waktu trigger terakhir (untuk cooldown)
@@ -757,9 +758,11 @@ void readSensors() {
         unsigned long cooldownMs = (unsigned long)sensorCooldownSec * 1000UL;
         bool cooldownPassed = (lastBlowerStop == 0) || ((nowMs - lastBlowerStop) >= cooldownMs);
 
+        // Trigger blower jika jarak KURANG DARI distMin_mm (hama masuk ke area perangkap)
+        // Contoh: distMin_mm = 100 -> blower nyala jika jarak < 100mm
         if (canTrigger && !blowerEnabled && cooldownPassed &&
-            currentDistance >= distMin_mm && currentDistance <= distThreshold_mm) {
-          // TRIGGER BLOWER! Hama terdeteksi mendekat!
+            currentDistance > 0 && currentDistance < distMin_mm) {
+          // TRIGGER BLOWER! Hama terdeteksi masuk perangkap!
           digitalWrite(PIN_RELAY_1, HIGH);
           digitalWrite(PIN_RELAY_2, HIGH);
           blowerEnabled = true;
@@ -769,7 +772,9 @@ void readSensors() {
           pestCounter++;
           Serial.print("[DETEKSI] Hama Terdeteksi Sensor! Jarak: ");
           Serial.print(currentDistance);
-          Serial.print(" mm | Blower ON selama ");
+          Serial.print(" mm (< ");
+          Serial.print(distMin_mm);
+          Serial.print(" mm) | Blower ON selama ");
           Serial.print(manualDurationSec);
           Serial.print(" detik (Jeda: ");
           Serial.print(sensorCooldownSec);
@@ -1380,20 +1385,12 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
           <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Lama blower berputar dalam satu siklus/triger</small>
         </div>
         <div class="form-group">
-          <label>Jarak Deteksi Maksimal</label>
+          <label>Jarak Trigger Blower (mm)</label>
           <div style="display:flex; align-items:center; gap:8px;">
-            <input type="number" id="cfg_dist_threshold" min="10" max="2000" onchange="markDirty()">
+            <input type="number" id="cfg_dist_min" min="1" max="2000" onchange="markDirty()">
             <span style="font-size:12px; color:var(--text-muted); font-weight:600;">mm</span>
           </div>
-          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Batas jarak terjauh deteksi hama (default 150 mm / 15 cm)</small>
-        </div>
-        <div class="form-group">
-          <label>Jarak Deteksi Minimal</label>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <input type="number" id="cfg_dist_min" min="0" max="500" onchange="markDirty()">
-            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">mm</span>
-          </div>
-          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Batas jarak minimal filter noise (default 10 mm / 1 cm)</small>
+          <small style="font-size:10px; color:var(--text-muted); display:block; margin-top:2px;">Blower nyala jika jarak sensor KURANG DARI nilai ini (contoh: 100 mm = blower ON jika ada objek < 10 cm)</small>
         </div>
       </div>
     </div>
@@ -1494,8 +1491,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     manualIntervalMin: 15,
     manualDurationSec: 30,
     sensorCooldownSec: 5,
-    distThresholdMm: 150,
-    distMinMm: 10,
+    distMinMm: 100,
     presets: []
   };
 
@@ -1715,8 +1711,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let manInt = parseInt(document.getElementById('cfg_man_interval').value) || 15;
     let manDur = parseInt(document.getElementById('cfg_man_duration').value) || 30;
     let sensorCd = parseInt(document.getElementById('cfg_sensor_cooldown').value) || 5;
-    let distTh = parseInt(document.getElementById('cfg_dist_threshold').value) || 150;
-    let distMin = (document.getElementById('cfg_dist_min') && document.getElementById('cfg_dist_min').value !== '') ? parseInt(document.getElementById('cfg_dist_min').value) : 10;
+    let distMin = (document.getElementById('cfg_dist_min') && document.getElementById('cfg_dist_min').value !== '') ? parseInt(document.getElementById('cfg_dist_min').value) : 100;
 
     let payload = {
       mode: currentConfig.mode,
@@ -1729,7 +1724,6 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       manualIntervalMin: manInt,
       manualDurationSec: manDur,
       sensorCooldownSec: sensorCd,
-      distThresholdMm: distTh,
       distMinMm: distMin
     };
 
@@ -1817,8 +1811,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
           currentConfig.manualIntervalMin = d.manualIntervalMin || 15;
           currentConfig.manualDurationSec = d.manualDurationSec || 30;
           currentConfig.sensorCooldownSec = d.sensorCooldownSec || 5;
-          currentConfig.distThresholdMm = (d.distThresholdMm !== undefined) ? d.distThresholdMm : 150;
-          currentConfig.distMinMm = (d.distMinMm !== undefined) ? d.distMinMm : 10;
+          currentConfig.distMinMm = (d.distMinMm !== undefined) ? d.distMinMm : 100;
 
           document.getElementById('cfg_start_time').value = currentConfig.startTime;
           document.getElementById('cfg_end_time').value = currentConfig.endTime;
@@ -1826,7 +1819,6 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
           document.getElementById('cfg_man_interval').value = currentConfig.manualIntervalMin;
           document.getElementById('cfg_man_duration').value = currentConfig.manualDurationSec;
           if (document.getElementById('cfg_sensor_cooldown')) document.getElementById('cfg_sensor_cooldown').value = currentConfig.sensorCooldownSec;
-          if (document.getElementById('cfg_dist_threshold')) document.getElementById('cfg_dist_threshold').value = currentConfig.distThresholdMm;
           if (document.getElementById('cfg_dist_min')) document.getElementById('cfg_dist_min').value = currentConfig.distMinMm;
 
           updateModeSelectionUI();
@@ -2066,7 +2058,7 @@ void setupWebServer() {
     doc["manualIntervalMin"] = manualIntervalMin;
     doc["manualDurationSec"] = manualDurationSec;
     doc["sensorCooldownSec"] = sensorCooldownSec;
-    doc["distThresholdMm"] = distThreshold_mm;
+
     doc["distMinMm"] = distMin_mm;
     doc["ledColor"] = presets[activePreset].name;
     doc["blowerMode"] = blowerMode;
@@ -2107,7 +2099,7 @@ void setupWebServer() {
     doc["manualIntervalMin"] = manualIntervalMin;
     doc["manualDurationSec"] = manualDurationSec;
     doc["sensorCooldownSec"] = sensorCooldownSec;
-    doc["distThresholdMm"] = distThreshold_mm;
+
     doc["distMinMm"] = distMin_mm;
     doc["blowerMode"] = blowerMode;
     doc["ledRunning"] = ledRunning;
@@ -2246,13 +2238,6 @@ void setupWebServer() {
           int sc = doc["sensorCooldownSec"].as<int>();
           if (sc >= 1 && sc <= 300) { sensorCooldownSec = sc; updated = true; }
         }
-        if (doc.containsKey("distThresholdMm")) {
-          int dt = doc["distThresholdMm"].as<int>();
-          if (dt >= 10 && dt <= 2000) { distThreshold_mm = dt; updated = true; }
-        } else if (doc.containsKey("dist_threshold_mm")) {
-          int dt = doc["dist_threshold_mm"].as<int>();
-          if (dt >= 10 && dt <= 2000) { distThreshold_mm = dt; updated = true; }
-        }
         if (doc.containsKey("distMinMm")) {
           int dm = doc["distMinMm"].as<int>();
           if (dm >= 0 && dm <= 500) { distMin_mm = dm; updated = true; }
@@ -2325,13 +2310,6 @@ void setupWebServer() {
     if (server.hasArg("sensorCooldownSec")) {
       int sc = server.arg("sensorCooldownSec").toInt();
       if (sc >= 1 && sc <= 300) { sensorCooldownSec = sc; updated = true; }
-    }
-    if (server.hasArg("distThresholdMm")) {
-      int dt = server.arg("distThresholdMm").toInt();
-      if (dt >= 10 && dt <= 2000) { distThreshold_mm = dt; updated = true; }
-    } else if (server.hasArg("dist_threshold_mm")) {
-      int dt = server.arg("dist_threshold_mm").toInt();
-      if (dt >= 10 && dt <= 2000) { distThreshold_mm = dt; updated = true; }
     }
     if (server.hasArg("distMinMm")) {
       int dm = server.arg("distMinMm").toInt();
@@ -2741,13 +2719,6 @@ void handleWsMessage(uint8_t *payload, size_t length) {
     int sCd = data["sensor_cooldown_sec"].as<int>();
     if (sCd >= 1 && sCd <= 300) sensorCooldownSec = sCd;
   }
-  if (data.containsKey("distThresholdMm")) {
-    int dt = data["distThresholdMm"].as<int>();
-    if (dt >= 10 && dt <= 2000) distThreshold_mm = dt;
-  } else if (data.containsKey("dist_threshold_mm")) {
-    int dt = data["dist_threshold_mm"].as<int>();
-    if (dt >= 10 && dt <= 2000) distThreshold_mm = dt;
-  }
   if (data.containsKey("distMinMm")) {
     int dm = data["distMinMm"].as<int>();
     if (dm >= 0 && dm <= 500) distMin_mm = dm;
@@ -2844,7 +2815,6 @@ void sendTelemetryToEws() {
   p["manualIntervalMin"] = manualIntervalMin;
   p["manualDurationSec"] = manualDurationSec;
   p["sensorCooldownSec"] = sensorCooldownSec;
-  p["distThresholdMm"] = distThreshold_mm;
   p["distMinMm"] = distMin_mm;
   p["blowerMode"] = blowerMode;
   p["ledRunning"] = ledRunning;
@@ -2900,8 +2870,7 @@ void loadPreferences() {
   manualIntervalMin    = prefs.getUShort("m_int", 15);
   manualDurationSec    = prefs.getUShort("m_dur", 3);
   sensorCooldownSec    = prefs.getUShort("s_cd", 5);
-  distThreshold_mm     = prefs.getUShort("dist_th", 150);
-  distMin_mm           = prefs.getUShort("dist_min", 10);
+  distMin_mm           = prefs.getUShort("dist_min", 100);
   pestCounter          = prefs.getUInt("p_count", 0);
   uvLedEnabled         = prefs.getBool("uv_en", true);
   ledRunning           = prefs.getBool("led_run", false);
@@ -2953,7 +2922,6 @@ void savePreferences() {
   prefs.putUShort("m_int", manualIntervalMin);
   prefs.putUShort("m_dur", manualDurationSec);
   prefs.putUShort("s_cd", sensorCooldownSec);
-  prefs.putUShort("dist_th", distThreshold_mm);
   prefs.putUShort("dist_min", distMin_mm);
   prefs.putUInt("p_count", pestCounter);
   prefs.putBool("uv_en", uvLedEnabled);

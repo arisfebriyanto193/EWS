@@ -215,34 +215,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
 
             {/* Perangkap Hama IoT */}
-            <button
-              onClick={() => handleNavClick('pest-traps')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                activeTab === 'pest-traps'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-blue-600 dark:hover:text-blue-400'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Bug
-                  className={`w-4 h-4 ${
-                    activeTab === 'pest-traps'
-                      ? 'text-white'
-                      : 'text-emerald-500'
-                  }`}
-                />
-                <span>Perangkap Hama IoT</span>
-              </div>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                  activeTab === 'pest-traps'
-                    ? 'bg-blue-700 text-white'
-                    : 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
-                }`}
-              >
-                Aktif
-              </span>
-            </button>
+            
           </div>
 
           {/* Group 2: Titik Pantau EWS */}
