@@ -374,7 +374,8 @@ void IRAM_ATTR countTip() {
 // FUNGSI EEPROM (NVS FLASH) UNTUK PENYIMPANAN AMBANG BATAS (THRESHOLDS)
 // -----------------------------------------------------------------------------
 void loadDeviceConfigFromNVS() {
-  if (prefs.begin("ews_cfg", true)) {
+  bool ok = prefs.begin("ews_cfg", true); // Read-only mode
+  if (ok) {
     ewsId               = prefs.getString("devId", "EWS-02");
     wifiSsidDefault     = prefs.getString("wfSsid", "TALAS 1");
     wifiPasswordDefault = prefs.getString("wfPass", "kitahebat");
@@ -382,8 +383,11 @@ void loadDeviceConfigFromNVS() {
     wsPort              = prefs.getInt("wsPort", 443);
     wsPath              = prefs.getString("wsPath", "/ws");
     wsUseSsl            = prefs.getBool("wsSsl", true);
-    prefs.end();
+    Serial.println("[NVS] Konfigurasi device berhasil dimuat dari NVS.");
+  } else {
+    Serial.println("[WARN] [NVS] Namespace ews_cfg tidak ditemukan, menggunakan nilai bawaan firmware.");
   }
+  prefs.end(); // Selalu end() agar prefs tidak tertinggal terbuka
   updateWebSocketTopics();
   Serial.printf("[NVS] Identitas Perangkat: Device ID [%s], Host: %s:%d%s\n", 
                 ewsId.c_str(), wsHost.c_str(), wsPort, wsPath.c_str());
@@ -409,12 +413,14 @@ void saveDeviceConfigToNVS(const String &newId, const String &newSsid, const Str
     wsPath              = newPath;
     wsUseSsl            = newSsl;
     updateWebSocketTopics();
-    Serial.printf("[NVS] Konfigurasi Device ID [%s] & Koneksi Berhasil Disimpan!\n", ewsId.c_str());
+    needWsReconnect = true; // Trigger reconnect WebSocket dengan konfigurasi baru
+    Serial.printf("[NVS] Konfigurasi Device ID [%s] & Koneksi Berhasil Disimpan! WebSocket akan reconnect...\n", ewsId.c_str());
   }
 }
 
 void loadThresholdsFromEEPROM() {
-  if (prefs.begin("ews_thresh", true)) { // Read-only mode
+  bool ok = prefs.begin("ews_thresh", true); // Read-only mode
+  if (ok) {
     currentThresholds.safeTiltPitch         = prefs.getFloat("safePitch", 0.0f);
     currentThresholds.safeTiltRoll          = prefs.getFloat("safeRoll", 0.0f);
     currentThresholds.tiltTolerance         = prefs.getFloat("tiltTol", 2.0f);
@@ -434,7 +440,7 @@ void loadThresholdsFromEEPROM() {
     currentThresholds.alarmDuration         = prefs.getUInt("alarmDur", 60);
     currentThresholds.alarmPause            = prefs.getUInt("alarmPause", 30);
     currentThresholds.forceAlarmOnLowBatt   = prefs.getBool("forceAlmBatt", false);
-    prefs.end();
+    prefs.end(); // Wajib end() agar namespace tidak tetap terbuka
 
     Serial.println("[EEPROM/NVS] Berhasil memuat nilai acuan kalibrasi & ambang batas:");
     Serial.printf("   - Sudut Aman Pitch/Roll : %.2f° / %.2f° (Toleransi: +-%.2f°)\n", 
@@ -496,6 +502,7 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
 // Status Koneksi & Aktuator
 volatile bool isWsConnected = false;
 volatile bool needSubscribe = false;
+volatile bool needWsReconnect = false; // Flag trigger reconnect WebSocket dengan konfigurasi baru
 bool sirenActive  = false;
 bool stroboActive = false;
 float lastBattVoltage = 99.0f;  // Tegangan baterai terakhir (default tinggi agar relay bisa aktif saat awal boot sebelum pembacaan pertama)
@@ -2116,6 +2123,28 @@ void wsTask(void *pvParameters) {
       if (!rtcSyncedWithNTP) {
         syncRTCWithNTP();
       }
+
+      // Jika ada flag reconnect WebSocket (misal URL WS diubah via web UI), reinisialisasi koneksi
+      if (needWsReconnect) {
+        needWsReconnect = false;
+        if (wsMutex != NULL && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+          webSocket.disconnect();
+          xSemaphoreGive(wsMutex);
+        }
+        vTaskDelay(pdMS_TO_TICKS(500)); // Tunggu disconnect selesai
+        if (wsMutex != NULL && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+          if (wsUseSsl) {
+            Serial.printf("[WS] Reconnect SSL ke: wss://%s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
+            webSocket.beginSSL(wsHost.c_str(), wsPort, wsPath.c_str());
+          } else {
+            Serial.printf("[WS] Reconnect ke: ws://%s:%d%s\n", wsHost.c_str(), wsPort, wsPath.c_str());
+            webSocket.begin(wsHost.c_str(), wsPort, wsPath.c_str());
+          }
+          webSocket.setReconnectInterval(5000);
+          xSemaphoreGive(wsMutex);
+        }
+      }
+
       if (wsMutex != NULL && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         webSocket.loop();
 
@@ -2126,7 +2155,6 @@ void wsTask(void *pvParameters) {
           webSocket.sendTXT(subMsg.c_str());
           Serial.printf("[WS] Berhasil subscribe ke: %s\n", TOPIC_COMMAND.c_str());
         }
-
 
         xSemaphoreGive(wsMutex);
       }
