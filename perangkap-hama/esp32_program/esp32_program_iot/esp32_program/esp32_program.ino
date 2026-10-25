@@ -81,7 +81,7 @@ enum TrapMode {
   MODE_MANUAL = 0,        // LED nyala terus, blower trigger sensor VL53
   MODE_OTOMATIS = 1,      // LED nyala sesuai jadwal RTC, blower trigger sensor VL53
   MODE_OTOMATIS_LED = 2,  // LED nyala jadwal RTC + warna berganti tiap X menit, blower trigger sensor VL53
-  MODE_SLEEP = 3          // Sistem mati total (Deep Sleep)sdbhvdsd
+  MODE_SLEEP = 3          // Sistem mati total (Deep Sleep)
 };
 
 struct ColorPreset {
