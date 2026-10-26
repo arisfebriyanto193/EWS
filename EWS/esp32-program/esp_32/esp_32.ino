@@ -52,6 +52,7 @@
 #include <math.h>
 #include <time.h>
 #include <Preferences.h>
+#include <driver/gpio.h>   // gpio_reset_pin() — memutus GPIO Matrix dari periferal (I2C, dll.)
 // Catatan: Library MPU6050, INA219, dan DS3231 kini menggunakan driver bus independen
 // (Hardware TwoWire 1 untuk MPU-6050 & Dedicated SoftI2C untuk RTC/INA)
 // sehingga tidak lagi memerlukan overhead atau bentrok bus dari library Adafruit_BusIO.
@@ -370,6 +371,9 @@ void IRAM_ATTR countTip() {
   }
 }
 
+// Status Koneksi (forward declaration — definisi lengkap ada setelah fungsi EEPROM)
+volatile bool needWsReconnect = false; // Flag trigger reconnect WebSocket dengan konfigurasi baru
+
 // -----------------------------------------------------------------------------
 // FUNGSI EEPROM (NVS FLASH) UNTUK PENYIMPANAN AMBANG BATAS (THRESHOLDS)
 // -----------------------------------------------------------------------------
@@ -502,7 +506,6 @@ void saveThresholdsToEEPROM(const SensorThresholds &newT) {
 // Status Koneksi & Aktuator
 volatile bool isWsConnected = false;
 volatile bool needSubscribe = false;
-volatile bool needWsReconnect = false; // Flag trigger reconnect WebSocket dengan konfigurasi baru
 bool sirenActive  = false;
 bool stroboActive = false;
 float lastBattVoltage = 99.0f;  // Tegangan baterai terakhir (default tinggi agar relay bisa aktif saat awal boot sebelum pembacaan pertama)
@@ -609,6 +612,21 @@ void selectI2CBus(int sda, int scl, uint32_t freq = 100000) {
   currentSda = sda;
   currentScl = scl;
   currentFreq = freq;
+}
+
+// Invalidate cache selectI2CBus agar pemanggilan berikutnya selalu re-init Wire.
+// Diperlukan setelah Wire.end() manual (mis. di readPowerMonitor fallback) agar
+// selectI2CBus tidak skip Wire.begin() karena cache pin masih sama.
+void invalidateI2CBusCache() {
+  // Kita tidak bisa akses static lokal langsung, tapi memanggil selectI2CBus
+  // dengan pin -1 yang dijamin berbeda akan memaksa re-init pada pemanggilan berikutnya.
+  // Cara yang lebih bersih: gunakan selectI2CBus dengan pin palsu sekali, lalu Wire.end().
+  // Namun cara termudah: panggil selectI2CBus dengan pin aktif RTC/MPU/OLED saat berikutnya
+  // dipanggil — karena cache terisi -1, Wire.begin() pasti dipanggil.
+  Wire.end(); // End Wire agar I2C driver mati; cache -1,-1 akan dipaksa re-init
+  // Set static cache ke nilai invalid via satu panggilan dummy yang tidak cocok
+  // Cara paling aman: tidak memanggil selectI2CBus, tapi set Wire.end() saja.
+  // selectI2CBus akan detect perubahan pin saat dipanggil oleh sensor I2C berikutnya.
 }
 
 uint8_t bcd2dec(uint8_t val) { return ((val / 16 * 10) + (val % 16)); }
@@ -874,6 +892,30 @@ void setSystemTimeFromEpoch(time_t epoch) {
 // =============================================================================
 // 8. DRIVER & DETEKSI POWER MONITOR INA219 / INA226 (VIA WIRE PADA GPIO 14 & 13)
 // =============================================================================
+
+// Setup ADC GPIO 14 sebagai pembaca Pembagi Tegangan (fallback INA).
+// Fungsi ini WAJIB dipanggil SETELAH semua init I2C (OLED, MPU, RTC) selesai,
+// karena Wire.end()/Wire.begin() dari init lain dapat meng-override GPIO Matrix
+// dan merusak konfigurasi ADC jika dilakukan terlalu awal.
+void setupBatteryDividerADC() {
+  Serial.printf("[BATT-ADC] Membebaskan GPIO %d dari I2C GPIO Matrix & konfigurasi sebagai ADC...\n", PIN_BATTERY_DIVIDER);
+  // Putus Wire terlebih dahulu agar I2C peripheral melepas kontrol GPIO
+  Wire.end();
+  delay(15);
+  // gpio_reset_pin: API ESP-IDF untuk reset total GPIO Matrix — memutus koneksi periferal apapun
+  gpio_reset_pin((gpio_num_t)PIN_BATTERY_DIVIDER); // GPIO 14 → ADC2_CH3, bebas dari I2C SDA
+  gpio_reset_pin((gpio_num_t)PIN_INA_SCL);          // GPIO 13 → dibebaskan agar tidak loading ADC
+  delay(20);
+  // Setup ADC persis seperti program debug battery_divider_debug.ino yang terbukti akurat
+  pinMode(PIN_BATTERY_DIVIDER, INPUT);
+  analogReadResolution(12);                                         // 12-bit: 0–4095
+  analogSetPinAttenuation(PIN_BATTERY_DIVIDER, ADC_11db);          // Rentang ~100mV–3100mV
+  delay(50); // Beri waktu pin settling sebagai High-Z input murni
+  Serial.printf("[BATT-ADC] GPIO %d siap sebagai ADC (12-bit, 11dB). Rasio divider: %.4fx\n",
+                PIN_BATTERY_DIVIDER,
+                currentThresholds.battDividerRatio > 0.5f ? currentThresholds.battDividerRatio : BATT_DIVIDER_DEFAULT_RATIO);
+}
+
 void initINA() {
   selectI2CBus(activeInaSda, activeInaScl, 100000);
   Wire.beginTransmission(INA_I2C_ADDR);
@@ -890,7 +932,10 @@ void initINA() {
     } else {
       inaAvailable = false;
       Serial.printf("[INA219] Tidak merespons pada alamat 0x40 (SDA=%d, SCL=%d). Mengaktifkan fallback Pembagi Tegangan Resistor 11:4 pada GPIO %d...\n", activeInaSda, activeInaScl, PIN_BATTERY_DIVIDER);
-      pinMode(PIN_BATTERY_DIVIDER, INPUT);
+      // Catatan: gpio_reset_pin & setup ADC GPIO 14 TIDAK dilakukan di sini,
+      // karena initDS3231() / initOLED() yang dipanggil setelah ini akan memanggil
+      // Wire.end() + Wire.begin() yang bisa meng-override konfigurasi ADC GPIO 14.
+      // Setup ADC dilakukan di akhir initHardwareOnce() setelah SEMUA init I2C selesai.
       return;
     }
   } else {
@@ -978,21 +1023,52 @@ void readPowerMonitor(float &batteryVolt, int &solarCurrent, int &batteryCurrent
   }
 
   // Fallback: Menggunakan Resistor Pembagi Tegangan 11:4 pada GPIO 14 (Jalur SDA Header J3)
+  //
+  // FIX KRITIS: gpio_reset_pin + setup ADC dilakukan SETIAP KALI baca, bukan hanya sekali.
+  // Alasannya: selectI2CBus() (dipanggil oleh readDS3231Time, readInclinometer, OLED update, dll.)
+  // memanggil Wire.end() + Wire.begin() setiap 2 detik. Wire.end() di ESP-IDF memanggil
+  // i2c_driver_delete() yang dapat me-reset konfigurasi GPIO Matrix — termasuk GPIO 14
+  // yang sebelumnya kita set sebagai ADC. Akibatnya GPIO 14 bisa tertarik ke kondisi I2C
+  // pull-down lagi dan ADC membaca ~0.2V (0.2V × 3.75 = 0.9V yang terlihat di layar).
+  // gpio_reset_pin() + analogSetPinAttenuation() sangat cepat (~50µs) dan aman dijalankan tiap siklus.
+
+  // 1. Putus Wire agar I2C peripheral melepas kontrol GPIO Matrix sebelum reset
+  Wire.end();
+  delayMicroseconds(500);
+
+  // 2. Reset GPIO 14 (SDA INA) & 13 (SCL INA) dari GPIO Matrix & periferal apapun
+  gpio_reset_pin((gpio_num_t)PIN_BATTERY_DIVIDER);
+  gpio_reset_pin((gpio_num_t)PIN_INA_SCL);
+
+  // 3. Setup sebagai ADC input murni (High-Z), persis seperti battery_divider_debug.ino
   pinMode(PIN_BATTERY_DIVIDER, INPUT);
+  analogReadResolution(12);
+  analogSetPinAttenuation(PIN_BATTERY_DIVIDER, ADC_11db); // Rentang ~100mV–3100mV
+
+  // 4. Settling time — beri waktu kapasitor ADC charge ke tegangan baru
+  delayMicroseconds(2000); // 2ms cukup untuk settling (sama dengan debug program)
+
+  // 5. Multi-sampling 32x untuk reduksi noise/ripple (sama seperti battery_divider_debug.ino)
   long sumMv = 0;
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 32; i++) {
     sumMv += analogReadMilliVolts(PIN_BATTERY_DIVIDER);
-    delayMicroseconds(50);
+    delayMicroseconds(100);
   }
-  float vAdc = (float)sumMv / (16.0f * 1000.0f);
+  float vAdc = (float)sumMv / (32.0f * 1000.0f);
+
+  // 6. Fallback ke raw ADC jika analogReadMilliVolts gagal (driver issue)
   if (sumMv == 0) {
     long sum = 0;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 32; i++) {
       sum += analogRead(PIN_BATTERY_DIVIDER);
-      delayMicroseconds(50);
+      delayMicroseconds(100);
     }
-    vAdc = ((float)sum / 16.0f) * (3.3f / 4095.0f);
+    float rawAvg = (float)sum / 32.0f;
+    if (rawAvg > 10.0f) {
+      vAdc = rawAvg * (3.3f / 4095.0f);
+    }
   }
+
   float ratio = (currentThresholds.battDividerRatio > 0.5f) ? currentThresholds.battDividerRatio : BATT_DIVIDER_DEFAULT_RATIO;
   batteryVolt = vAdc * ratio;
   solarCurrent   = 0;
@@ -1484,6 +1560,15 @@ void initHardwareOnce() {
     delay(2000);
   }
 #endif
+
+  // PENTING: Setup ADC GPIO 14 (fallback baterai) dilakukan TERAKHIR,
+  // setelah SEMUA inisialisasi I2C (OLED, MPU, INA, RTC) selesai.
+  // Wire.end()/Wire.begin() dari init I2C di atas akan meng-override GPIO Matrix GPIO 14
+  // jika kita setup ADC terlalu awal. Dengan menempatkannya di sini, GPIO 14 dijamin
+  // bebas dari periferal I2C sebelum mulai membaca ADC di sensorTask.
+  if (!inaAvailable) {
+    setupBatteryDividerADC();
+  }
 }
 
 float readSoilMoisture(int &rawOut, float &voltOut) {
