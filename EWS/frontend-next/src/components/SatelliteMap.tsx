@@ -320,7 +320,7 @@ export const SatelliteMap: React.FC<SatelliteMapProps> = ({
       <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md px-2.5 py-1 rounded-lg border border-slate-700/60 text-white shadow-md pointer-events-auto">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-[10px] font-bold tracking-wide uppercase font-mono">
-          {mapType === 'satellite' ? 'Citra Satelit Esri (Gratis)' : 'Peta Jalan OSM'}
+          {mapType === 'satellite' ? 'Citra Satelit ' : 'Peta Jalan OSM'}
         </span>
         <span className="text-[9px] text-slate-400 border-l border-slate-700 pl-1.5 font-mono">
           {latitude.toFixed(4)}, {longitude.toFixed(4)}
