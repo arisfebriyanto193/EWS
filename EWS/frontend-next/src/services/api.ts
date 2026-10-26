@@ -86,6 +86,19 @@ export const api = {
     return data.data;
   },
 
+  async updateEws(id: string, payload: Partial<EWSNode> & { newId?: string }): Promise<EWSNode> {
+    const res = await fetch(`${API_BASE}/ews/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal memperbarui konfigurasi EWS');
+    }
+    return data.data;
+  },
+
   async deleteEws(id: string): Promise<void> {
     const res = await fetch(`${API_BASE}/ews/${id}`, {
       method: 'DELETE',

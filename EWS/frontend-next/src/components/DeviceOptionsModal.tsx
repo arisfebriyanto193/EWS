@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   ShieldAlert,
   RotateCcw,
+  Pencil,
 } from 'lucide-react';
 
 interface DeviceOptionsModalProps {
@@ -30,6 +31,7 @@ interface DeviceOptionsModalProps {
   onOpenTelegram: () => void;
   onOpenTelkomsel: () => void;
   onOpenThreshold: () => void;
+  onOpenEditConfig?: () => void;
   onOpenDownload: () => void;
   onRequestDataNow: () => void;
   isRequestingData?: boolean;
@@ -50,6 +52,7 @@ export const DeviceOptionsModal: React.FC<DeviceOptionsModalProps> = ({
   onOpenTelegram,
   onOpenTelkomsel,
   onOpenThreshold,
+  onOpenEditConfig,
   onOpenDownload,
   onRequestDataNow,
   isRequestingData = false,
@@ -164,6 +167,32 @@ export const DeviceOptionsModal: React.FC<DeviceOptionsModalProps> = ({
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 mb-2.5">
               Konfigurasi &amp; Pemantauan Sistem
             </h4>
+
+            {onOpenEditConfig && (
+              <button
+                type="button"
+                onClick={() => handleAction(onOpenEditConfig)}
+                className="w-full text-left p-3.5 mb-2.5 rounded-xl border border-blue-300/80 dark:border-blue-800/80 bg-linear-to-r from-blue-50/70 to-indigo-50/50 dark:from-blue-950/40 dark:to-indigo-950/30 hover:from-blue-100/80 hover:to-indigo-100/60 dark:hover:from-blue-900/50 dark:hover:to-indigo-900/40 transition-all flex items-center justify-between gap-3 group cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                    <Pencil className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      Edit Konfigurasi Titik EWS
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/80 text-blue-700 dark:text-blue-300 font-semibold font-mono">
+                        ID, Nama &amp; Koordinat
+                      </span>
+                    </span>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                      Ubah ID node ({ews.id}), nama titik, lokasi lereng, koordinat GPS &amp; ambang batas
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* 1. Bot Telegram */}

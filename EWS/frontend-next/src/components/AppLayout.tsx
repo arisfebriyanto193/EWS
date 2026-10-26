@@ -9,9 +9,10 @@ import { EngineeringDocsModal } from './EngineeringDocsModal';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { AddEWSModal } from './AddEWSModal';
+import { EditEWSModal } from './EditEWSModal';
 import { LoginModal } from './LoginModal';
 import { api } from '../services/api';
-import { TelegramConfig, TelkomselConfig } from '../types';
+import { TelegramConfig, TelkomselConfig, EWSNode } from '../types';
 
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname();
@@ -32,6 +33,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     setEditingTelegramEws,
     editingTelkomselEws,
     setEditingTelkomselEws,
+    editingConfigEws,
+    setEditingConfigEws,
+    handleSaveEwsConfig,
     mobileSidebarOpen,
     setMobileSidebarOpen,
     isLoginModalOpen,
@@ -210,6 +214,22 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         onAddEws={handleAddEws}
         existingIds={ewsNodes.map((e) => e.id)}
       />
+
+      {/* Modal Edit Konfigurasi Titik EWS */}
+      {editingConfigEws && (
+        <EditEWSModal
+          ews={editingConfigEws}
+          isOpen={true}
+          onClose={() => setEditingConfigEws(null)}
+          onUpdateEws={async (oldId: string, data: Partial<EWSNode> & { newId?: string }) => {
+            await handleSaveEwsConfig(oldId, data);
+            if (data.newId && data.newId !== oldId && pathname.includes(`/ews/${oldId}`)) {
+              router.push(`/ews/${data.newId}`);
+            }
+          }}
+          existingIds={ewsNodes.map((e) => e.id)}
+        />
+      )}
 
       {/* Login Modal for Guest when triggering configuration */}
       {isLoginModalOpen && (

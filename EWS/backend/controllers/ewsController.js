@@ -638,6 +638,255 @@ exports.createEws = async (req, res) => {
   }
 };
 
+exports.updateEws = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      id: newIdBody,
+      newId,
+      name,
+      location,
+      coordinates,
+      latitude,
+      longitude,
+      status,
+      thresholds,
+      telegramConfig,
+    } = req.body;
+
+    const pool = db.getPool();
+    const isDbConnected = db.getIsConnected();
+
+    if (!isDbConnected || !pool) {
+      return res.status(503).json({ success: false, message: 'Database belum terhubung' });
+    }
+
+    const [existing] = await pool.query('SELECT * FROM ews_nodes WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: `Stasiun EWS "${id}" tidak ditemukan` });
+    }
+
+    let activeId = id;
+    const targetIdCandidate = newId || (newIdBody && newIdBody !== id ? newIdBody : null);
+    const requestedNewId = targetIdCandidate ? String(targetIdCandidate).trim().toUpperCase() : null;
+
+    // Jika ada pembaruan ID stasiun EWS
+    if (requestedNewId && requestedNewId !== id) {
+      const [checkDuplicate] = await pool.query('SELECT id FROM ews_nodes WHERE id = ?', [requestedNewId]);
+      if (checkDuplicate.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `EWS dengan ID baru "${requestedNewId}" sudah terdaftar`,
+        });
+      }
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        await connection.query('SET FOREIGN_KEY_CHECKS = 0');
+        await connection.query('UPDATE ews_nodes SET id = ? WHERE id = ?', [requestedNewId, id]);
+        await connection.query('UPDATE telegram_configs SET ews_id = ? WHERE ews_id = ?', [requestedNewId, id]);
+        await connection.query('UPDATE telkomsel_configs SET ews_id = ? WHERE ews_id = ?', [requestedNewId, id]);
+        await connection.query('UPDATE alarm_logs SET ews_id = ? WHERE ews_id = ?', [requestedNewId, id]);
+        await connection.query('UPDATE ews_sensor_logs SET ews_id = ? WHERE ews_id = ?', [requestedNewId, id]);
+        await connection.query('UPDATE device_command_logs SET device_id = ? WHERE device_id = ? AND device_type = ?', [requestedNewId, id, 'ews']);
+        await connection.query('UPDATE users SET assigned_ews_id = ? WHERE assigned_ews_id = ?', [requestedNewId, id]);
+        await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+        await connection.commit();
+        activeId = requestedNewId;
+      } catch (txErr) {
+        await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+        await connection.rollback();
+        throw txErr;
+      } finally {
+        connection.release();
+      }
+    }
+
+    const updateFields = [];
+    const updateValues = [];
+
+    if (name !== undefined && name !== null && String(name).trim() !== '') {
+      updateFields.push('name = ?');
+      updateValues.push(String(name).trim());
+    }
+
+    if (location !== undefined && location !== null && String(location).trim() !== '') {
+      updateFields.push('location = ?');
+      updateValues.push(String(location).trim());
+    }
+
+    const lat = coordinates?.lat !== undefined ? coordinates.lat : latitude;
+    if (lat !== undefined && lat !== null && !isNaN(Number(lat))) {
+      updateFields.push('latitude = ?');
+      updateValues.push(parseFloat(lat));
+    }
+
+    const lng = coordinates?.lng !== undefined ? coordinates.lng : longitude;
+    if (lng !== undefined && lng !== null && !isNaN(Number(lng))) {
+      updateFields.push('longitude = ?');
+      updateValues.push(parseFloat(lng));
+    }
+
+    if (status !== undefined && status !== null) {
+      updateFields.push('status = ?');
+      updateValues.push(status);
+    }
+
+    // Thresholds & Calibrations
+    const th = thresholds || {};
+    const tiltWarning = th.tiltWarning ?? req.body.tiltWarning;
+    const tiltDanger = th.tiltDanger ?? req.body.tiltDanger;
+    const rainWarning = th.rainWarning ?? req.body.rainWarning;
+    const rainDanger = th.rainDanger ?? req.body.rainDanger;
+    const soilMoistureWarning = th.soilMoistureWarning ?? req.body.soilMoistureWarning;
+    const vibrationDanger = th.vibrationDanger ?? req.body.vibrationDanger;
+    const batteryLowVoltage = th.batteryLowVoltage ?? req.body.batteryLowVoltage;
+
+    const safeTiltPitch = th.safeTiltPitch ?? req.body.safeTiltPitch ?? th.safePitch ?? req.body.safePitch;
+    const safeTiltRoll = th.safeTiltRoll ?? req.body.safeTiltRoll ?? th.safeRoll ?? req.body.safeRoll;
+    const tiltTolerance = th.tiltTolerance ?? req.body.tiltTolerance;
+    const rainCalibPerTip = th.rainCalibPerTip ?? req.body.rainCalibPerTip;
+    const safeSoilMoisture = th.safeSoilMoisture ?? req.body.safeSoilMoisture;
+    const soilMoistureTolerance = th.soilMoistureTolerance ?? req.body.soilMoistureTolerance;
+    const soilAdcDry = th.soilAdcDry ?? req.body.soilAdcDry;
+    const soilAdcWet = th.soilAdcWet ?? req.body.soilAdcWet;
+    const alarmDuration = th.alarmDuration ?? req.body.alarmDuration;
+    const alarmPause = th.alarmPause ?? req.body.alarmPause;
+
+    if (tiltWarning !== undefined && !isNaN(Number(tiltWarning))) { updateFields.push('tilt_warning = ?'); updateValues.push(parseFloat(tiltWarning)); }
+    if (tiltDanger !== undefined && !isNaN(Number(tiltDanger))) { updateFields.push('tilt_danger = ?'); updateValues.push(parseFloat(tiltDanger)); }
+    if (rainWarning !== undefined && !isNaN(Number(rainWarning))) { updateFields.push('rain_warning = ?'); updateValues.push(parseFloat(rainWarning)); }
+    if (rainDanger !== undefined && !isNaN(Number(rainDanger))) { updateFields.push('rain_danger = ?'); updateValues.push(parseFloat(rainDanger)); }
+    if (soilMoistureWarning !== undefined && !isNaN(Number(soilMoistureWarning))) { updateFields.push('soil_moisture_warning = ?'); updateValues.push(parseFloat(soilMoistureWarning)); }
+    if (vibrationDanger !== undefined && !isNaN(Number(vibrationDanger))) { updateFields.push('vibration_danger = ?'); updateValues.push(parseFloat(vibrationDanger)); }
+    if (batteryLowVoltage !== undefined && !isNaN(Number(batteryLowVoltage))) { updateFields.push('battery_low_voltage = ?'); updateValues.push(parseFloat(batteryLowVoltage)); }
+
+    if (safeTiltPitch !== undefined && !isNaN(Number(safeTiltPitch))) { updateFields.push('safe_pitch = ?'); updateValues.push(parseFloat(safeTiltPitch)); }
+    if (safeTiltRoll !== undefined && !isNaN(Number(safeTiltRoll))) { updateFields.push('safe_roll = ?'); updateValues.push(parseFloat(safeTiltRoll)); }
+    if (tiltTolerance !== undefined && !isNaN(Number(tiltTolerance))) { updateFields.push('tilt_tolerance = ?'); updateValues.push(parseFloat(tiltTolerance)); }
+    if (rainCalibPerTip !== undefined && !isNaN(Number(rainCalibPerTip))) { updateFields.push('rain_calib_per_tip = ?'); updateValues.push(parseFloat(rainCalibPerTip)); }
+    if (safeSoilMoisture !== undefined && !isNaN(Number(safeSoilMoisture))) { updateFields.push('safe_soil_moisture = ?'); updateValues.push(parseFloat(safeSoilMoisture)); }
+    if (soilMoistureTolerance !== undefined && !isNaN(Number(soilMoistureTolerance))) { updateFields.push('soil_moisture_tolerance = ?'); updateValues.push(parseFloat(soilMoistureTolerance)); }
+    if (soilAdcDry !== undefined && !isNaN(Number(soilAdcDry))) { updateFields.push('soil_adc_dry = ?'); updateValues.push(parseInt(soilAdcDry, 10)); }
+    if (soilAdcWet !== undefined && !isNaN(Number(soilAdcWet))) { updateFields.push('soil_adc_wet = ?'); updateValues.push(parseInt(soilAdcWet, 10)); }
+    if (alarmDuration !== undefined && !isNaN(Number(alarmDuration))) { updateFields.push('alarm_duration = ?'); updateValues.push(parseInt(alarmDuration, 10)); }
+    if (alarmPause !== undefined && !isNaN(Number(alarmPause))) { updateFields.push('alarm_pause = ?'); updateValues.push(parseInt(alarmPause, 10)); }
+
+    if (updateFields.length > 0) {
+      updateValues.push(activeId);
+      await pool.query(
+        `UPDATE ews_nodes SET ${updateFields.join(', ')} WHERE id = ?`,
+        updateValues
+      );
+    }
+
+    // Telegram configuration if provided
+    const tele = telegramConfig || (
+      req.body.botToken !== undefined || req.body.chatId !== undefined || req.body.channelName !== undefined
+        ? req.body
+        : null
+    );
+
+    if (tele) {
+      const cleanBotToken = tele.botToken !== undefined ? String(tele.botToken).trim() : null;
+      const cleanChatId = tele.chatId !== undefined ? String(tele.chatId).trim() : null;
+      const cleanChannelName = tele.channelName !== undefined ? String(tele.channelName).trim() : null;
+      const teleEnabled = tele.enabled !== undefined ? (tele.enabled ? 1 : 0) : null;
+      const nSiaga = tele.notifySiaga !== undefined ? (tele.notifySiaga ? 1 : 0) : null;
+      const nBahaya = tele.notifyBahaya !== undefined ? (tele.notifyBahaya ? 1 : 0) : null;
+      const nOffline = tele.notifyOffline !== undefined ? (tele.notifyOffline ? 1 : 0) : null;
+      const nBatLemah = tele.notifyBateraiLemah !== undefined ? (tele.notifyBateraiLemah ? 1 : 0) : null;
+      const nSensorGagal = tele.notifySensorGagal !== undefined ? (tele.notifySensorGagal ? 1 : 0) : null;
+      const nNormal = tele.notifyNormalKembali !== undefined ? (tele.notifyNormalKembali ? 1 : 0) : null;
+      const dReport = tele.dailyReport !== undefined ? (tele.dailyReport ? 1 : 0) : null;
+
+      await pool.query(
+        `INSERT INTO telegram_configs (
+          ews_id, bot_token, chat_id, channel_name, enabled,
+          notify_siaga, notify_bahaya, notify_offline, notify_baterai_lemah,
+          notify_sensor_gagal, notify_normal_kembali, daily_report
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          bot_token = COALESCE(?, bot_token),
+          chat_id = COALESCE(?, chat_id),
+          channel_name = COALESCE(?, channel_name),
+          enabled = COALESCE(?, enabled),
+          notify_siaga = COALESCE(?, notify_siaga),
+          notify_bahaya = COALESCE(?, notify_bahaya),
+          notify_offline = COALESCE(?, notify_offline),
+          notify_baterai_lemah = COALESCE(?, notify_baterai_lemah),
+          notify_sensor_gagal = COALESCE(?, notify_sensor_gagal),
+          notify_normal_kembali = COALESCE(?, notify_normal_kembali),
+          daily_report = COALESCE(?, daily_report)`,
+        [
+          activeId,
+          cleanBotToken ?? '',
+          cleanChatId ?? '',
+          cleanChannelName ?? `Grup Pantau ${activeId}`,
+          teleEnabled ?? 1,
+          nSiaga ?? 1,
+          nBahaya ?? 1,
+          nOffline ?? 1,
+          nBatLemah ?? 1,
+          nSensorGagal ?? 1,
+          nNormal ?? 1,
+          dReport ?? 0,
+          cleanBotToken,
+          cleanChatId,
+          cleanChannelName,
+          teleEnabled,
+          nSiaga,
+          nBahaya,
+          nOffline,
+          nBatLemah,
+          nSensorGagal,
+          nNormal,
+          dReport,
+        ]
+      );
+    }
+
+    // Ambil data terbaru dari database
+    const [updatedNodes] = await pool.query('SELECT * FROM ews_nodes WHERE id = ?', [activeId]);
+    const [updatedTelegrams] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [activeId]);
+    const [updatedTelkomsels] = await pool.query('SELECT * FROM telkomsel_configs WHERE ews_id = ?', [activeId]);
+
+    const formatted = formatEwsNode(
+      updatedNodes[0],
+      updatedTelegrams[0] || null,
+      updatedTelkomsels[0] || null
+    );
+
+    // Broadcast ke WebSocket (Web dashboard & ESP32)
+    wsService.publish('ews/node/updated', {
+      node: formatted,
+      oldId: id,
+      newId: activeId,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (thresholds || req.body.tiltWarning !== undefined || req.body.rainWarning !== undefined) {
+      wsService.publish(`ews/${activeId}/command`, {
+        command: 'SET_THRESHOLDS',
+        ewsId: activeId,
+        thresholds: formatted.thresholds,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `Konfigurasi stasiun EWS ${activeId} berhasil diperbarui`,
+      data: formatted,
+      oldId: id !== activeId ? id : undefined,
+    });
+  } catch (error) {
+    console.error('Error updating EWS:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.deleteEws = async (req, res) => {
   try {
     const { id } = req.params;

@@ -18,6 +18,7 @@ router.put('/auth/change-password', authController.changePassword);
 router.get('/ews', ewsController.getAllEws);
 router.post('/ews', ewsController.createEws);
 router.get('/ews/:id', ewsController.getEwsById);
+router.put('/ews/:id', ewsController.updateEws);
 router.delete('/ews/:id', ewsController.deleteEws);
 router.put('/ews/:id/thresholds', ewsController.updateThresholds);
 router.put('/ews/:id/telegram', ewsController.updateTelegramConfig);

@@ -13,6 +13,7 @@ export default function HomePage() {
     currentUser,
     setEditingTelegramEws,
     setEditingTelkomselEws,
+    setEditingConfigEws,
     setIsAddEWSOpen,
     handleDeleteEws,
     openLoginModal,
@@ -26,6 +27,7 @@ export default function HomePage() {
       onSelectEws={(ewsId) => router.push(`/ews/${ewsId}`)}
       onOpenTelegramConfig={(ews: EWSNode) => setEditingTelegramEws(ews)}
       onOpenTelkomselConfig={(ews: EWSNode) => setEditingTelkomselEws(ews)}
+      onOpenEditConfig={(ews: EWSNode) => setEditingConfigEws(ews)}
       onAddEwsClick={() =>
         requireAuth(
           () => setIsAddEWSOpen(true),

@@ -22,6 +22,7 @@ import {
   Smartphone,
   Trash2,
   Download,
+  Pencil,
 } from 'lucide-react';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
@@ -35,6 +36,7 @@ interface OverviewAllEWSProps {
   onRequireLogin?: (notice?: string) => void;
   onOpenTelegramConfig?: (ews: EWSNode) => void;
   onOpenTelkomselConfig?: (ews: EWSNode) => void;
+  onOpenEditConfig?: (ews: EWSNode) => void;
 }
 
 export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
@@ -46,6 +48,7 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
   onRequireLogin,
   onOpenTelegramConfig,
   onOpenTelkomselConfig,
+  onOpenEditConfig,
 }) => {
   const [selectedTelegramEws, setSelectedTelegramEws] = useState<EWSNode | null>(null);
   const [selectedTelkomselEws, setSelectedTelkomselEws] = useState<EWSNode | null>(null);
@@ -113,6 +116,14 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
       return;
     }
     onDeleteEws?.(id);
+  };
+
+  const handleEditClick = (ews: EWSNode) => {
+    if (!currentUser) {
+      onRequireLogin?.('Silakan login sebagai Superadmin untuk mengubah konfigurasi titik EWS.');
+      return;
+    }
+    onOpenEditConfig?.(ews);
   };
 
   // Filtered nodes
@@ -392,6 +403,16 @@ export const OverviewAllEWS: React.FC<OverviewAllEWSProps> = ({
                         >
                           {ews.status.toUpperCase()}
                         </span>
+                        {onOpenEditConfig && (
+                          <button
+                            type="button"
+                            onClick={() => handleEditClick(ews)}
+                            className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                            title={`Edit Konfigurasi Titik ${ews.id}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {onDeleteEws && (
                           <button
                             type="button"

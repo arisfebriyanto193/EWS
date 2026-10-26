@@ -24,7 +24,9 @@ import {
   Wifi,
   RotateCcw,
   SlidersHorizontal,
+  Pencil,
 } from 'lucide-react';
+import { useEWS } from '../context/EWSContext';
 import { TelegramConfigModal } from './TelegramConfigModal';
 import { TelkomselConfigModal } from './TelkomselConfigModal';
 import { ThresholdConfigModal } from './ThresholdConfigModal';
@@ -58,6 +60,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
   onResetAlarm,
   onRequireLogin,
 }) => {
+  const { setEditingConfigEws, openLoginModal } = useEWS();
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [isTelkomselModalOpen, setIsTelkomselModalOpen] = useState(false);
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
@@ -187,6 +190,18 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
       return;
     }
     setIsThresholdModalOpen(true);
+  };
+
+  const handleOpenEditConfig = () => {
+    if (!currentUser) {
+      if (onRequireLogin) {
+        onRequireLogin('Silakan login sebagai Superadmin untuk mengubah konfigurasi titik EWS.');
+      } else {
+        openLoginModal('Silakan login sebagai Superadmin untuk mengubah konfigurasi titik EWS.');
+      }
+      return;
+    }
+    setEditingConfigEws(ews);
   };
 
   const handleResetClick = () => {
@@ -419,10 +434,20 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
               </>
             )}
 
+            {/* Tombol Edit Titik EWS */}
+            <button
+              onClick={handleOpenEditConfig}
+              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 border border-slate-300 dark:border-slate-700"
+              title="Edit konfigurasi titik EWS: ID, nama titik, koordinat GPS, ambang batas & Telegram"
+            >
+              <Pencil className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Edit Titik</span>
+            </button>
+
             {/* Tombol Tunggal Utama: Opsi Lainnya */}
             <button
               onClick={() => setIsOptionsModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-lg px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95 border border-blue-600"
+              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95 border border-blue-600"
               title="Buka menu konfigurasi bot Telegram, SIM Telkomsel, ambang batas, ekspor data, kontrol aktuator & restart ESP32"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1207,6 +1232,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         ews={ews}
         isOpen={isOptionsModalOpen}
         onClose={() => setIsOptionsModalOpen(false)}
+        onOpenEditConfig={handleOpenEditConfig}
         onOpenTelegram={handleOpenTelegram}
         onOpenTelkomsel={handleOpenTelkomsel}
         onOpenThreshold={handleOpenThreshold}

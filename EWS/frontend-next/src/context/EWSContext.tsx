@@ -38,6 +38,9 @@ interface EWSContextType {
   setEditingTelegramEws: React.Dispatch<React.SetStateAction<EWSNode | null>>;
   editingTelkomselEws: EWSNode | null;
   setEditingTelkomselEws: React.Dispatch<React.SetStateAction<EWSNode | null>>;
+  editingConfigEws: EWSNode | null;
+  setEditingConfigEws: React.Dispatch<React.SetStateAction<EWSNode | null>>;
+  handleSaveEwsConfig: (oldId: string, updatedPayload: Partial<EWSNode> & { newId?: string }) => Promise<EWSNode>;
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isLoginModalOpen: boolean;
@@ -85,6 +88,7 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAddEWSOpen, setIsAddEWSOpen] = useState(false);
   const [editingTelegramEws, setEditingTelegramEws] = useState<EWSNode | null>(null);
   const [editingTelkomselEws, setEditingTelkomselEws] = useState<EWSNode | null>(null);
+  const [editingConfigEws, setEditingConfigEws] = useState<EWSNode | null>(null);
   const [globalMute, setGlobalMute] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -370,6 +374,15 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
+    const unsubNodeUpdated = wsClient.on('ews/node/updated', (payload) => {
+      if (payload && payload.node) {
+        const targetOldId = payload.oldId || payload.node.id;
+        setEwsNodes((prev) =>
+          prev.map((e) => (e.id === targetOldId ? { ...e, ...payload.node } : e))
+        );
+      }
+    });
+
     // Real-time Telegram Update
     const unsubTelegramUpdated = wsClient.on('ews/telegram/updated', (payload) => {
       if (payload && payload.ewsId && payload.telegramConfig) {
@@ -425,6 +438,7 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubAlarm();
       unsubNodeCreated();
       unsubNodeDeleted();
+      unsubNodeUpdated();
       unsubTelegramUpdated();
       unsubTrapTelemetry();
       unsubTrapCreated();
@@ -718,6 +732,25 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const handleSaveEwsConfig = async (
+    oldId: string,
+    updatedPayload: Partial<EWSNode> & { newId?: string }
+  ) => {
+    try {
+      const updatedNode = await api.updateEws(oldId, updatedPayload);
+      if (updatedNode) {
+        setEwsNodes((prev) =>
+          prev.map((e) => (e.id === oldId ? { ...e, ...updatedNode } : e))
+        );
+      }
+      refreshBackendData();
+      return updatedNode;
+    } catch (err: any) {
+      console.error('Gagal memperbarui konfigurasi EWS:', err);
+      throw err;
+    }
+  };
+
   const handleUpdateTrap = (updated: PestTrapNode) => {
     setPestTraps((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     api.controlTrap(updated.id, {
@@ -847,6 +880,9 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setEditingTelegramEws,
         editingTelkomselEws,
         setEditingTelkomselEws,
+        editingConfigEws,
+        setEditingConfigEws,
+        handleSaveEwsConfig,
         mobileSidebarOpen,
         setMobileSidebarOpen,
         isLoginModalOpen,
