@@ -8,6 +8,34 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+async function parseJsonResponse<T = any>(res: Response, defaultErrorMsg: string): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  let data: any = null;
+  if (contentType.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok) {
+    if (data && data.message) {
+      throw new Error(data.message);
+    }
+    const text = await res.text().catch(() => '');
+    const match = text.match(/<pre>(.*?)<\/pre>/i) || text.match(/<title>(.*?)<\/title>/i);
+    const serverErr = match ? match[1] : (text.slice(0, 120).trim() || res.statusText);
+    throw new Error(serverErr ? `Server (${res.status}): ${serverErr}` : `${defaultErrorMsg} (HTTP ${res.status})`);
+  }
+
+  if (data === null) {
+    throw new Error(`${defaultErrorMsg}: Respon server tidak valid`);
+  }
+
+  return data;
+}
+
 export const api = {
   // 1. Auth: Login dengan 1 akun administrator
   async login(username: string, password: string):Promise<{ success: boolean; token: string; user: UserAccount; message?: string }> {
@@ -16,10 +44,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.message || 'Gagal masuk ke sistem');
-    }
+    const data = await parseJsonResponse(res, 'Gagal masuk ke sistem');
     return data;
   },
 
@@ -79,8 +104,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
+    const data = await parseJsonResponse<{ success: boolean; data: EWSNode; message?: string }>(
+      res,
+      'Gagal menambahkan stasiun EWS baru'
+    );
+    if (!data.success) {
       throw new Error(data.message || 'Gagal menambahkan stasiun EWS baru');
     }
     return data.data;
@@ -92,8 +120,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
+    const data = await parseJsonResponse<{ success: boolean; data: EWSNode; message?: string }>(
+      res,
+      'Gagal memperbarui konfigurasi EWS'
+    );
+    if (!data.success) {
       throw new Error(data.message || 'Gagal memperbarui konfigurasi EWS');
     }
     return data.data;
@@ -104,8 +135,11 @@ export const api = {
       method: 'DELETE',
       headers: { ...getAuthHeader() },
     });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
+    const data = await parseJsonResponse<{ success: boolean; message?: string }>(
+      res,
+      'Gagal menghapus stasiun EWS'
+    );
+    if (!data.success) {
       throw new Error(data.message || 'Gagal menghapus stasiun EWS');
     }
   },

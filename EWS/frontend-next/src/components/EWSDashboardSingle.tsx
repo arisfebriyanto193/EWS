@@ -1,7 +1,17 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { EWSNode, UserAccount, TelegramConfig, TelkomselConfig } from '../types';
 import { api } from '../services/api';
+
+const SatelliteMap = dynamic(() => import('./SatelliteMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-80 rounded-xl bg-slate-100 dark:bg-slate-900/80 animate-pulse flex items-center justify-center text-xs text-slate-400 border border-slate-200 dark:border-slate-800">
+      Memuat Citra Satelit Lereng...
+    </div>
+  ),
+});
 import {
   Activity,
   AlertTriangle,
@@ -588,9 +598,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
                 <h4 className="text-sm font-bold text-orange-800 dark:text-orange-200">
                   PERINGATAN DAYA / TEGANGAN AKI (HANYA NOTIFIKASI WEB)
                 </h4>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-orange-600 text-white font-mono font-bold uppercase">
-                  RELAY DIJAMIN MATI (OFF)
-                </span>
+                
               </div>
               <p className="text-xs font-semibold text-orange-800 dark:text-orange-300 mt-1">
                 <strong>Keterangan:</strong>{' '}
@@ -1013,6 +1021,49 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
         </div>
 
       </div>
+
+      {/* Peta Lokasi Citra Satelit Titik EWS */}
+      {ews.coordinates?.lat !== undefined &&
+        ews.coordinates?.lng !== undefined &&
+        !isNaN(ews.coordinates.lat) &&
+        !isNaN(ews.coordinates.lng) &&
+        ews.coordinates.lat >= -90 &&
+        ews.coordinates.lat <= 90 &&
+        ews.coordinates.lng >= -180 &&
+        ews.coordinates.lng <= 180 &&
+        !(ews.coordinates.lat === 0 && ews.coordinates.lng === 0) && (
+          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-xs transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800 mb-4">
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-emerald-500" />
+                  <span>Peta Citra Satelit Lokasi Lereng ({ews.id})</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Visualisasi topografi, morfologi lereng, dan vegetasi sekitar stasiun menggunakan citra satelit resolusi tinggi gratis
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-xs font-mono px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Lat: {ews.coordinates.lat.toFixed(6)}, Lng: {ews.coordinates.lng.toFixed(6)}</span>
+                </div>
+              </div>
+            </div>
+
+            <SatelliteMap
+              latitude={ews.coordinates.lat}
+              longitude={ews.coordinates.lng}
+              stationName={ews.name}
+              stationId={ews.id}
+              stationStatus={ews.status}
+              height="360px"
+              zoom={16}
+              interactive={true}
+              showControls={true}
+            />
+          </div>
+        )}
 
       {/* Historical Telemetry Chart View */}
       <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-xs transition-colors">

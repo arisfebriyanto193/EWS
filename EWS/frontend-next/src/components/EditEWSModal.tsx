@@ -1,20 +1,28 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { EWSNode } from '../types';
 import {
   AlertCircle,
   Bot,
-  Compass,
-  Droplets,
+  CheckCircle2,
   Edit3,
-  Layers,
   MapPin,
   Save,
-  Sliders,
   X,
   Info,
 } from 'lucide-react';
+
+// Dynamic import with SSR disabled for Leaflet satellite map
+const SatelliteMap = dynamic(() => import('./SatelliteMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-48 rounded-xl bg-slate-100 dark:bg-slate-900/80 animate-pulse flex items-center justify-center text-xs text-slate-400 border border-slate-200 dark:border-slate-800">
+      Memuat Citra Satelit...
+    </div>
+  ),
+});
 
 interface EditEWSModalProps {
   isOpen: boolean;
@@ -37,14 +45,6 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
-  // Thresholds
-  const [tiltWarning, setTiltWarning] = useState('1.5');
-  const [tiltDanger, setTiltDanger] = useState('3.0');
-  const [rainWarning, setRainWarning] = useState('20.0');
-  const [rainDanger, setRainDanger] = useState('50.0');
-  const [soilMoistureWarning, setSoilMoistureWarning] = useState('75.0');
-  const [vibrationDanger, setVibrationDanger] = useState('0.25');
-
   // Telegram Config
   const [channelName, setChannelName] = useState('');
   const [botToken, setBotToken] = useState('');
@@ -58,15 +58,8 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
       setId(ews.id || '');
       setName(ews.name || '');
       setLocation(ews.location || '');
-      setLatitude(ews.coordinates?.lat?.toString() || '');
-      setLongitude(ews.coordinates?.lng?.toString() || '');
-
-      setTiltWarning((ews.thresholds?.tiltWarning ?? 1.5).toString());
-      setTiltDanger((ews.thresholds?.tiltDanger ?? 3.0).toString());
-      setRainWarning((ews.thresholds?.rainWarning ?? 20.0).toString());
-      setRainDanger((ews.thresholds?.rainDanger ?? 50.0).toString());
-      setSoilMoistureWarning((ews.thresholds?.soilMoistureWarning ?? 75.0).toString());
-      setVibrationDanger((ews.thresholds?.vibrationDanger ?? 0.25).toString());
+      setLatitude(ews.coordinates?.lat !== undefined ? ews.coordinates.lat.toString() : '');
+      setLongitude(ews.coordinates?.lng !== undefined ? ews.coordinates.lng.toString() : '');
 
       setChannelName(ews.telegramConfig?.channelName || '');
       setBotToken(ews.telegramConfig?.botToken || '');
@@ -76,6 +69,17 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
   }, [ews, isOpen]);
 
   if (!isOpen || !ews) return null;
+
+  const latNum = parseFloat(latitude);
+  const lngNum = parseFloat(longitude);
+  const isCoordsValid =
+    !isNaN(latNum) &&
+    !isNaN(lngNum) &&
+    latNum >= -90 &&
+    latNum <= 90 &&
+    lngNum >= -180 &&
+    lngNum <= 180 &&
+    !(latNum === 0 && lngNum === 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,8 +101,6 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
       return;
     }
 
-    const latNum = parseFloat(latitude);
-    const lngNum = parseFloat(longitude);
     if (isNaN(latNum) || isNaN(lngNum)) {
       setError('Format koordinat Latitude / Longitude tidak valid (angka desimal)');
       return;
@@ -109,24 +111,8 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
       name: name.trim(),
       location: location.trim(),
       coordinates: { lat: latNum, lng: lngNum },
-      thresholds: {
-        ...(ews.thresholds || {}),
-        safeTiltPitch: ews.thresholds?.safeTiltPitch ?? 0.0,
-        safeTiltRoll: ews.thresholds?.safeTiltRoll ?? 0.0,
-        tiltTolerance: ews.thresholds?.tiltTolerance ?? 2.0,
-        tiltWarning: parseFloat(tiltWarning) || 1.5,
-        tiltDanger: parseFloat(tiltDanger) || 3.0,
-        rainWarning: parseFloat(rainWarning) || 20.0,
-        rainDanger: parseFloat(rainDanger) || 50.0,
-        rainCalibPerTip: ews.thresholds?.rainCalibPerTip ?? 0.70,
-        safeSoilMoisture: ews.thresholds?.safeSoilMoisture ?? 50.0,
-        soilMoistureTolerance: ews.thresholds?.soilMoistureTolerance ?? 15.0,
-        soilMoistureWarning: parseFloat(soilMoistureWarning) || 75.0,
-        soilAdcDry: ews.thresholds?.soilAdcDry ?? 3300,
-        soilAdcWet: ews.thresholds?.soilAdcWet ?? 1200,
-        vibrationDanger: parseFloat(vibrationDanger) || 0.25,
-        batteryLowVoltage: ews.thresholds?.batteryLowVoltage ?? 11.8,
-      },
+      // Pertahankan ambang batas yang sudah ada tanpa perubahan di form ini
+      thresholds: ews.thresholds,
       telegramConfig: {
         ...(ews.telegramConfig || {
           enabled: true,
@@ -176,7 +162,7 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
                 </span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Perbarui identitas titik, nama stasiun, koordinat GPS, ambang batas, dan konfigurasi bot
+                Perbarui nama stasiun, ID titik, lokasi lereng, koordinat GPS citra satelit, dan konfigurasi bot
               </p>
             </div>
           </div>
@@ -236,133 +222,87 @@ export const EditEWSModal: React.FC<EditEWSModalProps> = ({
             </div>
 
             {/* Location & Coordinates */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-1">
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
-                  <MapPin className="w-3 h-3 text-blue-500" />
-                  <span>Lokasi Sektor</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Sektor Lereng Utara (KM 14.2)"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-blue-600/20 focus:border-blue-600"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Latitude (WGS84)
-                </label>
-                <input
-                  type="text"
-                  placeholder="-6.8924"
-                  value={latitude}
-                  onChange={(e) => setLatitude(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-600/20 focus:border-blue-600"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Longitude (WGS84)
-                </label>
-                <input
-                  type="text"
-                  placeholder="107.6183"
-                  value={longitude}
-                  onChange={(e) => setLongitude(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-600/20 focus:border-blue-600"
-                />
-              </div>
-            </div>
-
-            {/* Thresholds Settings */}
-            <div>
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-2">
-                <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>Pengaturan Ambang Batas Alarm (Thresholds):</span>
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-lg border border-slate-200/80 dark:border-slate-800">
-                <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
-                    Kemiringan Waspada (°)
-                  </span>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
+                    <MapPin className="w-3 h-3 text-blue-500" />
+                    <span>Lokasi Sektor</span>
+                  </label>
                   <input
-                    type="number"
-                    step="0.1"
-                    value={tiltWarning}
-                    onChange={(e) => setTiltWarning(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white"
+                    type="text"
+                    placeholder="Sektor Lereng Utara (KM 14.2)"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-hidden focus:ring-1 focus:ring-blue-600/20 focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
-                    Kemiringan Bahaya (°)
-                  </span>
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Latitude (WGS84) *
+                  </label>
                   <input
-                    type="number"
-                    step="0.1"
-                    value={tiltDanger}
-                    onChange={(e) => setTiltDanger(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white"
+                    type="text"
+                    required
+                    placeholder="-6.8924"
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-600/20 focus:border-blue-600"
                   />
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
-                    Curah Hujan Waspada (mm)
-                  </span>
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Longitude (WGS84) *
+                  </label>
                   <input
-                    type="number"
-                    step="1"
-                    value={rainWarning}
-                    onChange={(e) => setRainWarning(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
-                    Curah Hujan Bahaya (mm)
-                  </span>
-                  <input
-                    type="number"
-                    step="1"
-                    value={rainDanger}
-                    onChange={(e) => setRainDanger(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
-                    Kel. Tanah Waspada (%)
-                  </span>
-                  <input
-                    type="number"
-                    step="1"
-                    value={soilMoistureWarning}
-                    onChange={(e) => setSoilMoistureWarning(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">
-                    Getaran Bahaya (g)
-                  </span>
-                  <input
-                    type="number"
-                    step="0.05"
-                    value={vibrationDanger}
-                    onChange={(e) => setVibrationDanger(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white"
+                    type="text"
+                    required
+                    placeholder="107.6183"
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-blue-600/20 focus:border-blue-600"
                   />
                 </div>
               </div>
+
+              {/* Satellite Map Preview when Coordinates are Valid */}
+              {isCoordsValid ? (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Pratinjau Citra Satelit Lokasi:
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      💡 Klik pada peta atau geser pin untuk memperbarui koordinat
+                    </span>
+                  </div>
+                  <SatelliteMap
+                    latitude={latNum}
+                    longitude={lngNum}
+                    stationName={name || ews.name}
+                    stationId={id || ews.id}
+                    stationStatus={ews.status}
+                    height="190px"
+                    zoom={16}
+                    interactive={true}
+                    showControls={true}
+                    onCoordinatesChange={(newLat, newLng) => {
+                      setLatitude(newLat.toString());
+                      setLongitude(newLng.toString());
+                    }}
+                  />
+                </div>
+              ) : (
+                latitude.trim() !== '' &&
+                longitude.trim() !== '' && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                    Format koordinat belum valid (-90 s/d 90 untuk Latitude, -180 s/d 180 untuk Longitude).
+                  </p>
+                )
+              )}
             </div>
 
             {/* Telegram Channel Info */}
