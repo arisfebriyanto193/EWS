@@ -18,6 +18,32 @@ import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
 import { formatWIB } from '../utils/date';
 
+/**
+ * Memeriksa apakah sensor node EWS benar-benar dalam batas BAHAYA
+ * untuk mencegah sirine/alarm palsu berbunyi saat refresh atau ketika sensor normal.
+ */
+export function isNodeSensorsInDanger(node: EWSNode): boolean {
+  if (node.isTesting) return true;
+  const s = node.sensorData;
+  const th = node.thresholds;
+  if (!s || !th) return false;
+
+  const safePitch = th.safeTiltPitch ?? 0;
+  const safeRoll = th.safeTiltRoll ?? 0;
+  const pitchDev = Math.abs((s.pitchAngle ?? 0) - safePitch);
+  const rollDev = Math.abs((s.rollAngle ?? 0) - safeRoll);
+  const tiltDanger = th.tiltDanger ?? 3.0;
+  const rainDanger = th.rainDanger ?? 50.0;
+  const vibDanger = th.vibrationDanger ?? 0.25;
+
+  return (
+    pitchDev >= tiltDanger ||
+    rollDev >= tiltDanger ||
+    (s.rainfallRate ?? 0) >= rainDanger ||
+    (vibDanger > 0 && (s.vibrationLevel ?? 0) >= vibDanger * 2.0)
+  );
+}
+
 interface EWSContextType {
   currentUser: UserAccount | null;
   setCurrentUser: React.Dispatch<React.SetStateAction<UserAccount | null>>;
@@ -146,15 +172,24 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     }
   }, []);
-
   // 2. Data EWS, Perangkap Hama & Riwayat Alarm dari Backend REST API
   const refreshBackendData = () => {
     api.getEwsNodes()
       .then((data) => {
         if (data) {
-          setEwsNodes(data);
+          const sanitized = data.map((node) => {
+            if (!isNodeSensorsInDanger(node) && node.sirenActive) {
+              return {
+                ...node,
+                sirenActive: false,
+                status: node.status === 'bahaya' ? 'aman' : node.status,
+              };
+            }
+            return node;
+          });
+          setEwsNodes(sanitized);
           const now = Date.now();
-          data.forEach((node) => {
+          sanitized.forEach((node) => {
             if (node.sensorData?.lastSeenAt) {
               lastReceivedRef.current[node.id] = new Date(node.sensorData.lastSeenAt).getTime();
             } else if (node.status !== 'offline') {
@@ -198,7 +233,7 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev.map((e) => {
           if (e.id === payload.ewsId) {
             const incomingReason = payload.alarmReason || payload.sensorData?.alarmReason || e.alarmReason;
-            return {
+            const updatedNode: EWSNode = {
               ...e,
               status: payload.status && payload.status !== 'offline' ? payload.status : (e.status === 'offline' ? 'aman' : e.status),
               alarmReason: incomingReason,
@@ -214,6 +249,13 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 lastUpdated: formatWIB(new Date(), false),
               },
             };
+            if (!isNodeSensorsInDanger(updatedNode)) {
+              updatedNode.sirenActive = false;
+              if (updatedNode.status === 'bahaya') {
+                updatedNode.status = 'aman';
+              }
+            }
+            return updatedNode;
           }
           return e;
         })
@@ -808,9 +850,9 @@ export const EWSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     api.controlTrap(trapId, { command: 'FAST_TELEMETRY' }).catch(() => {});
   };
 
-  // Siren sounds
-  const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute);
-  const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive);
+  // Siren sounds: Sirine hanya bersuara jika node sirenActive DAN sensor pemicu benar-benar dalam batas BAHAYA (atau manual testing)
+  const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute && isNodeSensorsInDanger(e));
+  const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive && isNodeSensorsInDanger(e));
 
   useEffect(() => {
     if (!anySirenActive) {

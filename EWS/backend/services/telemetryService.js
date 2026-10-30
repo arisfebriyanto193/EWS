@@ -173,12 +173,13 @@ class TelemetryService {
     const pitchDev = Math.abs(data.pitchAngle - safePitch);
     const rollDev = Math.abs(data.rollAngle - safeRoll);
 
-    if (
+    const isDangerSensor =
       pitchDev >= thresholds.tiltDanger ||
       rollDev >= thresholds.tiltDanger ||
       data.rainfallRate >= thresholds.rainDanger ||
-      data.vibrationLevel >= (thresholds.vibrationDanger * 2.0)
-    ) {
+      (thresholds.vibrationDanger > 0 && data.vibrationLevel >= (thresholds.vibrationDanger * 2.0));
+
+    if (isDangerSensor) {
       newStatus = 'bahaya';
       sirenActive = true;
       stroboActive = true;
@@ -216,20 +217,26 @@ class TelemetryService {
       triggerValue = `${data.batteryVoltage} V`;
     }
 
-    // Jika ESP32 telah menyertakan status dan alasan spesifik dari firmware
+    // Jika ESP32 menyertakan status khusus dari firmware, pastikan sirine hanya aktif jika sensor benar-benar bahaya
     if (sensorData.status && ['aman', 'siaga', 'bahaya', 'baterai_lemah'].includes(sensorData.status)) {
-      newStatus = sensorData.status;
-      if (newStatus === 'bahaya') {
+      if (sensorData.status === 'bahaya' && isDangerSensor) {
+        newStatus = 'bahaya';
         sirenActive = true;
         stroboActive = true;
         alarmTriggered = true;
-      } else if (newStatus === 'siaga') {
-        // Status siaga: Relay Lapangan dipastikan MATI (OFF), hanya peringatan web & telegram
+      } else if (sensorData.status === 'bahaya' && !isDangerSensor) {
+        // Sensor normal, cegah alarm palsu dari firmware
+        newStatus = 'aman';
+        sirenActive = false;
+        stroboActive = false;
+        alarmTriggered = false;
+      } else if (sensorData.status === 'siaga') {
+        newStatus = 'siaga';
         sirenActive = false;
         stroboActive = false;
         alarmTriggered = true;
       } else {
-        // 'aman' atau 'baterai_lemah': sirine dan strobo dipastikan MATI
+        newStatus = sensorData.status;
         sirenActive = false;
         stroboActive = false;
         alarmTriggered = false;

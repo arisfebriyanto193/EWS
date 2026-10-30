@@ -11,6 +11,8 @@ export interface TrapContextType {
   setCurrentUser: React.Dispatch<React.SetStateAction<UserAccount | null>>;
   pestTraps: PestTrapNode[];
   setPestTraps: React.Dispatch<React.SetStateAction<PestTrapNode[]>>;
+  selectedTrapId: string;
+  setSelectedTrapId: React.Dispatch<React.SetStateAction<string>>;
   wsStatus: 'connected' | 'connecting' | 'disconnected';
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -33,6 +35,7 @@ const TrapContext = createContext<TrapContextType | undefined>(undefined);
 export const TrapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [pestTraps, setPestTraps] = useState<PestTrapNode[]>(INITIAL_PEST_TRAPS);
+  const [selectedTrapId, setSelectedTrapId] = useState<string>(INITIAL_PEST_TRAPS[0]?.id || 'TRAP-01');
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -220,6 +223,8 @@ export const TrapProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser,
         pestTraps,
         setPestTraps,
+        selectedTrapId,
+        setSelectedTrapId,
         wsStatus,
         mobileSidebarOpen,
         setMobileSidebarOpen,

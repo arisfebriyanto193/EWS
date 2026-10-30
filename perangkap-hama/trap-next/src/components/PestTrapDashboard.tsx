@@ -32,6 +32,8 @@ import {
 interface PestTrapDashboardProps {
   traps: PestTrapNode[];
   currentUser?: UserAccount | null;
+  selectedTrapId?: string;
+  onSelectTrap?: (id: string) => void;
   onUpdateTrap: (updated: PestTrapNode) => void;
   onAddTrap?: (newTrap: Partial<PestTrapNode>) => Promise<any>;
   onDeleteTrap?: (id: string) => Promise<any>;
@@ -205,13 +207,22 @@ const BatteryChart: React.FC<{ trapId: string }> = ({ trapId }) => {
 export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
   traps,
   currentUser,
+  selectedTrapId: propSelectedTrapId,
+  onSelectTrap: propOnSelectTrap,
   onUpdateTrap,
   onAddTrap,
   onDeleteTrap,
   onRequestFastTelemetry,
   onRequireLogin,
 }) => {
-  const [selectedTrapId, setSelectedTrapId] = useState<string>(traps[0]?.id || 'TRAP-01');
+  const [internalTrapId, setInternalTrapId] = useState<string>(traps[0]?.id || 'TRAP-01');
+  const selectedTrapId = propSelectedTrapId || internalTrapId;
+  const setSelectedTrapId = (id: string) => {
+    setInternalTrapId(id);
+    if (propOnSelectTrap) {
+      propOnSelectTrap(id);
+    }
+  };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTrapId, setNewTrapId] = useState('');
   const [newTrapName, setNewTrapName] = useState('');
@@ -517,7 +528,6 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
     }
   };
 
-  const totalCatches = traps.reduce((acc, t) => acc + (t.photoelectricCount || 0), 0);
   const activeCount = traps.filter((t) => t.uvLedStatus).length;
 
   return (
@@ -535,18 +545,18 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Pengendalian lampu multi-spektrum, penjadwalan otomatis RTC, sensor jarak wadah VL53L0X ToF, pemantau daya INA226, dan kendali blower hisap.
+              Pengendalian lampu multi-spektrum, penjadwalan otomatis RTC, pemantau daya INA226, dan kendali blower hisap.
             </p>
           </div>
 
           <div className="flex items-center gap-3 text-xs font-mono">
             <div className="bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-center">
-              <span className="text-slate-500 dark:text-slate-400 block text-[10px]">TOTAL HAMA TERPERANGKAP</span>
-              <span className="text-base font-bold text-indigo-600 dark:text-indigo-400">{totalCatches} Ekor</span>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-center">
               <span className="text-slate-500 dark:text-slate-400 block text-[10px]">UNIT LAMPU AKTIF</span>
               <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{activeCount} / {traps.length} Unit</span>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-950 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-center">
+              <span className="text-slate-500 dark:text-slate-400 block text-[10px]">TOTAL PERANGKAP</span>
+              <span className="text-base font-bold text-indigo-600 dark:text-indigo-400">{traps.length} Unit</span>
             </div>
           </div>
         </div>
@@ -616,12 +626,12 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
 
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                    activeTrap.containerCapacityPercent > 80
-                      ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-900'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-900'
+                    activeTrap.mode === 'otomatis'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-900'
+                      : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-900'
                   }`}
                 >
-                  {activeTrap.containerCapacityPercent > 80 ? 'Wadah Penuh' : 'Operasi Normal'}
+                  Mode: {activeTrap.mode || 'otomatis'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -1223,7 +1233,7 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         {activeTrap.blowerStatus
                           ? `Aktif (otomatis mati setelah ${activeTrap.manualDurationSec || 3} dtk)`
-                          : 'Standby — Otomatis nyala saat sensor VL53 deteksi hama'}
+                          : 'Standby — Siap aktif saat terpicu siklus atau sensor'}
                       </p>
                     </div>
                   </div>
@@ -1239,100 +1249,58 @@ export const PestTrapDashboard: React.FC<PestTrapDashboardProps> = ({
                     {activeTrap.blowerStatus ? 'AKTIF' : 'TEST'}
                   </button>
                 </div>
-
-                {/* Sensor 1: Fotoelektrik */}
-                <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold">
-                    Sensor Fotoelektrik E3F-DS30C4
-                  </span>
-                  <div className="flex items-baseline justify-between mt-1">
-                    <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white">
-                      {activeTrap.photoelectricCount}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Hama Terhisap</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Deteksi laser optik jatuhnya serangga</p>
-                </div>
-
-                {/* Sensor 2: PIR */}
-                <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold">
-                    Sensor Gerak PIR HC-SR501
-                  </span>
-                  <div className="flex items-baseline justify-between mt-1">
-                    <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white">
-                      {activeTrap.pirTriggerCount}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Pemicu Aliran Udara</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Deteksi keberadaan serangga di corong</p>
-                </div>
               </div>
             </div>
 
-            {/* Right Column: VL53L0X & INA226 Power System */}
+            {/* Right Column: INA226 Power & Battery System */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-xs space-y-6 flex flex-col justify-between transition-colors">
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white pb-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <Gauge className="w-4 h-4 text-emerald-600" />
-                    Sensor Jarak Wadah VL53L0X
+                    <Battery className="w-4 h-4 text-emerald-600" />
+                    Modul Monitor Daya INA226 (I2C)
                   </span>
-                  <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
-                    {activeTrap.containerCapacityPercent}% Penuh
+                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    {activeTrap.batteryVoltage ? `${activeTrap.batteryVoltage} V` : '12.6 V'}
                   </span>
                 </h4>
 
-                {/* Container visualization */}
-                <div className="my-4">
-                  <div className="w-full bg-slate-100 dark:bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-200 dark:border-slate-800">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        activeTrap.containerCapacityPercent > 80 ? 'bg-red-500' : 'bg-emerald-600'
-                      }`}
-                      style={{ width: `${Math.min(100, activeTrap.containerCapacityPercent)}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-mono">
-                    <span>Jarak Pembacaan Sensor:</span>
-                    <strong>{activeTrap.currentDistance !== undefined ? `${activeTrap.currentDistance} mm` : 'ToF Auto'}</strong>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleEmptyContainer(activeTrap)}
-                  className="w-full py-2 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-200 font-medium transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  <span>Kosongkan Wadah &amp; Reset Hitungan</span>
-                </button>
-
-                {/* Power Subsystem INA226 */}
-                <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                    Modul Monitor Daya INA226 (I2C):
-                  </span>
-
-                  <div className="flex items-center justify-between text-xs p-2.5 bg-slate-50 dark:bg-slate-950/70 rounded-lg border border-slate-200 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                      <Battery className="w-3.5 h-3.5 text-amber-500" />
+                {/* Power Subsystem INA226 Metrics */}
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between text-xs p-3 bg-slate-50 dark:bg-slate-950/70 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                      <Battery className="w-4 h-4 text-amber-500" />
                       Tegangan Baterai VRLA:
                     </span>
-                    <span className="font-mono text-slate-900 dark:text-white font-bold">{activeTrap.batteryVoltage} V</span>
+                    <span className="font-mono text-slate-900 dark:text-white font-bold text-sm">
+                      {activeTrap.batteryVoltage} V
+                    </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs p-2.5 bg-slate-50 dark:bg-slate-950/70 rounded-lg border border-slate-200 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                      <Sun className="w-3.5 h-3.5 text-emerald-500" />
+                  <div className="flex items-center justify-between text-xs p-3 bg-slate-50 dark:bg-slate-950/70 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                      <Sun className="w-4 h-4 text-emerald-500" />
                       Arus Solar / Beban:
                     </span>
-                    <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{activeTrap.solarChargingCurrent} mA</span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                      {activeTrap.solarChargingCurrent} mA
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs p-3 bg-slate-50 dark:bg-slate-950/70 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-blue-500" />
+                      Status Sistem Daya:
+                    </span>
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">
+                      {activeTrap.batteryVoltage && activeTrap.batteryVoltage >= 12.0 ? 'Optimal' : 'Perlu Pengisian'}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="text-[11px] text-slate-400 text-center pt-3 border-t border-slate-200 dark:border-slate-800">
-                Mode Deep-Sleep diaktifkan dengan penekanan tombol fisik ESP32.
+                Sistem daya mandiri solar panel dengan manajemen pengisian terintegrasi.
               </div>
             </div>
           </div>

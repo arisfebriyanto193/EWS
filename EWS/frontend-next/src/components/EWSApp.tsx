@@ -22,6 +22,7 @@ import {
 } from '../mockData';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
+import { isNodeSensorsInDanger } from '../context/EWSContext';
 import { LoginModal } from './LoginModal';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -784,9 +785,9 @@ export default function App() {
     api.controlTrap(trapId, { command: 'FAST_TELEMETRY' }).catch(() => {});
   };
 
-  // Check if any siren is currently blaring
-  const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute);
-  const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive);
+  // Check if any siren is currently blaring (only if sensors are in danger or manual test)
+  const anySirenActive = ewsNodes.some((e) => e.sirenActive && !e.muted && !globalMute && (e.isTesting || isNodeSensorsInDanger(e)));
+  const activeSirenNodes = ewsNodes.filter((e) => e.sirenActive && (e.isTesting || isNodeSensorsInDanger(e)));
 
   // Sound effect trigger for 12V 110dB siren simulation
   useEffect(() => {

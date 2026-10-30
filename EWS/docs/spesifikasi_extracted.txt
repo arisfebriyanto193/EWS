@@ -1,0 +1,791 @@
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+DOKUMEN SPESIFIKASI TEKNIS
+
+Sistem EWS dan Perangkap Hama
+Terintegrasi
+Empat titik EWS | Lima unit perangkap hama | Desain produksi | Monitoring digital
+
+Jenis dokumen
+
+Spesifikasi teknis untuk kebutuhan pelanggan
+
+Lingkup
+
+Perangkat lapangan, desain mekanik, dashboard web, dan notifikasi
+Telegram
+
+Konfigurasi daya
+
+Panel surya 30 Wp dengan penyimpanan baterai
+
+Komunikasi EWS
+
+Jaringan seluler GSM dan 4G
+
+Dokumen ini menetapkan ruang lingkup minimum untuk produksi, pemasangan, integrasi, dan pengujian sistem.
+
+Dokumen Teknis | Halaman 1
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Ruang Lingkup Dokumen
+Dokumen ini menjelaskan spesifikasi teknis empat titik Landslide Early Warning System atau EWS, lima unit
+perangkap hama bertenaga surya, keluaran desain 3D dan gambar produksi, serta sistem web monitoring
+yang terhubung dengan Telegram. Seluruh perangkat dirancang untuk penggunaan luar ruang dan harus
+diserahkan dalam kondisi siap dipasang, diuji, dan dioperasikan.
+
+Ringkasan Sistem
+Bagian
+
+Jumlah
+
+Fungsi utama
+
+EWS siap pasang
+
+4 titik
+
+Mendeteksi indikator potensi pergerakan tanah, mengaktifkan alarm lokal,
+dan mengirim data melalui jaringan seluler.
+
+Perangkap hama siap
+pasang
+
+5 unit
+
+Menarik dan menangkap hama menggunakan cahaya UV dan aliran udara
+dengan pasokan energi surya.
+
+Desain 3D dan gambar
+produksi
+
+1 paket
+
+Menjadi acuan fabrikasi, perakitan, pemasangan, perawatan, dan pembuatan
+ulang komponen.
+
+Web monitoring dan
+Telegram
+
+1 sistem
+
+Menampilkan kondisi empat titik EWS, menyimpan histori, dan
+menyampaikan notifikasi otomatis.
+
+Ketentuan Teknis Umum
+ Komponen luar ruang menggunakan bahan tahan korosi, radiasi ultraviolet, hujan, debu, dan
+kelembapan tinggi.
+ Box elektronik utama minimal memiliki tingkat perlindungan IP65. Setiap jalur kabel menggunakan cable
+gland atau konektor berperingkat IP67 atau IP68.
+ Komponen cetak 3D menggunakan ASA sebagai pilihan utama atau PETG sebagai alternatif. PLA tidak
+digunakan untuk bagian luar ruang.
+ Alarm lokal EWS harus tetap bekerja ketika koneksi GSM, server, atau internet terputus.
+ Ambang status aman, siaga, dan bahaya ditetapkan setelah survei lokasi, pengambilan data dasar,
+serta koordinasi dengan pihak yang berwenang dalam mitigasi bencana.
+
+Dokumen Teknis | Halaman 2
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Bagian 1 Empat EWS Lengkap Siap Pasang
+Empat titik EWS dipasang pada lokasi prioritas untuk memantau perubahan kemiringan atau pergerakan
+tanah, kelembapan tanah, suhu tanah, curah hujan, getaran, kondisi daya, dan status komunikasi. Setiap
+titik bekerja mandiri dengan panel surya 30 Wp dan mengirimkan data melalui jaringan seluler.
+
+Konfigurasi Sensor Setiap Titik
+No
+
+Komponen
+
+Spesifikasi minimum
+
+Fungsi
+
+1
+
+Inclinometer dua sumbu
+
+RS485 Modbus, IP67, catu 9 sampai 36 VDC, rentang
+±30° atau ±90°, resolusi maksimal 0,01°
+
+Mengukur perubahan sudut dan
+kemiringan titik pantau.
+
+2
+
+Sensor kelembapan dan
+suhu tanah
+
+RS485 Modbus, IP68, kelembapan 0 sampai 100
+persen, probe tahan korosi
+
+Mengukur kondisi tanah yang
+berkaitan dengan peningkatan risiko
+longsor.
+
+3
+
+Tipping bucket rain gauge
+
+Resolusi 0,2 mm per tip, keluaran pulse atau RS485,
+konstruksi tahan cuaca
+
+Mengukur akumulasi dan intensitas
+curah hujan.
+
+4
+
+Sensor getaran
+
+Akselerometer tiga sumbu ADXL345 atau setara
+
+Mendeteksi perubahan getaran
+pada struktur atau titik pantau.
+
+5
+
+Sensor daya
+
+INA219 atau INA226
+
+Memantau tegangan baterai, arus
+pengisian, dan konsumsi perangkat.
+
+Kontrol Komunikasi dan Penyimpanan
+Komponen
+
+Spesifikasi
+
+Pengendali utama
+
+ESP32 DevKit berbasis ESP32 WROOM 32 atau setara.
+
+Komunikasi seluler
+
+Modul GSM dan 4G LTE Cat 1 SIMCom A7670C atau setara, dilengkapi antena outdoor
+dan dudukan kartu SIM.
+
+Antarmuka sensor
+
+Konverter isolated RS485 ke TTL untuk memisahkan jalur sensor lapangan dari
+pengendali.
+
+Waktu sistem
+
+RTC DS3231 dengan baterai cadangan.
+
+Penyimpanan lokal
+
+MicroSD 16 sampai 32 GB untuk menyimpan data ketika jaringan tidak tersedia.
+
+Tampilan lokal
+
+LCD 20 × 4 atau OLED untuk status perangkat, sensor, daya, dan jaringan.
+
+PCB dan terminal
+
+PCB kontrol, terminal block, DIN rail, label kabel, fuse, dan titik uji.
+
+Alarm Lokal
+ Sirine 12 V dengan tingkat suara nominal 110 sampai 120 dB.
+ Lampu strobo 12 V berwarna merah atau kuning sebagai peringatan visual.
+ Driver alarm menggunakan MOSFET atau relay automotive dengan flyback diode dan fuse terpisah.
+ Alarm bahaya diproses secara lokal oleh pengendali sehingga tidak bergantung pada server.
+ Tersedia fungsi uji alarm, mute sementara, acknowledgement, dan reset oleh operator yang berwenang.
+
+Dokumen Teknis | Halaman 3
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Sistem Daya
+Komponen
+
+Spesifikasi minimum
+
+Panel surya
+
+30 Wp, sistem 12 V, lengkap dengan bracket dan kabel tahan UV.
+
+Baterai
+
+VRLA atau deep cycle 12 V 20 Ah.
+
+Solar charge controller
+
+PWM 10 A dengan proteksi overcharge dan low voltage disconnect.
+
+Konverter daya
+
+Buck converter 12 V ke 5 V dengan kapasitas minimal 5 A.
+
+Proteksi
+
+Fuse, MCB DC, proteksi polaritas terbalik, TVS, dan surge protection device pada jalur
+yang diperlukan.
+
+Monitoring
+
+Tegangan baterai dan arus sistem direkam serta dikirim ke dashboard.
+
+Box Antiair dan Perlindungan Lingkungan
+Komponen
+
+Persyaratan
+
+Box utama
+
+Polycarbonate atau ABS industrial minimal IP65, perkiraan ukuran 400 × 300 × 200 mm
+atau disesuaikan hasil layout.
+
+Pintu dan gasket
+
+Gasket EPDM atau silikon, pengunci pintu, dan seal yang dapat diganti.
+
+Jalur kabel
+
+Cable gland IP68 ukuran sesuai diameter kabel, konektor panel waterproof, serta strain
+relief.
+
+Kondensasi
+
+Breather vent bermembran, desiccant, dan penataan kabel agar tidak membentuk jalur
+masuk air.
+
+PCB
+
+Conformal coating, spacer nonkonduktif, dan backplate galvanis atau aluminium.
+
+Perlindungan tambahan
+
+Tudung hujan dan pelindung panas matahari tanpa menghalangi antena atau ventilasi.
+
+Keamanan
+
+Baut antitamper, kunci box, label identifikasi, dan peringatan kelistrikan.
+
+Rangka Fondasi dan Grounding
+ Tiang utama menggunakan pipa atau hollow galvanis dengan tinggi dan ketebalan yang ditetapkan
+melalui survei lokasi.
+ Dudukan panel surya memiliki sudut pemasangan yang dapat disesuaikan dan pengunci tahan getaran.
+ Base plate, bracing, baut stainless atau galvanis, anchor bolt, dan hasil pengelasan diberi pelindung
+antikorosi.
+ Fondasi beton disesuaikan dengan kondisi tanah, beban angin, ketinggian tiang, dan akses
+pemeliharaan.
+ Sistem grounding mencakup ground rod, kabel arde, bonding box, serta surge protection device pada
+jalur daya dan komunikasi yang membutuhkan.
+ Kabel sensor menggunakan kabel outdoor berpelindung dan conduit tahan UV dengan jalur yang
+terlindung dari genangan serta gangguan hewan.
+
+Dokumen Teknis | Halaman 4
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Komponen Cetak 3D EWS
+ Dudukan inclinometer dan sensor getaran.
+ Pelindung konektor dan jalur masuk kabel.
+ Bracket antena serta spacer PCB dan display.
+ Penutup sekunder sensor yang tidak menghambat proses pengukuran.
+ Material ASA sebagai pilihan utama atau PETG tahan UV dengan dinding minimal 3 mm pada bagian
+luar ruang.
+
+Dokumen Teknis | Halaman 5
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Logika Operasi EWS
+1. Perangkat membaca sensor secara berkala dan menyimpan hasil pengukuran dengan cap waktu.
+2. Data dikirim melalui GSM dan 4G ke server menggunakan protokol HTTPS atau MQTT yang dilindungi
+autentikasi.
+3. Status aman, siaga, bahaya, offline, baterai lemah, dan gangguan sensor ditentukan berdasarkan
+aturan yang disetujui saat commissioning.
+4. Sirine dan strobo aktif secara lokal ketika kondisi bahaya memenuhi syarat konfirmasi pembacaan.
+5. Telegram dan dashboard menerima kejadian alarm, lokasi, waktu, nilai sensor, dan status perangkat.
+6. Data yang gagal terkirim disimpan pada MicroSD dan dikirim ulang ketika koneksi tersedia.
+
+Pengujian Penerimaan EWS
+ Pembacaan seluruh sensor tampil pada perangkat lokal dan dashboard.
+ Empat perangkat dapat mengirim data melalui kartu SIM pada lokasi pemasangan.
+ Sirine dan strobo dapat diuji dari tombol lokal dan perintah operator yang diizinkan.
+ Alarm lokal tetap bekerja saat koneksi seluler diputus.
+ Notifikasi Telegram diterima ketika status siaga, bahaya, offline, baterai lemah, atau sensor gagal.
+ Box, gland, konektor, rangka, kabel, dan fondasi telah diperiksa sebelum serah terima.
+ Data tetap tercatat selama gangguan jaringan dan tersinkron setelah jaringan kembali.
+
+Dokumen Teknis | Halaman 6
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Bagian 2 Lima Perangkap Hama Lengkap Siap Pasang
+Lima perangkap hama menggunakan cahaya ultraviolet untuk menarik serangga dan blower untuk
+mengarahkan serangga ke wadah penampungan. Setiap unit menggunakan panel surya 30 Wp. Blower
+bekerja secara berkala berdasarkan jadwal dan pemicu sensor agar konsumsi daya sesuai dengan
+kapasitas panel dan baterai.
+
+Sensor dan Sistem Kontrol
+Komponen
+
+Spesifikasi minimum
+
+Fungsi
+
+Mikrokontroler
+
+ESP32 DevKit berbasis ESP32 WROOM 32
+
+Mengatur sensor, lampu, blower, jadwal,
+dan tampilan.
+
+Sensor PIR
+
+HC SR501
+
+Memenuhi konfigurasi sensor gerak yang
+ditetapkan untuk perangkat.
+
+E3F DS30C4, NPN NO, catu 6 sampai 36 V, sensitivitas
+dapat diatur
+
+Mendeteksi objek pada jalur corong dan
+menjadi pemicu kerja blower.
+
+DS3231
+
+Mengendalikan jadwal malam dan
+mencatat waktu operasi.
+
+INA219 atau INA226
+
+Memantau baterai dan konsumsi
+perangkat.
+
+LCD 16 × 2 I²C
+
+Menampilkan status daya, sensor, lampu,
+dan blower.
+
+Sensor fotoelektrik
+
+RTC
+
+Sensor daya
+
+Display
+
+Sistem Penarik dan Penangkap
+Komponen
+
+Spesifikasi minimum
+
+Lampu penarik
+
+LED UV 395 sampai 405 nm, sekitar 5 W, catu 12 V, dilengkapi pelindung dan
+pendinginan.
+
+Blower
+
+Centrifugal blower 12 V dengan daya sekitar 15 sampai 25 W dan aliran udara menuju
+wadah.
+
+Driver blower
+
+MOSFET sesuai arus beban, flyback diode, fuse, dan konektor yang dapat dilepas.
+
+Corong
+
+Bentuk dan ukuran ditentukan melalui desain aliran udara serta mudah dibersihkan.
+
+Wadah
+
+Wadah penampungan dapat dilepas, memiliki kasa ventilasi, dan mencegah hama keluar
+kembali.
+
+Pengaman
+
+Bagian bergerak dan kipas tertutup kisi agar aman saat pembersihan.
+
+Sistem Daya Perangkap Hama
+Komponen
+Panel surya
+
+Spesifikasi minimum
+30 Wp, sistem 12 V, lengkap dengan bracket dan kabel tahan UV.
+
+Dokumen Teknis | Halaman 7
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Komponen
+
+Spesifikasi minimum
+
+Baterai
+
+VRLA 12 V 12 Ah.
+
+Solar charge controller
+
+PWM 10 A dengan proteksi pengisian dan pemutusan tegangan rendah.
+
+Konverter
+
+Buck converter untuk suplai 5 V pengendali dan sensor.
+
+Proteksi
+
+Fuse per cabang, proteksi polaritas, sakelar utama, serta terminal berlabel.
+
+Mode hemat energi
+
+Lampu aktif pada jadwal malam, sedangkan blower bekerja periodik atau ketika sensor
+terpicu.
+
+Rangka dan Konstruksi Perangkap
+ Rangka utama menggunakan hollow galvanis atau material logam antikorosi dengan kaki yang stabil.
+ Panel surya memiliki dudukan yang dapat disetel dan dikunci.
+ Corong, jalur udara, kasa, serta wadah hama dapat dilepas untuk pembersihan dan perawatan.
+ Pengelasan dirapikan dan seluruh permukaan logam diberi pelapis antikarat atau powder coating.
+ Pemasangan menggunakan ground stake atau fondasi ringan sesuai kondisi lahan.
+ Baut utama menggunakan bahan galvanis atau stainless dan bagian rawan dibekali pengunci
+antitamper.
+
+Box Antiair dan Cetak 3D
+Bagian
+
+Persyaratan
+
+Box kontrol
+
+Minimal IP65, menggunakan gasket, kunci, cable gland IP68, dan tudung hujan.
+
+Konektor
+
+Konektor waterproof yang memungkinkan lampu, blower, sensor, dan baterai dilepas saat
+perawatan.
+
+PCB
+
+Dilapisi conformal coating dan dipasang pada spacer nonkonduktif.
+
+Kondensasi
+
+Breather vent, desiccant, dan jalur kabel berbentuk drip loop.
+
+Komponen cetak 3D
+
+Dudukan sensor, adaptor corong, pelindung lampu, spacer elektronik, cable clip, dan
+penutup konektor.
+
+Material cetak
+
+ASA atau PETG tahan UV. Komponen cetak 3D tidak digunakan sebagai box elektronik
+utama.
+
+Pengujian Penerimaan Perangkap Hama
+ Lampu UV bekerja sesuai jadwal malam yang telah diatur.
+ Blower aktif berdasarkan jadwal dan pemicu sensor serta berhenti sesuai durasi yang ditentukan.
+ Pengisian panel surya, tegangan baterai, dan pemutusan tegangan rendah berfungsi.
+ Aliran udara mengarahkan objek uji ke wadah tanpa kebocoran pada sambungan utama.
+ Wadah dapat dilepas dan dibersihkan tanpa membuka box elektronik.
+ Kabel, box, bracket, rangka, dan fondasi diperiksa sebelum serah terima.
+
+Dokumen Teknis | Halaman 8
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Bagian 3 Desain 3D CAD dan Gambar Produksi
+Paket desain menjadi acuan bersama untuk pembuatan prototipe, fabrikasi berulang, perakitan,
+pemasangan, pemeriksaan mutu, dan pemeliharaan. Seluruh file harus menggunakan penamaan
+komponen yang konsisten dengan daftar material dan diagram pengawatan.
+
+Keluaran Desain EWS
+Keluaran
+
+Isi minimum
+
+Model 3D lengkap
+
+Tiang, panel surya, box, sensor, bracket, base plate, fondasi, antena, jalur kabel, dan
+komponen cetak 3D.
+
+Layout box
+
+Posisi PCB, modem, display, terminal, fuse, MCB, controller surya, baterai, gland, dan titik
+grounding.
+
+Gambar fabrikasi
+
+Ukuran material, ketebalan, titik las, lubang, toleransi, finishing, dan urutan perakitan.
+
+Gambar fondasi
+
+Ukuran dasar, posisi anchor bolt, base plate, dan jalur kabel bawah tanah bila digunakan.
+
+Dudukan sensor
+
+Posisi, orientasi, akses kalibrasi, dan perlindungan sensor tanpa mengganggu
+pembacaan.
+
+Keluaran Desain Perangkap Hama
+Keluaran
+
+Isi minimum
+
+Model 3D lengkap
+
+Rangka, panel surya, box, lampu UV, corong, blower, wadah, sensor, dan kaki
+pemasangan.
+
+Desain aliran udara
+
+Arah masuk udara, posisi blower, transisi corong, kasa, serta jalur menuju wadah.
+
+Gambar rangka
+
+Dimensi hollow, titik potong, titik las, bracket, lubang baut, dan finishing.
+
+Komponen bongkar pasang
+
+Wadah, kisi pengaman, lampu, blower, konektor, dan penutup perawatan.
+
+Dudukan cetak 3D
+
+Adaptor corong, dudukan sensor, pelindung lampu, spacer, dan cable clip.
+
+Format File yang Diserahkan
+Jenis file
+
+Format
+
+Model 3D sumber
+
+Format native perangkat lunak desain yang digunakan.
+
+Pertukaran model
+
+STEP atau STP.
+
+Cetak 3D
+
+STL dan profil orientasi pencetakan yang direkomendasikan.
+
+Gambar kerja
+
+PDF serta DWG atau DXF bila digunakan oleh bengkel fabrikasi.
+
+Daftar material
+
+XLSX atau DOCX dengan kode komponen, jumlah, bahan, dan keterangan pemasangan.
+
+Diagram listrik
+
+PDF sumber terbaca dengan kode kabel, fuse, terminal, konektor, dan tegangan kerja.
+
+Dokumen Teknis | Halaman 9
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Standar Desain dan Dokumentasi
+ Setiap part memiliki kode unik yang sama pada model, drawing, daftar material, dan petunjuk perakitan.
+ Gambar kerja mencantumkan satuan, skala, revisi, material, ketebalan, toleransi penting, dan jenis
+finishing.
+ Exploded view menunjukkan urutan perakitan dan posisi fastener.
+ Daftar material memisahkan komponen beli, komponen fabrikasi, komponen cetak 3D, serta bahan
+habis pakai.
+ Komponen cetak 3D mencantumkan material, ketebalan dinding, infill, orientasi, kebutuhan support, dan
+insert ulir bila digunakan.
+ Desain menyediakan akses yang aman untuk penggantian baterai, kartu SIM, fuse, sensor, blower,
+lampu, dan wadah hama.
+ Revisi akhir mengikuti hasil uji prototipe dan kondisi aktual pemasangan.
+
+Tahapan Persetujuan Desain
+1. Pengumpulan ukuran komponen dan hasil survei lokasi.
+2. Penyusunan konsep 3D dan layout awal.
+3. Pemeriksaan akses perawatan, ketahanan cuaca, jalur kabel, dan keselamatan pengguna.
+4. Pembuatan prototipe mekanik serta komponen cetak 3D.
+5. Uji pemasangan komponen, koreksi ukuran, dan revisi desain.
+6. Penerbitan gambar produksi final dan daftar material terkendali revisi.
+
+Dokumen Teknis | Halaman 10
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Bagian 4 Web Monitoring dan Telegram
+Sistem digital menerima data dari empat titik EWS melalui jaringan GSM dan 4G, menyimpan data pada
+server, menampilkan kondisi melalui dashboard web, serta mengirim notifikasi Telegram kepada operator
+atau grup yang ditentukan. Dashboard dapat dibuka melalui komputer maupun telepon seluler.
+
+Arsitektur Sistem
+1. ESP32 membaca sensor dan menentukan status lokal berdasarkan konfigurasi perangkat.
+2. Modem GSM dan 4G mengirim data melalui HTTPS atau MQTT menggunakan identitas perangkat
+yang unik.
+3. Server memvalidasi, menyimpan, dan mengolah data dari keempat titik.
+4. Dashboard web menampilkan status terkini, grafik, peta, histori alarm, serta kesehatan perangkat.
+5. Telegram Bot mengirim pemberitahuan ketika terjadi perubahan status atau gangguan perangkat.
+
+Fitur Dashboard Web
+Fitur
+
+Spesifikasi
+
+Ringkasan empat titik
+
+Nama titik, status, waktu data terakhir, sinyal GSM, baterai, dan indikator sensor utama.
+
+Status operasi
+
+Aman, siaga, bahaya, offline, baterai lemah, dan gangguan sensor.
+
+Data real time
+
+Kemiringan, kelembapan dan suhu tanah, curah hujan, getaran, baterai, serta kualitas
+komunikasi.
+
+Grafik histori
+
+Pilihan rentang per jam, harian, mingguan, bulanan, dan rentang khusus.
+
+Peta lokasi
+
+Koordinat empat titik dengan penanda warna berdasarkan status.
+
+Riwayat alarm
+
+Waktu mulai, penyebab, nilai pemicu, durasi, acknowledgement, dan waktu selesai.
+
+Ekspor data
+
+Unduhan CSV atau XLSX sesuai rentang waktu dan titik yang dipilih.
+
+Manajemen pengguna
+
+Peran administrator, operator, dan tampilan publik bila diaktifkan.
+
+Konfigurasi
+
+Pengaturan interval kirim, ambang alarm, penerima Telegram, dan parameter perangkat oleh
+pengguna berwenang.
+
+Diagnostik
+
+Status perangkat, versi firmware, waktu aktif, penyimpanan lokal, tegangan, sinyal, dan waktu
+komunikasi terakhir.
+
+Notifikasi Telegram
+Jenis notifikasi
+
+Isi minimum
+
+Siaga
+
+Nama titik, waktu, parameter pemicu, nilai sensor, dan tautan dashboard.
+
+Bahaya
+
+Peringatan utama, status sirine, lokasi, parameter pemicu, dan arahan mengikuti SOP
+setempat.
+
+Offline
+
+Nama titik dan waktu terakhir perangkat mengirim data.
+
+Baterai lemah
+
+Tegangan baterai, status pengisian, dan nama titik.
+
+Dokumen Teknis | Halaman 11
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Jenis notifikasi
+
+Isi minimum
+
+Sensor gagal
+
+Jenis sensor, kode kesalahan, dan waktu kejadian.
+
+Normal kembali
+
+Waktu perubahan status dan nilai sensor setelah kondisi kembali stabil.
+
+Laporan berkala
+
+Ringkasan harian yang dapat diaktifkan atau dinonaktifkan oleh administrator.
+
+Keamanan dan Keandalan
+ Seluruh akses web menggunakan HTTPS dan sertifikat SSL aktif.
+ Setiap perangkat menggunakan identitas dan kredensial yang berbeda.
+ Kata sandi disimpan dalam bentuk hash dan hak akses dibatasi berdasarkan peran.
+ Server mencatat aktivitas login, perubahan konfigurasi, acknowledgement, dan perintah operator.
+ Database dicadangkan secara terjadwal dan memiliki kebijakan retensi data.
+ Sistem memantau kehilangan koneksi dan menandai perangkat offline tanpa mengubahnya menjadi
+status aman.
+ Telegram Bot hanya menerima perintah dari akun atau grup yang telah didaftarkan.
+
+Infrastruktur dan Dokumentasi
+ Domain, server VPS atau cloud, database, SSL, serta pengaturan DNS untuk masa layanan yang
+disepakati.
+ Kode sumber backend, frontend, konfigurasi deployment, struktur database, dan dokumentasi API.
+ Daftar akun administrator dan prosedur penggantian kredensial.
+ Petunjuk pengoperasian dashboard, Telegram Bot, acknowledgement, ekspor data, dan pengelolaan
+pengguna.
+ Prosedur backup, restore, pembaruan perangkat lunak, dan penanganan perangkat offline.
+
+Pengujian Penerimaan Sistem Digital
+ Dashboard menerima dan menampilkan data dari empat perangkat dengan identitas yang benar.
+ Grafik, peta, filter waktu, histori alarm, dan ekspor data dapat digunakan.
+ Telegram mengirim notifikasi uji untuk siaga, bahaya, offline, baterai lemah, dan sensor gagal.
+ Status sirine lokal dan acknowledgement tercatat pada histori kejadian.
+ Hak akses administrator dan operator diuji sesuai kewenangannya.
+ Kegagalan koneksi disimulasikan untuk memeriksa penyimpanan lokal dan sinkronisasi ulang.
+ Backup database dan prosedur pemulihan diuji sebelum serah terima.
+
+Dokumen Serah Terima
+Kelompok
+
+Dokumen atau file
+
+Perangkat lapangan
+
+Daftar nomor perangkat, lokasi, nomor SIM, hasil uji, foto pemasangan, dan berita acara
+commissioning.
+
+Mekanik
+
+Model 3D, gambar kerja, exploded view, file cetak 3D, serta daftar material.
+
+Elektrik
+
+Diagram blok, wiring diagram, pin mapping, daftar terminal, fuse, dan prosedur pemeriksaan
+daya.
+
+Dokumen Teknis | Halaman 12
+
+SPESIFIKASI TEKNIS SISTEM EWS DAN PERANGKAP HAMA
+
+Kelompok
+
+Dokumen atau file
+
+Perangkat lunak
+
+Kode sumber, konfigurasi, dokumentasi API, struktur database, dan prosedur deployment.
+
+Operasional
+
+SOP, manual pengguna, jadwal pemeliharaan, checklist inspeksi, serta video pengoperasian.
+
+Pelatihan
+
+Materi pelatihan, daftar peserta, hasil simulasi alarm, dan catatan tindak lanjut.
+
+Catatan Keselamatan
+EWS berfungsi sebagai sarana pemantauan dan peringatan komunitas. Keputusan evakuasi tetap
+mengikuti prosedur pemerintah desa, BPBD, dan pihak berwenang. Nilai ambang tidak ditetapkan hanya
+dari spesifikasi sensor; penetapannya memerlukan survei lokasi, data dasar, evaluasi kondisi tanah, dan uji
+lapangan.
+
+Dokumen Teknis | Halaman 13
+
+

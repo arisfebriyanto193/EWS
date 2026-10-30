@@ -6,6 +6,55 @@ const { formatWib } = require('../utils/dateUtils');
 
 // Helper untuk format node dari DB ke struktur EWSNode frontend
 function formatEwsNode(node, telegram, telkomsel) {
+  const safePitch = parseFloat(node.safe_pitch ?? 0.0);
+  const safeRoll = parseFloat(node.safe_roll ?? 0.0);
+  const pitchDev = Math.abs(parseFloat(node.last_pitch || 0) - safePitch);
+  const rollDev = Math.abs(parseFloat(node.last_roll || 0) - safeRoll);
+  const tiltDanger = parseFloat(node.tilt_danger ?? 3.0);
+  const tiltWarning = parseFloat(node.tilt_warning ?? 1.5);
+  const rainDanger = parseFloat(node.rain_danger ?? 50.0);
+  const rainWarning = parseFloat(node.rain_warning ?? 20.0);
+  const vibDanger = parseFloat(node.vibration_danger ?? 0.25);
+  const rainRate = parseFloat(node.last_rainfall_rate || 0);
+  const vib = parseFloat(node.last_vibration || 0);
+  const soil = parseFloat(node.last_soil_moisture || 0);
+  const soilWarning = parseFloat(node.soil_moisture_warning ?? 75.0);
+  const batt = parseFloat(node.last_battery_voltage || 0);
+  const battLow = parseFloat(node.battery_low_voltage ?? 11.8);
+
+  const isTiltDanger = pitchDev >= tiltDanger || rollDev >= tiltDanger;
+  const isRainDanger = rainRate >= rainDanger;
+  const isVibDanger = vibDanger > 0 && vib >= (vibDanger * 2.0);
+  const isSensorDanger = isTiltDanger || isRainDanger || isVibDanger;
+
+  let effectiveStatus = node.status;
+  let effectiveSiren = Boolean(node.siren_active);
+  let effectiveStrobo = Boolean(node.strobo_active);
+
+  // Jika pembacaan sensor normal semua (tidak bahaya), cegah sirine palsu
+  if (!isSensorDanger) {
+    effectiveSiren = false;
+    if (effectiveStatus === 'bahaya') {
+      const isTiltWarning = pitchDev >= tiltWarning || rollDev >= tiltWarning;
+      const isRainWarning = rainRate >= rainWarning;
+      const isSoilWarning = soil >= soilWarning;
+      const isVibWarning = vibDanger > 0 && vib >= vibDanger;
+      const isWarning = isTiltWarning || isRainWarning || isSoilWarning || isVibWarning;
+      const isBattLow = batt > 0.5 && batt < battLow;
+
+      if (isWarning) {
+        effectiveStatus = 'siaga';
+        effectiveStrobo = true;
+      } else if (isBattLow) {
+        effectiveStatus = 'baterai_lemah';
+        effectiveStrobo = false;
+      } else {
+        effectiveStatus = 'aman';
+        effectiveStrobo = false;
+      }
+    }
+  }
+
   return {
     id: node.id,
     name: node.name,
@@ -14,9 +63,9 @@ function formatEwsNode(node, telegram, telkomsel) {
       lat: parseFloat(node.latitude),
       lng: parseFloat(node.longitude),
     },
-    status: node.status,
-    sirenActive: Boolean(node.siren_active),
-    stroboActive: Boolean(node.strobo_active),
+    status: effectiveStatus,
+    sirenActive: effectiveSiren,
+    stroboActive: effectiveStrobo,
     muted: Boolean(node.muted),
     sensorData: {
       pitchAngle: parseFloat(node.last_pitch || 0),
@@ -149,7 +198,18 @@ exports.getAllEws = async (req, res) => {
       telkomselMap[ts.ews_id] = ts;
     });
 
-    const result = nodes.map((node) => formatEwsNode(node, telegramMap[node.id], telkomselMap[node.id]));
+    const result = nodes.map((node) => {
+      const formatted = formatEwsNode(node, telegramMap[node.id], telkomselMap[node.id]);
+      if ((node.siren_active && !formatted.sirenActive) || (node.status === 'bahaya' && formatted.status !== 'bahaya')) {
+        pool.query('UPDATE ews_nodes SET status = ?, siren_active = ?, strobo_active = ? WHERE id = ?', [
+          formatted.status,
+          formatted.sirenActive ? 1 : 0,
+          formatted.stroboActive ? 1 : 0,
+          node.id
+        ]).catch(() => {});
+      }
+      return formatted;
+    });
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error fetching EWS nodes:', error);
@@ -169,6 +229,14 @@ exports.getEwsById = async (req, res) => {
     const [telegrams] = await pool.query('SELECT * FROM telegram_configs WHERE ews_id = ?', [id]);
     const [telkomsels] = await pool.query('SELECT * FROM telkomsel_configs WHERE ews_id = ?', [id]);
     const result = formatEwsNode(nodes[0], telegrams[0] || null, telkomsels[0] || null);
+    if ((nodes[0].siren_active && !result.sirenActive) || (nodes[0].status === 'bahaya' && result.status !== 'bahaya')) {
+      pool.query('UPDATE ews_nodes SET status = ?, siren_active = ?, strobo_active = ? WHERE id = ?', [
+        result.status,
+        result.sirenActive ? 1 : 0,
+        result.stroboActive ? 1 : 0,
+        id
+      ]).catch(() => {});
+    }
 
     return res.json({ success: true, data: result });
   } catch (error) {

@@ -14,6 +14,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const {
     currentUser,
     pestTraps,
+    selectedTrapId,
+    setSelectedTrapId,
     wsStatus,
     mobileSidebarOpen,
     setMobileSidebarOpen,
@@ -39,6 +41,13 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     }
   };
 
+  const handleSelectTrap = (trapId: string) => {
+    setSelectedTrapId(trapId);
+    if (pathname !== '/') {
+      router.push('/');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 flex font-sans selection:bg-blue-600 selection:text-white transition-colors duration-150">
       {/* Sidebar Navigasi Samping Kiri */}
@@ -48,6 +57,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         onSelectTab={handleSelectTab}
         onLogout={handleLogout}
         pestTraps={pestTraps}
+        selectedTrapId={selectedTrapId}
+        onSelectTrap={handleSelectTrap}
         wsStatus={wsStatus}
         isOpenMobile={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}

@@ -8,6 +8,8 @@ export default function HomePage() {
   const {
     pestTraps,
     currentUser,
+    selectedTrapId,
+    setSelectedTrapId,
     handleUpdateTrap,
     handleAddTrap,
     handleDeleteTrap,
@@ -19,6 +21,8 @@ export default function HomePage() {
     <PestTrapDashboard
       traps={pestTraps}
       currentUser={currentUser}
+      selectedTrapId={selectedTrapId}
+      onSelectTrap={setSelectedTrapId}
       onUpdateTrap={handleUpdateTrap}
       onAddTrap={handleAddTrap}
       onDeleteTrap={handleDeleteTrap}

@@ -255,6 +255,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
     setIsSirenTesting(true);
     onUpdateEws({
       ...ews,
+      isTesting: true,
       sirenActive: true,
       stroboActive: true,
     });
@@ -263,6 +264,7 @@ export const EWSDashboardSingle: React.FC<EWSDashboardSingleProps> = ({
       setIsSirenTesting(false);
       onUpdateEws({
         ...ews,
+        isTesting: false,
         sirenActive: false,
         stroboActive: ews.status === 'bahaya' || ews.status === 'siaga',
       });

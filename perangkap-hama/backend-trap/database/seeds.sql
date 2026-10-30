@@ -8,7 +8,9 @@ USE `ews_iot_db`;
 INSERT INTO `users` (`id`, `username`, `password_hash`, `full_name`, `role`, `department`, `avatar_url`)
 VALUES
   ('user-01', 'admin_bpbd', '$2a$10$xh9nvNW26RqtJ1eoSIItXOPCGv08fG8nxDZ/vqvKJlvhcpWE602TS', 'Ir. Hendra Wijaya, M.T.', 'superadmin', 'Tim Pengendalian Hama & Agrikultur Cerdas', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80'),
-  ('user-02', 'operator_trap', '$2a$10$xh9nvNW26RqtJ1eoSIItXOPCGv08fG8nxDZ/vqvKJlvhcpWE602TS', 'Budi Santoso', 'operator', 'Operator Lapangan Sektor 1', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80')
+  ('user-01b', 'admin_trap', '$2a$10$xh9nvNW26RqtJ1eoSIItXOPCGv08fG8nxDZ/vqvKJlvhcpWE602TS', 'Ir. Hendra Wijaya, M.T.', 'superadmin', 'Tim Pengendalian Hama & Agrikultur Cerdas', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80'),
+  ('user-02', 'operator_trap', '$2a$10$xh9nvNW26RqtJ1eoSIItXOPCGv08fG8nxDZ/vqvKJlvhcpWE602TS', 'Budi Santoso', 'operator', 'Operator Lapangan Sektor 1', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80'),
+  ('user-02b', 'operator_trap01', '$2a$10$xh9nvNW26RqtJ1eoSIItXOPCGv08fG8nxDZ/vqvKJlvhcpWE602TS', 'Budi Santoso', 'operator', 'Operator Lapangan Sektor 1', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80')
 ON DUPLICATE KEY UPDATE `username` = VALUES(`username`);
 
 -- 2. Data Master Unit Perangkap Hama

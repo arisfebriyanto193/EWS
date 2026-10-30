@@ -24,6 +24,8 @@ interface SidebarProps {
   onSelectTab: (tab: string) => void;
   onLogout: () => void;
   pestTraps: PestTrapNode[];
+  selectedTrapId?: string;
+  onSelectTrap?: (id: string) => void;
   wsStatus?: 'connected' | 'connecting' | 'disconnected';
   isOpenMobile: boolean;
   onCloseMobile: () => void;
@@ -36,6 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   onLogout,
   pestTraps = [],
+  selectedTrapId,
+  onSelectTrap,
   wsStatus = 'connected',
   isOpenMobile,
   onCloseMobile,
@@ -179,7 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div>
             <div className="px-3 mb-2 flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                Daftar Perangkat
+                Daftar Perangkap Hama
               </span>
               <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
                 {pestTraps.length} unit
@@ -187,36 +191,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div className="space-y-1">
-              {pestTraps.map((trap) => (
-                <div
-                  key={trap.id}
-                  onClick={() => handleNavClick('pest-traps')}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg text-xs bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        trap.status !== 'mati' ? 'bg-emerald-500' : 'bg-slate-400'
-                      }`}
-                    />
-                    <span className="font-semibold text-slate-800 dark:text-white">
-                      {trap.name || trap.id}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                    <span>{trap.batteryVoltage?.toFixed(1) || '12.6'}V</span>
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${
-                        trap.mode === 'otomatis'
-                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40'
-                          : 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/40'
-                      }`}
-                    >
-                      {trap.mode || 'auto'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+              {pestTraps.map((trap) => {
+                const isSelected = (activeTab === 'pest-traps' || activeTab === 'overview') && selectedTrapId === trap.id;
+                return (
+                  <button
+                    key={trap.id}
+                    type="button"
+                    onClick={() => {
+                      if (onSelectTrap) {
+                        onSelectTrap(trap.id);
+                      }
+                      handleNavClick('pest-traps');
+                    }}
+                    className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-xs border cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-blue-50/90 dark:bg-blue-950/70 border-blue-500/60 dark:border-blue-500/50 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/30 shadow-xs'
+                        : 'bg-slate-50/80 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          trap.status !== 'mati' ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      <span className="font-semibold text-slate-800 dark:text-white">
+                        {trap.name || trap.id}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                      <span>{trap.batteryVoltage?.toFixed(1) || '12.6'}V</span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${
+                          trap.mode === 'otomatis'
+                            ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40'
+                            : 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/40'
+                        }`}
+                      >
+                        {trap.mode || 'auto'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

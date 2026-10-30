@@ -107,6 +107,7 @@ export interface EWSNode {
   sirenActive: boolean;
   stroboActive: boolean;
   muted: boolean;
+  isTesting?: boolean;
   sensorData: EWSSensorData;
   telegramConfig: TelegramConfig;
   telkomselConfig?: TelkomselConfig;
